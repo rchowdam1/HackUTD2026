@@ -1,0 +1,15 @@
+data/
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+node_modules/
+dist/
+# model caches
+models/
+.cache/
+hf_cache/
+*.ct2/
