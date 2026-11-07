@@ -1,0 +1,9 @@
+{
+  "event_id": "ev0007",
+  "session_ref": null,
+  "type": "consent",
+  "payload": {
+    "state": "active"
+  },
+  "generation": 1
+}

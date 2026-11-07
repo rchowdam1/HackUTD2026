@@ -1,0 +1,11 @@
+{
+  "event_id": "ev0005",
+  "session_ref": "a1b2c3d4e5f6",
+  "type": "sms",
+  "payload": {
+    "message_id": "SIM0123456789ab",
+    "template_id": "ALERT-OTP-01",
+    "status": "queued"
+  },
+  "generation": 1
+}

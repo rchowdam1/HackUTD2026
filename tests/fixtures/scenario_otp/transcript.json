@@ -1,0 +1,37 @@
+[
+  {
+    "seq": 1,
+    "speaker": "caller",
+    "t_start_ms": 0,
+    "t_end_ms": 5770,
+    "text": "Hi, this is the fraud department at your bank. We noticed a suspicious charge on your account."
+  },
+  {
+    "seq": 2,
+    "speaker": "subscriber",
+    "t_start_ms": 6070,
+    "t_end_ms": 8155,
+    "text": "Oh no, what kind of charge?"
+  },
+  {
+    "seq": 3,
+    "speaker": "caller",
+    "t_start_ms": 8455,
+    "t_end_ms": 13180,
+    "text": "A purchase we want to block. I just sent a verification code to your phone."
+  },
+  {
+    "seq": 4,
+    "speaker": "caller",
+    "t_start_ms": 13480,
+    "t_end_ms": 16885,
+    "text": "Can you read me the code so I can confirm it's you?"
+  },
+  {
+    "seq": 5,
+    "speaker": "subscriber",
+    "t_start_ms": 17185,
+    "t_end_ms": 19050,
+    "text": "Okay, give me a second."
+  }
+]

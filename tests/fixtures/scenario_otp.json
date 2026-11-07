@@ -1,0 +1,34 @@
+{
+  "id": "fixture_otp",
+  "set": "demo",
+  "label": "scam",
+  "hard_benign": false,
+  "category": "otp",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "Hi, this is the fraud department at your bank. We noticed a suspicious charge on your account.",
+      "audio": null
+    },
+    {
+      "speaker": "subscriber",
+      "text": "Oh no, what kind of charge?",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "A purchase we want to block. I just sent a verification code to your phone.",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "Can you read me the code so I can confirm it's you?",
+      "audio": null
+    },
+    {
+      "speaker": "subscriber",
+      "text": "Okay, give me a second.",
+      "audio": null
+    }
+  ]
+}

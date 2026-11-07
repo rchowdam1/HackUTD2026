@@ -1,0 +1,19 @@
+{
+  "event_id": "ev0003",
+  "session_ref": "a1b2c3d4e5f6",
+  "type": "risk_event",
+  "payload": {
+    "session_ref": "a1b2c3d4e5f6",
+    "event_type": "code_request",
+    "source": "rule",
+    "rule_id": "B-OTP-REQ-01",
+    "category": "otp",
+    "span_seq": [
+      3,
+      4
+    ],
+    "confidence_class": "high",
+    "policy_version": "v1.0"
+  },
+  "generation": 1
+}

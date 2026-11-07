@@ -1,0 +1,15 @@
+{
+  "event_id": "ev0002",
+  "session_ref": "a1b2c3d4e5f6",
+  "type": "segment",
+  "payload": {
+    "session_ref": "a1b2c3d4e5f6",
+    "seq": 4,
+    "speaker": "caller",
+    "t_start_ms": 13480,
+    "t_end_ms": 16885,
+    "text": "Can you read me the code so I can confirm it's you?",
+    "source": "cached"
+  },
+  "generation": 1
+}
