@@ -13,3 +13,4 @@ models/
 .cache/
 hf_cache/
 *.ct2/
+!tests/asr/data/
