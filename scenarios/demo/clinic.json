@@ -1,0 +1,24 @@
+{
+  "id": "clinic",
+  "set": "demo",
+  "label": "benign",
+  "hard_benign": true,
+  "category": "none",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "Hi, this is Maple Street Family Clinic, calling to confirm your appointment on Tuesday at ten.",
+      "audio": "clinic/t01.wav"
+    },
+    {
+      "speaker": "subscriber",
+      "text": "Okay, thanks.",
+      "audio": "clinic/t02.wav"
+    },
+    {
+      "speaker": "caller",
+      "text": "We'll text you a check-in code that morning. Please don't share it with anyone, just show it at the front desk.",
+      "audio": "clinic/t03.wav"
+    }
+  ]
+}

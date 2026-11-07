@@ -1,0 +1,23 @@
+[
+  {
+    "seq": 1,
+    "speaker": "caller",
+    "t_start_ms": 0,
+    "t_end_ms": 5440,
+    "text": "Hi, this is Maple Street Family Clinic, calling to confirm your appointment on Tuesday at ten."
+  },
+  {
+    "seq": 2,
+    "speaker": "subscriber",
+    "t_start_ms": 5740,
+    "t_end_ms": 6420,
+    "text": "Okay, thanks."
+  },
+  {
+    "seq": 3,
+    "speaker": "caller",
+    "t_start_ms": 6720,
+    "t_end_ms": 13860,
+    "text": "We'll text you a check-in code that morning. Please don't share it with anyone, just show it at the front desk."
+  }
+]
