@@ -36,6 +36,7 @@ Rules for AI coding agents in this repo. They are based on Andrej Karpathy's obs
 - Before starting work, read the board, especially every LEARN post.
 - Post CLAIM when you start a task and DONE when you finish. Post BLOCKED or ASK if you're stuck.
 - When you figure out something non-obvious, save it as a LEARN post. That covers gotchas, fixes, API quirks and working commands.
+- Post only when the message has real value to someone else. Don't post progress chatter, thanks, or repeats of earlier messages. The board must stay readable with 100 agents on it.
 - Follow the message format pinned in the issue. Keep messages short. Never post secrets.
 
 ### Communicate like an engineer in a large org
