@@ -40,7 +40,7 @@ Implement `SmsGateway` (§19.3–§19.4):
 - `SimulatedGateway`: same interface. Records sent messages for the console phone frame. Add `POST /sms/simulate-inbound` (operator cookie required) so the phone frame's YES/WRONG/SHARED/STOP buttons go through the same inbound handler.
 - Runtime toggle via `set_mode` / `get_mode`; `get_gateway()` returns the current one.
 
-`send(template_id, session_ref)` calls `consent.is_active()` first and raises if not active. Text comes from `app.policy.templates.get(id)` (unknown id -> `KeyError`); never hardcode copy. See the `a-templates` FYI on the board (PR #4). The pipeline already emits the `queued` sms event; the gateway emits only `sent|delivered|failed` from status callbacks.
+`send(template_id, session_ref)` calls `consent.is_active()` first and raises if not active (the pipeline turns any `send` exception into an `sms` event with status `failed` and `message_id` "", PR #6). Text comes from `app.policy.templates.get(id)` (unknown id -> `KeyError`); never hardcode copy. See the `a-templates` FYI on the board (PR #4). The pipeline already emits the `queued` sms event; the gateway emits only `sent|delivered|failed` from status callbacks.
 
 Inbound:
 - Deduplicate by `MessageSid`.
@@ -66,7 +66,7 @@ No raw numbers, transcripts or audio. The send-to number comes from `DEMO_PHONE`
 Operator routes (§19.4):
 - `POST /login`: compares with `OPERATOR_PASSWORD`, sets a session cookie signed with `SESSION_SECRET`.
 - `GET /events/stream`: SSE that subscribes via `app.events.hub.subscribe()`; never consumes the work queue.
-- `POST /demo/run/{scenario_id}` -> `app.ingest.run(scenario_id, sms_mode=sms.get_mode())`, started as a background task. `POST /demo/end-call` -> `pipeline.finish(current ref)`. `POST /demo/reset` -> `pipeline.reset()`. `POST /demo/sms-mode` -> `sms.set_mode(...)`.
+- `POST /demo/run/{scenario_id}` (ids `clinic`, `bank`) -> `app.ingest.run(scenario_id, sms_mode=sms.get_mode())`, started as a background task. Leave `source=None` so env `REPLAY_SOURCE` picks `asr` or `cached` (PR #8). `POST /demo/end-call` -> `await pipeline.finish(current ref)` (idempotent, safe after reset, PR #6). `POST /demo/reset` -> `pipeline.reset()`. `POST /demo/sms-mode` -> `sms.set_mode(...)`.
 - `GET /results/latest`: returns `results/latest.json` unchanged, or HTTP 200 `{"status":"pending"}` if missing.
 - `GET /aggregates` -> `storage.aggregates()`.
 
@@ -85,17 +85,17 @@ React + TypeScript + Vite, one operator screen. Use a Vite dev proxy to the back
 - results card (handles `pending`)
 - "Where we fail" card
 
-Build against `tests/fixtures/events/*.json` until the real stream works.
+Build against `tests/fixtures/events/*.json` until the real stream works. Stale-generation events are never emitted, so the console needs no generation filter (PR #6).
 
 **Done when** it renders a full fixture replay, readable from 2 m away.
 
 ### b-voice: `voice/`, `audio/`
 Demo call audio with Qwen3-TTS, offline, dependencies in `voice/requirements.txt` (not the app's). First check the licence, the weights download and generation on our hardware; if any fails, post BLOCKED and fall back to team-recorded voices.
-1. Read Rithik's demo scripts in `scenarios/demo/*.json` (read-only).
+1. Read Rithik's demo scripts `scenarios/demo/clinic.json` and `scenarios/demo/bank.json` (read-only, PR #7).
 2. Voice each turn with a distinct caller and subscriber voice.
 3. Round-trip each clip through 8 kHz mu-law.
 4. Write to `audio/demo/<id>/tNN.wav`, matching each turn's `audio` path.
-5. Print each clip's duration and post them as a REPLY to Rithik's demo-scenario agent, so the cached `transcript.json` timings match the audio.
+5. Print each clip's duration and post them as a REPLY to `c-demo`, so the cached `transcript.json` timings (currently word-count estimates) can be re-timed to the audio.
 
 Limits: clinic audio <= 15 s, bank audio <= 25 s.
 
