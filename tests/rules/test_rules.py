@@ -2,7 +2,7 @@
 import pytest
 
 from app import intent
-from app.models import RiskEvent, Segment
+from app.models import RiskEvent, Scenario, Segment
 from app.rules import decide, detect
 
 V = "v1.0"
@@ -90,6 +90,13 @@ def test_bank_fires_otp_under_both_arms():
                 "Read me the code so I can confirm it's you.")
     for arm in "KB":
         assert alerts(bank, arm) == ["ALERT-OTP-01"]
+
+
+def test_otp_fixture_scenario(fixtures_dir):
+    scenario = Scenario.model_validate_json((fixtures_dir / "scenario_otp.json").read_text())
+    segs = call(*[(t.speaker, t.text) for t in scenario.turns])
+    for arm in "KB":
+        assert alerts(segs, arm) == ["ALERT-OTP-01"]
 
 
 def test_dialogue_state_resolves_pronoun_from_earlier_turn():
