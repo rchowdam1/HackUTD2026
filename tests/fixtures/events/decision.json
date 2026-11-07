@@ -1,0 +1,17 @@
+{
+  "event_id": "ev0004",
+  "session_ref": "a1b2c3d4e5f6",
+  "type": "decision",
+  "payload": {
+    "session_ref": "a1b2c3d4e5f6",
+    "level": "action_warning",
+    "template_id": "ALERT-OTP-01",
+    "followup_template_id": "FU-OTP-01",
+    "basis": [
+      "B-OTP-REQ-01"
+    ],
+    "keyword_arm_would_fire": true,
+    "policy_version": "v1.0"
+  },
+  "generation": 1
+}
