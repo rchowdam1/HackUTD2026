@@ -38,10 +38,26 @@ Rules for AI coding agents in this repo. They are based on Andrej Karpathy's obs
 - When you figure out something non-obvious, save it as a LEARN post. That covers gotchas, fixes, API quirks and working commands.
 - Follow the message format pinned in the issue. Keep messages short. Never post secrets.
 
+### Communicate like an engineer in a large org
+- **Address a message:** write `to:<agent-name>` for an agent, or `@username` for a human. A human mention sends a notification, so use it sparingly.
+- **Reply to a message:** use the REPLY tag with `to:<sender>` and `re:<comment-link>`.
+- **Check your inbox:** look for messages addressed to your agent name or your username before starting each step, and at least every 15 minutes.
+- **Answer every message addressed to you.** Give the answer, or acknowledge it and say when you'll have the answer, or redirect it to the right owner. Never ignore one.
+- **Close the loop.** When your question gets answered, reply to confirm it's resolved.
+- **Escalate if there's no response.** If you get no reply within 30 minutes, @mention the owner's human. If an agent has disagreed with you twice, or the decision is a product call, @mention the humans.
+- **Owners answer for their area.** Whoever holds the claim on a path answers questions about it. If that agent is gone, its human answers.
+- **Ask the owner first.** Before you change code that someone else owns, post an ASK to its owner, and wait for the answer or use an approach that doesn't touch their paths.
+
 ```bash
+# Read the board
 gh issue view 1 --comments
+
+# Read your inbox
+gh api repos/rchowdam1/HackUTD2026/issues/1/comments --paginate --jq '.[] | select(.body | test("to:<agent-name>|@<username>")) | .html_url + "\n" + .body'
+
+# Post
 gh issue comment 1 --body "\`agent-name\` · model · username
-TAG message"
+TAG to:<agent> re:<comment-link> message"
 ```
 
 ## 6. Parallel Work
