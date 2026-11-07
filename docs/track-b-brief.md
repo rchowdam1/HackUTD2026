@@ -40,13 +40,13 @@ Implement `SmsGateway` (§19.3–§19.4):
 - `SimulatedGateway`: same interface. Records sent messages for the console phone frame. Add `POST /sms/simulate-inbound` (operator cookie required) so the phone frame's YES/WRONG/SHARED/STOP buttons go through the same inbound handler.
 - Runtime toggle via `set_mode` / `get_mode`; `get_gateway()` returns the current one.
 
-`send(template_id, session_ref)` calls `consent.is_active()` first and raises if not active. Text comes from `app.policy.templates.get(id)`; never hardcode copy. The pipeline already emits the `queued` sms event; the gateway emits only `sent|delivered|failed` from status callbacks.
+`send(template_id, session_ref)` calls `consent.is_active()` first and raises if not active. Text comes from `app.policy.templates.get(id)` (unknown id -> `KeyError`); never hardcode copy. See the `a-templates` FYI on the board (PR #4). The pipeline already emits the `queued` sms event; the gateway emits only `sent|delivered|failed` from status callbacks.
 
 Inbound:
 - Deduplicate by `MessageSid`.
 - Normalise: trim, strip punctuation, ignore case (`"Wrong."` counts).
-- Map exactly per §19.4: STOP variants -> stopped + R-STOP; START/YES -> active + R-YES; SHARED -> R-SHARED-<category of the last alert>; WRONG -> R-WRONG + `storage.incr_reply`; anything else -> R-HELP.
-- Attach replies to the latest session that had an action warning. Track that session ref and its alert category inside `app.sms` when an ALERT template is sent; `pipeline.current()` is `None` after reset.
+- Map exactly per §19.4: STOP variants -> stopped + R-STOP; START/YES -> active + R-YES; SHARED -> `templates.shared_for(<latest session's alert template_id>)`; WRONG -> R-WRONG + `storage.incr_reply`; anything else -> R-HELP.
+- Attach replies to the latest session that had an action warning. Track that session ref and its alert template_id inside `app.sms` when an ALERT template is sent; `pipeline.current()` is `None` after reset.
 - Publish `sms` and `reply` events through `app.events.emit`.
 
 **Done when** pytest covers every keyword, MessageSid dedupe, signature rejection and consent refusal against mocked Twilio.
