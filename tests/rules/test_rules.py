@@ -1,0 +1,190 @@
+"""Minimal pairs for app.rules (written for these tests, not taken from any scenario file)."""
+import pytest
+
+from app import intent
+from app.models import RiskEvent, Scenario, Segment
+from app.rules import decide, detect
+
+V = "v1.0"
+
+
+def call(*turns, ref=None):
+    """turns: plain strings are the caller; ("subscriber", text) tuples are the subscriber."""
+    out = []
+    for i, t in enumerate(turns, 1):
+        speaker, text = t if isinstance(t, tuple) else ("caller", t)
+        out.append(Segment(session_ref=ref, seq=i, speaker=speaker, text=text, source="script"))
+    return out
+
+
+def alerts(segments, arm):
+    return [d.template_id for d in decide(segments, arm, V) if d.level == "action_warning"]
+
+
+# (category alert, risky request, benign twin) pairs: K fires on both, B only on the request.
+PAIRS = {
+    "otp negation": ("ALERT-OTP-01",
+                     "Please read the verification code to me.",
+                     "Please don't read the verification code to anyone."),
+    "otp never ask": ("ALERT-OTP-01",
+                      "I need you to tell me your PIN now.",
+                      "We will never ask you to tell us your PIN."),
+    "otp direction": ("ALERT-OTP-01",
+                      "Can you give me the password you set up?",
+                      "I'll give you a temporary password at the end of the call."),
+    "otp speaker": ("ALERT-OTP-01",
+                    "What's the six digit code on your screen?",
+                    ("subscriber", "What's the six digit code they mentioned?")),
+    "otp hedge": ("ALERT-OTP-01",
+                  "Just text me the passcode.",
+                  "If anyone asks you to text them a passcode, hang up."),
+    "pay negation": ("ALERT-PAY-01",
+                     "You need to buy two gift cards at the pharmacy.",
+                     "You should never buy gift cards to pay a bill."),
+    "pay direction": ("ALERT-PAY-01",
+                      "Send the bail money by Western Union to me today.",
+                      "Western Union will send you a receipt by mail."),
+    "pay speaker": ("ALERT-PAY-01",
+                    "Can you wire the funds to our safe account this afternoon?",
+                    ("subscriber", "Can you wire the funds to my safe account this afternoon?")),
+    "pay hedge": ("ALERT-PAY-01",
+                  "Go ahead and pay with Zelle.",
+                  "Scammers often ask you to pay with Zelle."),
+    "remote negation": ("ALERT-REMOTE-01",
+                        "Please install TeamViewer so we can fix it.",
+                        "Please do not install TeamViewer from a pop-up."),
+    "remote direction": ("ALERT-REMOTE-01",
+                         "Let me connect to your computer through remote support.",
+                         "Our store offers remote support if you book a visit."),
+    "remote speaker": ("ALERT-REMOTE-01",
+                       "Could you download AnyDesk for me?",
+                       ("subscriber", "Could you download AnyDesk for me?")),
+    "remote hedge": ("ALERT-REMOTE-01",
+                     "Open quick assist and click allow.",
+                     "If someone tells you to open quick assist, hang up."),
+}
+
+
+@pytest.mark.parametrize("name", PAIRS)
+def test_minimal_pair(name):
+    template, risky, benign = PAIRS[name]
+    assert alerts(call(risky), "B") == [template]
+    assert alerts(call(benign), "B") == []
+    assert alerts(call(risky), "K") == [template]
+    assert alerts(call(benign), "K") == [template]
+
+
+def test_clinic_silent_under_b_fires_under_k():
+    clinic = call("Hello, this is Riverside Clinic about tomorrow's appointment.",
+                  "We texted you a check-in code. Don't share your code with anyone, just show it at the desk.",
+                  ("subscriber", "Okay, thanks."))
+    assert alerts(clinic, "B") == []
+    assert alerts(clinic, "C") == []
+    assert alerts(clinic, "K") == ["ALERT-OTP-01"]
+
+
+def test_bank_fires_otp_under_both_arms():
+    bank = call("This is the fraud team at your bank. We blocked a charge.",
+                "I just sent a security code to your phone.",
+                ("subscriber", "Okay, I see it."),
+                "Read me the code so I can confirm it's you.")
+    for arm in "KB":
+        assert alerts(bank, arm) == ["ALERT-OTP-01"]
+
+
+def test_otp_fixture_scenario(fixtures_dir):
+    scenario = Scenario.model_validate_json((fixtures_dir / "scenario_otp.json").read_text())
+    segs = call(*[(t.speaker, t.text) for t in scenario.turns])
+    for arm in "KB":
+        assert alerts(segs, arm) == ["ALERT-OTP-01"]
+
+
+def test_dialogue_state_resolves_pronoun_from_earlier_turn():
+    segs = call("I sent a code to your phone.", ("subscriber", "Got it."), "Great, read it to me.")
+    (event,) = detect(segs, "B", V)
+    assert (event.rule_id, event.confidence_class, event.span_seq) == ("B-OTP-CTX-01", "medium", [1, 3])
+    # Out of the context window: the pronoun no longer resolves.
+    far = call("I sent a code to your phone.", ("subscriber", "One sec."), "Hold on.", "Still there?",
+               ("subscriber", "Yes."), "Great, read it to me.")
+    assert detect(far, "B", V) == []
+
+
+def test_negation_scope_ends_at_a_new_clause():
+    assert alerts(call("Don't hang up, just read me the code."), "B") == ["ALERT-OTP-01"]
+    assert alerts(call("Never share your code with anyone, but you can read it to me."), "B") == ["ALERT-OTP-01"]
+    assert alerts(call("Never, ever share your code."), "B") == []
+
+
+def test_not_a_request():
+    for text in ("We sent a code, tell me when you get it.",
+                 "Give me a second while I pull up the code.",
+                 "What's your zip code?"):
+        assert alerts(call(text), "B") == [], text
+
+
+def test_one_warning_per_category_with_templates_and_basis():
+    segs = call("Read me the code.", "Now tell me the PIN too.", "Then buy gift cards and send me the numbers.",
+                "Download AnyDesk.", ref="s1")
+    ds = decide(segs, "B", V)
+    assert [(d.template_id, d.followup_template_id) for d in ds] == [
+        ("ALERT-OTP-01", "FU-OTP-01"), ("ALERT-PAY-01", "FU-PAY-01"), ("ALERT-REMOTE-01", "FU-REMOTE-01")]
+    assert all(d.session_ref == "s1" and d.policy_version == V and d.keyword_arm_would_fire for d in ds)
+    # "send me the numbers" also resolves to the earlier code via dialogue state; still one OTP warning.
+    assert ds[0].basis == ["B-OTP-REQ-01", "B-OTP-CTX-01"]
+    assert [d.basis for d in decide(segs, "K", V)] == [["K-OTP-01"], ["K-PAY-01"], ["K-REMOTE-01"]]
+
+
+def test_keyword_arm_would_fire_reports_k():
+    (d,) = decide(call("I sent a code to your phone.", "Read it to me."), "B", V)
+    assert d.keyword_arm_would_fire
+    assert decide(call("Read it to me."), "B", V) == []  # no object anywhere: no alert, K silent too
+
+
+def test_cumulative_and_prefix_stable():
+    segs = call("Hi, it's your bank.", "Read me the code.", "Read me the code again.", "Download AnyDesk.")
+    for arm in "KB":
+        prev: list[RiskEvent] = []
+        for n in range(1, len(segs) + 1):
+            events = detect(segs[:n], arm, V)
+            assert events[:len(prev)] == prev
+            prev = events
+    assert [e.rule_id for e in detect(segs, "B", V)] == ["B-OTP-REQ-01", "B-REMOTE-REQ-01"]
+
+
+def test_events_carry_category_words_not_call_text():
+    segs = call("Read me the code: four seven two nine.", ref="s2")
+    for arm in "KB":
+        for e in detect(segs, arm, V):
+            dumped = e.model_dump_json().lower()
+            assert "four" not in dumped and "read me" not in dumped
+            assert e.session_ref == "s2" and e.source == "rule" and e.policy_version == V
+    (b,) = detect(segs, "B", V)
+    assert (b.event_type, b.category, b.span_seq, b.confidence_class) == ("code_request", "otp", [1], "high")
+
+
+def test_arm_c_equals_b_with_abstaining_stub():
+    segs = call("We will never ask for your code.", "Read me the code.")
+    assert decide(segs, "C", V) == decide(segs, "B", V)
+
+
+def test_arm_c_model_confirms_only_a_lexicon_category(monkeypatch):
+    windows = []
+
+    def fake(window):
+        windows.append([s.seq for s in window])
+        return "payment"
+
+    monkeypatch.setattr(intent, "classify", fake)
+    segs = call("Hello there.", "Grandma, I need the gift cards to cover bail, okay?")
+    (d,) = decide(segs, "C", V)
+    assert (d.template_id, d.basis) == ("ALERT-PAY-01", ["C-INTENT-PAY-01"])
+    assert windows == [[1, 2]]  # called only on the trigger turn
+    assert decide(segs, "B", V) == []
+    # The model naming a category the lexicon never saw does nothing (never acts alone).
+    monkeypatch.setattr(intent, "classify", lambda w: "remote")
+    assert decide(segs, "C", V) == []
+
+
+def test_empty_session():
+    for arm in "KBC":
+        assert decide([], arm, V) == [] and detect([], arm, V) == []

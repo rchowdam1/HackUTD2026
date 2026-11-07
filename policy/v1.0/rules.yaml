@@ -1,0 +1,92 @@
+# Decision rules (policy v1.0), read by app.rules. Regexes are case-insensitive Python.
+#
+# Arm K: a lexicon.yaml term in any speaker's text fires that category.
+# Arm B: a caller clause must be a request in the caller's direction (frame + verb,
+#   imperative verb, or verb ... me/us), not negated or hedged, whose object is a
+#   lexicon term in the same turn (high) or, if the clause only has a pronoun
+#   ("read it to me"), in the previous `context_turns` turns of any speaker (medium).
+# Arm C: B, plus the intent model on caller turns with a lexicon hit that B didn't
+#   act on. The model only confirms a category the lexicon already saw; never alone.
+version: v1.0
+context_turns: 3
+negation_max_gap_words: 3
+
+# Clauses are split on sentence punctuation and "but".
+clause_split: '[.!?;]+|\bbut\b'
+
+negation:
+  - "don'?t"
+  - 'do not'
+  - 'never'
+  - 'not'
+  - "won'?t"
+  - 'will not'
+  - "shouldn'?t"
+  - 'should not'
+  - "mustn'?t"
+  - 'must not'
+  - 'no one'
+  - 'nobody'
+# A word in the gap that ends the negation's scope ("don't hang up, just read me").
+negation_blockers: [and, then, just, now, instead, so]
+
+# Reported or hypothetical requests: "if anyone asks you to install ...".
+hedges:
+  - 'if (someone|anyone|somebody|anybody|a caller|they|a stranger)'
+  - '(anyone|someone|somebody|anybody|people|callers?) (who|that)'
+  - '(scammers?|fraudsters?|criminals?) (often |may |might |will |sometimes |usually |)(ask|tell|say|want|try|call|pretend)'
+
+# Request frames: the subscriber is asked to act.
+frames:
+  - "(can|could|would|will|won't) you"
+  - '(need|want|like) you to'
+  - "you('ll| will)? (need|have|got) to"
+  - "you('re| are) (going|gonna) to"
+  - 'you (must|should)'
+  - 'go ahead and'
+  - 'please'
+  - 'make sure (you|to)'
+# Words allowed before an imperative verb at the start of a clause.
+fillers: "(ok|okay|so|now|just|please|alright|all right|right|and|then|first|well|great|sir|ma'am|go ahead and|quickly)"
+# Not a request even though it looks like one.
+exclusions:
+  - '(tell|let|show) (me|us) (when|if|once|after|about|how|know)'
+  - 'give (me|us) (a|one) (call|ring|second|sec|minute|moment)'
+# A clause that refers back to an earlier object.
+context_object: '\b(it|that|this|them|those|these|the (numbers?|digits|one))\b'
+
+categories:
+  otp:
+    alert: ALERT-OTP-01
+    followup: FU-OTP-01
+    k_rule: K-OTP-01
+    b_rules: {high: B-OTP-REQ-01, medium: B-OTP-CTX-01}
+    c_rule: C-INTENT-OTP-01
+    k_event: code_mention
+    b_event: code_request
+    verbs: 'read|tell|give|send|text|say|share|repeat|provide|forward|spell|recite'
+    extra:
+      - "what('s| is| was| are| were)( \\w+){0,4}? (code|pin|password|passcode|digits)"
+      - "(i|we)('ll| will)? (need|want|require)( \\w+){0,3}? (code|pin|password|passcode|digits)"
+  payment:
+    alert: ALERT-PAY-01
+    followup: FU-PAY-01
+    k_rule: K-PAY-01
+    b_rules: {high: B-PAY-REQ-01, medium: B-PAY-CTX-01}
+    c_rule: C-INTENT-PAY-01
+    k_event: payment_mention
+    b_event: payment_request
+    verbs: 'buy|purchase|send|wire|transfer|pay|deposit|withdraw|move|load|mail|put|scratch|read'
+    extra: []
+  remote:
+    alert: ALERT-REMOTE-01
+    followup: FU-REMOTE-01
+    k_rule: K-REMOTE-01
+    b_rules: {high: B-REMOTE-REQ-01, medium: B-REMOTE-CTX-01}
+    c_rule: C-INTENT-REMOTE-01
+    k_event: remote_access_mention
+    b_event: remote_access_request
+    verbs: 'download|install|open|run|allow|accept|grant|click|go to|type|visit|connect|enable|turn on|start'
+    extra:
+      - 'let (me|us)( \w+){0,2}? (connect|in|access|see|take|control|remote|fix|into)'
+      - '(give|grant) (me|us)( remote)? access'

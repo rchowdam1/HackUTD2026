@@ -1,0 +1,42 @@
+# Shared category lexicon (policy v1.0). Arm K fires on any match in any speaker's
+# text; arm B uses the same terms as the object of a caller's request.
+# Entries are case-insensitive Python regexes, matched on word boundaries.
+version: v1.0
+categories:
+  otp:
+    - '(?<!zip )(?<!area )(?<!postal )(?<!promo )(?<!discount )(?<!coupon )(?<!dress )codes?'
+    - 'passcodes?'
+    - 'otps?'
+    - 'pins?'
+    - 'passwords?'
+    - 'digits'
+  payment:
+    - 'gift ?cards?'
+    - 'wire( transfer)?'
+    - 'wiring'
+    - 'bitcoin'
+    - 'crypto(currency)?'
+    - 'zelle'
+    - 'venmo'
+    - 'cash ?app'
+    - 'western union'
+    - 'moneygram'
+    - 'money orders?'
+    - 'prepaid cards?'
+    - '(credit|debit|card|account|routing) numbers?'
+    - '(safe|secure|protected|holding) account'
+    - 'bail'
+  remote:
+    - 'anydesk'
+    - 'any desk'
+    - 'teamviewer'
+    - 'team viewer'
+    - 'ultraviewer'
+    - 'logmein'
+    - 'quick ?assist'
+    - 'rustdesk'
+    - 'screenconnect'
+    - 'connectwise'
+    - 'remote (access|desktop|support|control|session|software|app|tool|connection)'
+    - 'screen ?shar(e|ing)'
+    - '(access to|control of|into) your (computer|device|phone|laptop|pc|screen|machine)'
