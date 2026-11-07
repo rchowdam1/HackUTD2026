@@ -1,0 +1,34 @@
+{
+  "id": "bank",
+  "set": "demo",
+  "label": "scam",
+  "hard_benign": false,
+  "category": "otp",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "Hi, this is the fraud team at your bank. We stopped a suspicious charge on your debit card.",
+      "audio": "bank/t01.wav"
+    },
+    {
+      "speaker": "subscriber",
+      "text": "Oh no. What was it?",
+      "audio": "bank/t02.wav"
+    },
+    {
+      "speaker": "caller",
+      "text": "An online purchase we put on hold. To cancel it, I need to verify it's really you.",
+      "audio": "bank/t03.wav"
+    },
+    {
+      "speaker": "caller",
+      "text": "I just sent a code to your phone. Can you read it back to me?",
+      "audio": "bank/t04.wav"
+    },
+    {
+      "speaker": "subscriber",
+      "text": "Um, okay, hold on.",
+      "audio": "bank/t05.wav"
+    }
+  ]
+}
