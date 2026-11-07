@@ -701,7 +701,7 @@ This section is what the team and its agents build from. Where it conflicts with
 
 ### 19.0 Assumptions (confirm or correct)
 - About 24 hours of build time remain; judging is Sunday 2026-11-08 at in-person tables (3 min pitch + 2 min Q&A, repeated for several judges over 3 hours). Devpost deadline: **[fill in]**.
-- Three developers, each running several AI coding agents on separate branches and worktrees (AGENTS.md).
+- Three developers, each running several AI coding agents on separate branches and worktrees (AGENTS.md): **Arnav (Track A), Ameya (Track B), Rithik (Track C)**.
 - One laptop runs everything at the table. Two team-owned phones (primary + spare), both pre-enrolled.
 
 ### 19.1 What we pitch
@@ -742,11 +742,12 @@ This section is what the team and its agents build from. Where it conflicts with
 | Console | React + TypeScript + Vite; single operator password -> session cookie |
 | Eval | `python -m eval.run --arms K,B[,C] --batch H1|dev` -> `results/latest.json` + `.md`; paired B vs K counts when both arms are given |
 | Tests | pytest |
+| Demo voices | Qwen3-TTS, run offline by Track B from `voice/` with its own `voice/requirements.txt` (not an app dependency); output round-tripped through 8 kHz mu-law into `audio/demo/<id>/`. H+1 check: licence, weights download and generation on available hardware; fallback is team-recorded voices. Voices are synthetic: say so if a judge asks (this relaxes the §9.3 real-voice preference for the hackathon). |
 
 ### 19.4 Interfaces (the contracts tracks build against)
 **Scenario file** `scenarios/<set>/<id>.json`:
 `{"id","set":"dev|demo|H1","label":"scam|benign","hard_benign":bool,"category":"otp|payment|remote|none","turns":[{"speaker":"caller|subscriber","text":"<script line>","audio":"<id>/t01.wav|null"}]}`
-Audio is required only for `demo` scenarios; audio paths resolve relative to `scenarios/demo/`. Speaker comes from the scenario (a real call would use the stream track).
+Audio is required only for `demo` scenarios; audio paths resolve relative to `audio/demo/` (Track B writes the WAVs from Track C's scripts; C never writes under `audio/`). Speaker comes from the scenario (a real call would use the stream track).
 
 **Cached transcript** `scenarios/demo/<id>/transcript.json`: a JSON array of `{seq,speaker,t_start_ms,t_end_ms,text}`. A adds `session_ref` and `source:"cached"` when replaying, and replay emits segments at those times.
 
@@ -839,19 +840,19 @@ Every path has exactly one writing track. Inside a track, each agent owns one pa
 
 | Track | Owns (sole writer) | Delivers | Publishes | Consumes |
 |---|---|---|---|---|
-| **A - Pipeline + integration** | `backend/app/{ingest,asr,rules,policy,intent}/`, `backend/app/pipeline.py`, `backend/app/events.py`, `backend/app/models.py`, `backend/app/main.py`, `policy/` (rules, lexicon, SMS template YAML), `pyproject.toml` + Python lockfile, `Makefile`, `scripts/`, `tests/conftest.py` | Skeleton, contracts, replay + ASR + cached fallback, `decide` with K/B (C stretch), pipeline lifecycle (start/process/finish/reset), event hub, preflight | §19.4 models and signatures, example event fixtures (`tests/fixtures/events/*.json`), `decide`, template lookup `templates.get(id)` | Scenario files from C; `SmsGateway` from B |
-| **B - Phone + operator** | `backend/app/{sms,consent,api,storage}/`, `console/` (incl. `package.json` + lockfile), `.env.example`, tunnel config | Twilio + Simulated gateways, webhooks, keyword parser, consent + SQLite, operator routes, SSE endpoint, console (transcript, Why panel, counter, reset, SMS-mode toggle, results card, login), real-phone tests | `SmsGateway`, routers (auto-discovered), aggregates and results API | A's models, events and templates; C's results JSON |
-| **C - Evidence + pitch** | `scenarios/`, `eval/`, `deck/`, `results/`, Devpost text, demo audio | Demo scenarios + audio (first), dev set, sealed H1, `eval.run` and report, deck, 30 s and 3 min scripts, Q&A card, rehearsals, hallway test | Scenario files, `results/latest.json` + `.md` | A's `decide` (imports only) |
+| **A - Pipeline + integration (Arnav)** | `backend/app/{ingest,asr,rules,policy,intent}/`, `backend/app/pipeline.py`, `backend/app/events.py`, `backend/app/models.py`, `backend/app/main.py`, `policy/` (rules, lexicon, SMS template YAML), `pyproject.toml` + Python lockfile, `Makefile`, `scripts/`, `tests/conftest.py` | Skeleton, contracts, replay + ASR + cached fallback, `decide` with K/B (C stretch), pipeline lifecycle (start/process/finish/reset), event hub, preflight | §19.4 models and signatures, example event fixtures (`tests/fixtures/events/*.json`), `decide`, template lookup `templates.get(id)` | Scenario files from C; `SmsGateway` from B |
+| **B - Phone + operator + voice (Ameya)** | `backend/app/{sms,consent,api,storage}/`, `console/` (incl. `package.json` + lockfile), `voice/`, `audio/`, `.env.example`, tunnel config | Demo call audio via Qwen3-TTS (both demo scenarios by H+3), Twilio + Simulated gateways, webhooks, keyword parser, consent + SQLite, operator routes, SSE endpoint, console (transcript, Why panel, counter, reset, SMS-mode toggle, results card, login), real-phone tests | `SmsGateway`, routers (auto-discovered), aggregates and results API | A's models, events and templates; C's demo scripts and results JSON |
+| **C - Evidence + pitch (Rithik)** | `scenarios/`, `eval/`, `deck/`, `results/`, Devpost text | Demo scenario scripts + cached transcripts (first), dev set, sealed H1, `eval.run` and report, deck, 30 s and 3 min scripts, Q&A card, rehearsals, hallway test | Scenario files, `results/latest.json` + `.md` | A's `decide` (imports only) |
 
-**Independence:** C's developer writes H1 and never writes rules. A's agents never read `scenarios/H1/`. C's agents never read `backend/app/rules/` or `policy/`.
+**Independence:** Rithik (C) writes H1 and never writes rules. A's agents never read `scenarios/H1/`. C's agents never read `backend/app/rules/` or `policy/`.
 
 **Integration rules**
 - **Skeleton PR (A lead, merged by H+0:45), before any other PR:** all §19.4 models; `main.py` auto-discovers routers from `app.api` and `app.sms`, so nobody edits it to add routes; a stub in every backend package (cached transcript ASR, `decide` returns none, `SimulatedGateway`, fake events); all dependencies declared (fastapi, uvicorn, pydantic, faster-whisper, twilio, pyyaml, httpx, pytest; `[intent]` extra for transformers); `make smoke` = pytest + OTP replay through the stubs, using an A-owned fixture in `tests/fixtures/` until C's demo scenarios merge. With stubs, the full loop runs from H+1, and real pieces replace stubs one PR at a time. A writes stubs inside B's backend directories (`sms/`, `consent/`, `api/`, `storage/`) only in this PR, and ownership passes to B the moment it merges. The skeleton writes nothing under `scenarios/`, `eval/`, `results/` or `console/`; C owns demo scenarios and caches from H+0. `GET /results/latest` (B) reads `results/latest.json` (C).
-- **Bootstrap in parallel (first 45 min):** B scaffolds `console/` against A's event fixtures and starts the Twilio H+1 check; C commits the two demo scenarios (text + cached transcripts) and starts H1.
+- **Bootstrap in parallel (first 45 min):** B scaffolds `console/` against A's event fixtures and starts the Twilio H+1 check; C commits the two demo scenarios (text + cached transcripts) and starts H1; B starts Qwen3-TTS setup and voices them as soon as the scripts land.
 - **Contract changes:** A only, PR titled `CONTRACT:`, additive fields with defaults, FYI on the board, thumbs-up from B and C before merge.
 - **Dependencies:** Python deps only via A (others post ASK; A adds within 15 min). Console deps only via B.
 - **Late events after reset:** every queued task and event carries a session generation number; anything from an old generation is dropped and never sends SMS.
-- **Branches:** `<username>/<track>-<agent>` (e.g. `arnav/b-sms`), one worktree each, one PR per agent task, rebased on `origin/main` before merge.
+- **Branches:** `<username>/<track>-<agent>` (e.g. `arnav/a-rules`, `ameya/b-sms`, `rithik/c-eval`), one worktree each, one PR per agent task, rebased on `origin/main` before merge.
 - **Merging:** each developer reviews and merges their own track's PRs, in windows at :00 and :30, order CONTRACT -> A -> B -> C. A PR merges only if `make smoke` passes on the rebased branch, so main always runs.
 - **Board:** one track-level CLAIM per developer listing paths; each agent posts its own CLAIM (branch + subdirectory) and DONE with the PR link; LEARN for Twilio, whisper and tunnel quirks.
 
@@ -865,7 +866,7 @@ Every path has exactly one writing track. Inside a track, each agent owns one pa
 | H+12 | K vs B on sealed H1; results card shows it |
 | H+16 | Freeze |
 
-**Human-only tasks:** Twilio account, numbers, webhook and both phones (B); H1 authoring and hash commit, demo voices, deck, Devpost (C); 8 kHz ASR check on the demo laptop (A); rehearsals and hallway test (C leads, everyone attends).
+**Human-only tasks:** Twilio account, numbers, webhook and both phones, Qwen3-TTS demo voices (Ameya, B); H1 authoring and hash commit, deck, Devpost (Rithik, C); 8 kHz ASR check on the demo laptop (Arnav, A); rehearsals and hallway test (Rithik leads, everyone attends).
 
 **Slip plan:** A slips, demo on cached transcripts + K plus only B's negation rule (labelled); if that isn't ready either, skip the clinic replay and say so. Never run the clinic replay on plain K. B slips, simulated SMS phone frame. C slips, deck after H+12; H1 never shrinks below 30 + 30 without reporting the real denominators.
 
