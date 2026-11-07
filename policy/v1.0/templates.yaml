@@ -1,0 +1,22 @@
+# PRD 19.5 SMS copy (frozen). Copied verbatim; tests/policy/test_templates.py checks it against PRD.md.
+templates:
+  ENROLL: "Safe Signal: reply YES to get a text if a caller asks for codes, money or access. No text doesn't mean safe. Reply STOP to end."
+  R-YES: "Safe Signal: you're in. Texts only when a caller asks for codes, money or access. Reply STOP to quit, HELP for help. Msg&data rates may apply."
+  R-HELP: "Safe Signal: we only ever say stop and check. We never ask for codes, money or info. Reply STOP to quit."
+  ALERT-OTP-01: "Safe Signal: caller is asking for a code. Don't share it. Hang up, call your bank's number yourself."
+  ALERT-PAY-01: "Safe Signal: caller is asking for money. Don't pay. Hang up, call them back on a number you know."
+  ALERT-REMOTE-01: "Safe Signal: caller wants access to your device. Don't install anything. Hang up, call a number you know."
+  FU-OTP-01: "Safe Signal: your caller asked for a code. Codes unlock your account; banks never ask. Hang up, look up, call back. Reply SHARED or WRONG."
+  FU-PAY-01: "Safe Signal: your caller pushed for payment. Scammers rush you; real orgs let you call back. Hang up, look up, call back. Reply SHARED or WRONG."
+  FU-REMOTE-01: "Safe Signal: your caller wanted access to your device. Real support doesn't cold-call. Hang up, look up, call back. Reply SHARED or WRONG."
+  R-SHARED-OTP: "Safe Signal: anyone can be fooled. Call your bank now using the number on your card and tell them a code was shared."
+  R-SHARED-PAY: "Safe Signal: anyone can be fooled. Call your bank or card issuer now using the number on your card and tell them."
+  R-SHARED-REMOTE: "Safe Signal: anyone can be fooled. Disconnect the device from the internet, then get help from a store or a number you know."
+  R-WRONG: "Safe Signal: thanks, counted. A person reviews any change, and it's tested before it goes live."
+  R-STOP: "Safe Signal: you're unsubscribed. No more texts."
+
+# Alert template -> follow-up and category-specific SHARED reply.
+alerts:
+  ALERT-OTP-01: {followup: FU-OTP-01, shared: R-SHARED-OTP}
+  ALERT-PAY-01: {followup: FU-PAY-01, shared: R-SHARED-PAY}
+  ALERT-REMOTE-01: {followup: FU-REMOTE-01, shared: R-SHARED-REMOTE}
