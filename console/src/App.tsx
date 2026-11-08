@@ -1,9 +1,13 @@
-import { useCallback, useEffect, useReducer, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import * as api from "./api";
 import { initial, reduce, type Action, type Bubble, type State } from "./state";
-import type { ArmCounts, Event, Results, RiskEvent, SmsPayload } from "./types";
+import type { ArmCounts, Event, Results, RiskEvent, Segment, SmsPayload } from "./types";
 
 const FIXTURES = new URLSearchParams(location.search).has("fixtures");
+// Live transcript typing speed. Must match WORD_MS in backend/app/ingest/__init__.py (cached replay pacing).
+const WORD_MS = 100;
+const words = (text: string) => text.split(/\s+/).filter(Boolean);
+const segKey = (s: Segment) => `${s.session_ref}:${s.seq}`;
 
 const CATEGORY_WORDS: Record<RiskEvent["category"], string> = {
   otp: "Caller asked for a code",
@@ -62,6 +66,7 @@ function Console({ onLoggedOut }: { onLoggedOut: (why: string | null) => void })
   const [results, setResults] = useState<Results>({ status: "pending" });
   const [stream, setStream] = useState<"connecting" | "live" | "stale">(FIXTURES ? "live" : "connecting");
   const [error, setError] = useState<string | null>(null);
+  const live = useRef(new Set<string>()); // segments that arrived over the stream type out; hydrated ones don't
 
   useEffect(() => {
     if (!error) return;
@@ -78,6 +83,23 @@ function Console({ onLoggedOut }: { onLoggedOut: (why: string | null) => void })
     let buffer: Event[] | null = null;
     let generation = 0;
     let retry: ReturnType<typeof setTimeout> | undefined;
+    // Hold each live event until the line before it has finished typing, so an alert never shows before its words.
+    let gate = 0;
+    const held = new Set<ReturnType<typeof setTimeout>>();
+    const paced = (e: Event) => {
+      const wait = gate - Date.now();
+      if (e.type === "segment") gate = Math.max(gate, Date.now()) + words(e.payload.text).length * WORD_MS;
+      const run = () => {
+        if (e.type === "segment") live.current.add(segKey(e.payload));
+        dispatch(e);
+      };
+      if (wait <= 0) return run();
+      const t = setTimeout(() => {
+        held.delete(t);
+        run();
+      }, wait);
+      held.add(t);
+    };
     const sync = async (gen: number) => {
       const snap = await api.snapshot();
       if (gen !== generation) return;
@@ -90,7 +112,7 @@ function Console({ onLoggedOut }: { onLoggedOut: (why: string | null) => void })
       setStream("live");
     };
     const unsubscribe = api.subscribe({
-      event: (e) => (buffer ? buffer.push(e) : dispatch(e)),
+      event: (e) => (buffer ? buffer.push(e) : paced(e)),
       open: () => {
         buffer = [];
         clearTimeout(retry);
@@ -106,6 +128,7 @@ function Console({ onLoggedOut }: { onLoggedOut: (why: string | null) => void })
     return () => {
       generation++;
       clearTimeout(retry);
+      held.forEach(clearTimeout);
       clearInterval(timer);
       unsubscribe();
     };
@@ -131,7 +154,7 @@ function Console({ onLoggedOut }: { onLoggedOut: (why: string | null) => void })
       )}
       <Controls state={state} dispatch={dispatch} />
       <main>
-        <Transcript state={state} />
+        <Transcript state={state} live={live.current} />
         <aside>
           <WhyPanel state={state} />
           <div className="card counter">
@@ -181,7 +204,7 @@ function Controls({ state, dispatch }: { state: State; dispatch: (a: Action) => 
   );
 }
 
-function Transcript({ state }: { state: State }) {
+function Transcript({ state, live }: { state: State; live: Set<string> }) {
   const flagged = new Set(state.risks.flatMap((r) => r.span_seq));
   const cached = state.segments.some((s) => s.source === "cached");
   return (
@@ -191,13 +214,29 @@ function Transcript({ state }: { state: State }) {
       </h2>
       {state.segments.length === 0 && <p className="muted">No call yet.</p>}
       {state.segments.map((s) => (
-        <p key={s.seq} className={`line ${s.speaker} ${flagged.has(s.seq) ? "flagged" : ""}`}>
+        <p key={segKey(s)} className={`line ${s.speaker} ${flagged.has(s.seq) ? "flagged" : ""}`}>
           <span className="who">{s.speaker === "caller" ? "Caller" : "You"}</span>
-          {s.text}
+          <TypedText text={s.text} animate={live.has(segKey(s))} />
         </p>
       ))}
     </section>
   );
+}
+
+// Reveals a line one word per WORD_MS, like a streamed chat reply. Words shown are computed from the
+// clock, not counted ticks, so throttled timers can't fall behind the event hold in Console.
+function TypedText({ text, animate }: { text: string; animate: boolean }) {
+  const all = words(text);
+  const [start] = useState(() => Date.now());
+  const [, tick] = useState(0);
+  const shown = animate ? Math.min(all.length, Math.floor((Date.now() - start) / WORD_MS)) : all.length;
+  useEffect(() => {
+    if (shown >= all.length) return;
+    const t = setTimeout(() => tick((n) => n + 1), WORD_MS);
+    return () => clearTimeout(t);
+  });
+  if (shown >= all.length) return <>{text}</>;
+  return <span className="typing">{all.slice(0, shown).join(" ")}</span>;
 }
 
 function WhyPanel({ state }: { state: State }) {

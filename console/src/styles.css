@@ -52,6 +52,8 @@ footer { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 .transcript .who { display: inline-block; min-width: 5.5rem; font-size: 1rem; font-weight: 700; color: var(--muted); text-transform: uppercase; }
 .transcript .caller .who { color: var(--accent); }
 .transcript .flagged { color: var(--alert); font-weight: 700; }
+.transcript .typing::after { content: "\258D"; margin-left: 0.1em; color: var(--muted); animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
 
 .why .big-text { font-size: 1.8rem; font-weight: 700; margin: 0 0 0.6rem; }
 .why.alert { outline: 3px solid var(--alert); }

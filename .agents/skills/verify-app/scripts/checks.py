@@ -480,8 +480,8 @@ def controls_end_call(ctx: Context):
     click(ctx, page, "End call")
     fin = ctx.wait_event(lambda e: e["session_ref"] == ref and e["type"] == "session" and e["payload"]["state"] == "finished",
                          mark, 10, "session finished after End call")
-    ctx.action("wait past the replay's natural end (≈22 s) for late events")
-    time.sleep(max(0.0, 24 - (time.monotonic() - t0)))
+    ctx.action("wait past the replay's natural end (≈8 s) for late events")
+    time.sleep(max(0.0, 10 - (time.monotonic() - t0)))
     evs = events_for(ctx, mark, ref)
     after = evs[evs.index(fin) + 1:]
     ctx.expect(not after, "no events for the call after it finished", after)
@@ -509,8 +509,8 @@ def controls_reset(ctx: Context):
     rst = ctx.wait_event(lambda e: e["type"] == "session" and e["payload"]["state"] == "reset", mark, 10, "reset event")
     ui_assert(ctx, "status 'reset'", lambda: pw_expect()(page.get_by_role("banner")).to_contain_text("reset"))
     ui_assert(ctx, "transcript cleared", lambda: pw_expect()(card(page, "^Live transcript")).to_contain_text("No call yet."))
-    ctx.action("wait past where the alert would have fired (seq 4 ≈19.6 s) and the replay end")
-    time.sleep(max(0.0, 25 - (time.monotonic() - t0)))
+    ctx.action("wait past where the alert would have fired (seq 4 ≈5.3 s) and the replay end (≈8 s)")
+    time.sleep(max(0.0, 10 - (time.monotonic() - t0)))
     tail = ctx.tap.since(mark)
     late = [e for e in tail[tail.index(rst) + 1:] if e.get("session_ref") == ref]
     ctx.expect(not late, "no late events from the reset call (generation invariant)", late)
