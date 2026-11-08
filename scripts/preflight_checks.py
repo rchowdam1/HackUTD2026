@@ -1,5 +1,8 @@
 """Preflight checks run before every judging block (PRD §19.7). Entry point: `scripts/preflight [--no-sms]`.
 
+The SMS round trip needs the operator: after the test text arrives, reply HELP from DEMO_PHONE
+when prompted (waits PREFLIGHT_REPLY_TIMEOUT_S, default 120s) so the inbound webhook is proven too.
+
 Prints one line per check, `PASS|FAIL|SKIP <name> - <detail>`, with a `fix:` line under
 each FAIL, and exits 1 if anything failed. Reads `.env` at the repo root (existing
 environment wins). Secret values and phone numbers are never printed.
@@ -7,11 +10,13 @@ environment wins). Secret values and phone numbers are never printed.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import re
 import sys
 import time
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
@@ -28,6 +33,8 @@ DEMO_ALERTS = {"bank": ["ALERT-OTP-01"], "clinic": []}  # expected decisions per
 MODEL_DOWNLOAD = ("env -u PYTHONPATH -u VIRTUAL_ENV uv run python -c \"from faster_whisper import WhisperModel; "
                   "WhisperModel('small.en', device='cpu', compute_type='int8')\"  (once, online)")
 SMS_TIMEOUT_S = 30
+REPLY_TIMEOUT_S = 120
+APP_URL = "http://127.0.0.1:8000"  # `make run`; the reply listener reads the app's event stream directly
 
 
 @dataclass
@@ -239,6 +246,62 @@ def check_sms(env: dict, consent_ok: bool, timeout_s: float = SMS_TIMEOUT_S, pol
                   "else demo in simulated SMS mode")
 
 
+def wait_for_reply(password: str, timeout_s: float, on_ready, client=None) -> bool:
+    """Log in to the running app, open /events/stream, call on_ready(), then return True once a `reply`
+    event arrives (only sms.handle_inbound emits one) or False after timeout_s."""
+    import httpx
+    with client or httpx.Client(base_url=APP_URL) as c:
+        c.post("/login", json={"password": password}, timeout=10).raise_for_status()
+        deadline = time.monotonic() + timeout_s
+        try:
+            with c.stream("GET", "/events/stream", timeout=httpx.Timeout(10, read=timeout_s)) as r:
+                r.raise_for_status()
+                on_ready()
+                for line in r.iter_lines():
+                    if line.startswith("data:") and json.loads(line[5:]).get("type") == "reply":
+                        return True
+                    if time.monotonic() > deadline:
+                        break
+        except httpx.ReadTimeout:
+            pass
+    return False
+
+
+def check_reply(env: dict, sms_ok: bool, timeout_s: float = REPLY_TIMEOUT_S) -> Result:
+    """Inbound half of the round trip: a real reply from DEMO_PHONE must reach /sms/inbound and be handled."""
+    import httpx
+    if not sms_ok:
+        return Result("FAIL", "sms-reply", "not tested: the outbound test SMS was not delivered",
+                      "fix the sms check first")
+    need = missing(env, ("OPERATOR_PASSWORD",))
+    if need:
+        return Result("FAIL", "sms-reply", f"not set: {', '.join(need)}",
+                      "fill OPERATOR_PASSWORD in .env (preflight logs in to watch the app's reply events)")
+    to = mask_phone(env["DEMO_PHONE"])
+    start = datetime.now(timezone.utc) - timedelta(seconds=5)
+
+    def prompt():
+        print(f"  >> now reply HELP from DEMO_PHONE {to} to the Safe Signal number "
+              f"(waiting up to {timeout_s:.0f}s)", file=sys.stderr, flush=True)
+
+    try:
+        if wait_for_reply(env["OPERATOR_PASSWORD"], timeout_s, prompt):
+            return Result("PASS", "sms-reply", f"reply from {to} reached /sms/inbound and the app handled it")
+    except httpx.HTTPError as e:
+        return Result("FAIL", "sms-reply", f"cannot watch {APP_URL}/events/stream: {type(e).__name__}: {e}",
+                      "start the app with `make run` (port 8000); a 401 means OPERATOR_PASSWORD or "
+                      "SESSION_SECRET in .env differ from the running app's")
+    inbound = twilio_client(env).messages.list(from_=env["DEMO_PHONE"], to=env["TWILIO_FROM"],
+                                               date_sent_after=start, limit=1)
+    if inbound:
+        return Result("FAIL", "sms-reply", f"Twilio received the reply from {to} but the app never handled it",
+                      "Twilio console > Monitor > Logs > Errors: 11200 = tunnel/app unreachable; a 403 in the "
+                      "app log = PUBLIC_BASE_URL differs from the URL Twilio signs; see the webhook check")
+    return Result("FAIL", "sms-reply", f"no reply from {to} reached Twilio within {timeout_s:.0f}s",
+                  "reply from the DEMO_PHONE handset itself when prompted; if it sent STOP, text START; "
+                  "else demo in simulated SMS mode")
+
+
 # --- runner -------------------------------------------------------------------------------------
 
 def _safe(name: str, fn, *args) -> Result:
@@ -259,8 +322,11 @@ def run_checks(env: dict, send_sms: bool = True) -> list[Result]:
     ]
     if send_sms:
         results.append(_safe("sms", check_sms, env, results[-1].status == "PASS"))
+        timeout_s = float(env.get("PREFLIGHT_REPLY_TIMEOUT_S") or REPLY_TIMEOUT_S)
+        results.append(_safe("sms-reply", check_reply, env, results[-1].status == "PASS", timeout_s))
     else:
         results.append(Result("SKIP", "sms", "--no-sms given; no test text sent"))
+        results.append(Result("SKIP", "sms-reply", "--no-sms given; inbound reply not checked"))
     return results
 
 

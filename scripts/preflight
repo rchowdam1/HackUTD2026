@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
 # Preflight before every judging block (PRD §19.7): models cached + app starts offline, cached replay,
-# tunnel + Twilio webhook, both phones opted in, one real test SMS. Usage: scripts/preflight [--no-sms]
+# tunnel + Twilio webhook, both phones opted in, one real test SMS round trip (reply HELP from DEMO_PHONE when prompted). Usage: scripts/preflight [--no-sms]
 cd "$(dirname "$0")/.." || exit 1
 exec env -u PYTHONPATH -u PYTHONHOME -u VIRTUAL_ENV uv run python scripts/preflight_checks.py "$@"
