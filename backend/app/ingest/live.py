@@ -13,6 +13,7 @@ import base64
 import io
 import logging
 import math
+import time
 import wave
 from array import array
 from collections.abc import AsyncIterator
@@ -23,7 +24,7 @@ from app.models import SmsMode, Speaker
 
 SAMPLE_RATE = 8000
 SPEECH_RMS = 500  # 16-bit RMS of a 20 ms frame above which it counts as speech; phone line noise sits well below
-PAUSE_MS = 700
+PAUSE_MS = 600  # the pause counts toward the 2 s alert budget (latency is timed from the end of speech)
 MAX_UTTERANCE_MS = 8000
 MIN_SPEECH_MS = 300  # shorter bursts (clicks, a cough) aren't sent to whisper, which invents words on noise
 TRACK_SPEAKER: dict[str, Speaker] = {"inbound": "caller", "outbound": "subscriber"}
@@ -39,8 +40,8 @@ def _ulaw_to_linear(byte: int) -> int:
 
 ULAW = [_ulaw_to_linear(b) for b in range(256)]
 
-# (speaker, start_ms, end_ms, 16-bit PCM)
-Utterance = tuple[Speaker, int, int, bytes]
+# (speaker, start_ms, end_ms, 16-bit PCM, wall-clock time its speech ended)
+Utterance = tuple[Speaker, int, int, bytes, float]
 
 
 class _Track:
@@ -78,7 +79,7 @@ class _Track:
     def flush(self) -> Utterance | None:
         u = None
         if self.start_ms is not None and self.speech_ms >= MIN_SPEECH_MS:
-            u = (self.speaker, self.start_ms, self.end_ms, self.pcm.tobytes())
+            u = (self.speaker, self.start_ms, self.end_ms, self.pcm.tobytes(), time.time() - self.silence_ms / 1000)
         self._reset()
         return u
 
@@ -90,7 +91,7 @@ async def run(messages: AsyncIterator[dict], *, sms_mode: SmsMode) -> str:
     utterances: asyncio.Queue[Utterance | None] = asyncio.Queue()
     reader = asyncio.create_task(_cut(messages, utterances))
     try:
-        return await _replay(_transcribed(utterances), sms_mode, realtime=False)
+        return await _replay(_transcribed(utterances), sms_mode, realtime=False, source="phone")
     finally:
         reader.cancel()
 
@@ -115,15 +116,16 @@ async def _transcribed(utterances: asyncio.Queue[Utterance | None]) -> Timed:
     Whisper runs off the event loop; a transcription error ends the call on the segments so far."""
     seq = 0
     while (u := await utterances.get()) is not None:
-        speaker, start_ms, _, pcm = u
+        speaker, start_ms, _, pcm, ended_at = u
         try:
-            segments, _ = await asyncio.to_thread(asr.transcribe, _wav(pcm))
+            # Greedy decoding: on a phone line it reads the same as beam 5 for us, at a fraction of the time.
+            segments, _ = await asyncio.to_thread(asr.transcribe, _wav(pcm), beam_size=1)
         except Exception:
             log.exception("ASR failed on a live call; ending the call")
             return
         for start_s, end_s, text in segments:
             seq += 1
-            yield 0, {"seq": seq, "speaker": speaker, "text": text, "source": "asr",
+            yield 0, {"seq": seq, "speaker": speaker, "text": text, "source": "asr", "ended_at": ended_at,
                       "t_start_ms": start_ms + round(start_s * 1000), "t_end_ms": start_ms + round(end_s * 1000)}
 
 

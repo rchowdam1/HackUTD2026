@@ -51,5 +51,5 @@ async def inbound(request: Request) -> Response:
 @router.post("/status")
 async def status(request: Request) -> Response:
     form = await verified_form(request)
-    sms.handle_status(form.get("MessageSid", ""), form.get("MessageStatus", ""))
+    sms.handle_status(form.get("MessageSid", ""), form.get("MessageStatus", ""), form.get("ErrorCode"))
     return Response(status_code=204)

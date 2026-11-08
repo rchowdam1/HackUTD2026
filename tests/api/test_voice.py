@@ -82,7 +82,7 @@ def test_stream_transcribes_each_side_and_alerts_on_the_code_request(client, mon
                   "Can you read me the code so I can confirm it's you?"])
     heard = []
 
-    def fake_transcribe(wav):
+    def fake_transcribe(wav, beam_size=5):
         heard.append(len(wav.getvalue()))
         return [(0.0, 0.5, next(lines))], 0.5
 
@@ -106,6 +106,8 @@ def test_stream_transcribes_each_side_and_alerts_on_the_code_request(client, mon
     assert len(heard) == 3
     assert any(t == "decision" and p.level == "action_warning" for t, p, _ in published)
     assert [p.state for t, p, _ in published if t == "session"] == ["running", "finished"]
+    assert all(s.ended_at for s in segments)  # alert latency is timed from the end of speech
+    assert {p.source for t, p, _ in published if t == "session"} == {"phone"}
 
 
 def test_ulaw_table_matches_g711():
