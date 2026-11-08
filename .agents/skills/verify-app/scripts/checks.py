@@ -33,7 +33,7 @@ UI_HANDLES = [
     "SMS mode", "simulated SMS", "Live transcript", "cached transcript", "No call yet.",
     "Why this alert", "No alert detected", "Caller asked for a code", "Caught by", "CallSafe rules",
     "Start live conversation", "Caller", "tap to stop", "Live mic", "Transcribing...",
-    "Caller said", "Why it matters", "Whoever has the code can get into your account", "We texted", "Speed",
+    "Why it matters", "Whoever has the code can get into your account", "Speed", "Verdict", "Call time",
     "fixture replay", "call ended", "call running", "No texts yet.",
     "Opt in to call monitoring?", "Not now", "Monitoring on", "real SMS", "Alert text", "Follow-up text",
     "Monitoring opt-in: No. No text sent", "Call monitoring is off.",
@@ -346,8 +346,9 @@ def replay_clinic(ctx: Context):
     ref, _ = start_replay_ui(ctx, page, "Run clinic", mark)
     run = events_for(ctx, mark, ref, "session")[0]["payload"]
     ctx.expect(run["arm"] == "B" and run["sms_mode"] == "simulated", "session runs arm B in simulated SMS mode", run)
-    ui_assert(ctx, "status shows 'call running · rules only'",
-              lambda: pw_expect()(page.get_by_role("banner")).to_contain_text("call running · rules only"))
+    ui_assert(ctx, "status shows 'call running'", lambda: pw_expect()(page.get_by_role("banner")).to_contain_text("call running"))
+    ui_assert(ctx, "call clock names the detector 'Rules only (AI off)'",
+              lambda: pw_expect()(card(page, "^Call time").locator(".arm")).to_have_text("Rules only (AI off)"))
     ctx.wait_event(lambda e: e["session_ref"] == ref and e["type"] == "session" and e["payload"]["state"] == "finished",
                    mark, 40, "session finished (auto end-call after last turn)")
     segs = [e["payload"] for e in events_for(ctx, mark, ref, "segment")]
@@ -434,21 +435,21 @@ def replay_bank(ctx: Context):
     tr, why, phone = card(page, "^Live transcript"), card(page, "^Why this alert"), card(page, "^Phone")
     for x in expected:
         ui_assert(ctx, f"transcript shows turn {x['seq']}", lambda: pw_expect()(tr).to_contain_text(x["text"]))
-    ui_assert(ctx, "Why panel headline 'Caller asked for a code'", lambda: pw_expect()(why).to_contain_text("Caller asked for a code"))
+    ui_assert(ctx, "verdict headline 'Caller asked for a code'",
+              lambda: pw_expect()(card(page, "^Verdict").locator(".headline")).to_have_text("Caller asked for a code"))
     ctx.expect(risk["source"] == "rule" and risk["score"] is None, "the cited risk event is a rule hit (no model score)", risk)
     ui_assert(ctx, "Why panel 'Caught by' = 'CallSafe rules'", lambda: pw_expect()(dd(why, "Caught by")).to_have_text("CallSafe rules"))
     flagged = next(s["text"] for s in segs if s["seq"] == risk["span_seq"][-1])
-    ui_assert(ctx, "Why panel 'Caller said' quotes the flagged line",
-              lambda: pw_expect()(dd(why, "Caller said")).to_have_text(f"“{flagged}”"))
+    ui_assert(ctx, "the flagged transcript line is the line the rule cited",
+              lambda: pw_expect()(tr.locator("p.line.flagged .text")).to_have_text(flagged))
     spans = [flagged[a:b] for a, b in risk["match_spans"]]
     ctx.expect(bool(spans), "the cited rule event carries match_spans", risk)
-    ui_assert(ctx, f"Why panel highlights exactly the matched words {spans}",
-              lambda: pw_expect()(dd(why, "Caller said").locator("mark")).to_have_text(spans))
+    ui_assert(ctx, f"the flagged line underlines exactly the matched words {spans}",
+              lambda: pw_expect()(tr.locator("p.line.flagged mark")).to_have_text(spans))
     ui_assert(ctx, "Why panel 'Why it matters' explains the code risk",
               lambda: pw_expect()(dd(why, "Why it matters")).to_contain_text("Whoever has the code can get into your account"))
-    told = re.sub(r"^CallSafe:\s*(\w)", lambda m: m.group(1).upper(), ctx.templates["ALERT-OTP-01"])
-    ui_assert(ctx, "Why panel 'We texted' = the ALERT-OTP-01 template text",
-              lambda: pw_expect()(dd(why, "We texted")).to_have_text(told))
+    ui_assert(ctx, "the phone's first bubble is exactly the ALERT-OTP-01 template text",
+              lambda: pw_expect()(phone.locator(".bubble.out").first).to_have_text(ctx.templates["ALERT-OTP-01"]))
     ui_assert(ctx, "Why panel 'Speed' shows the measured seconds",
               lambda: pw_expect()(dd(why, "Speed")).to_have_text(re.compile(r"^Text sent \d+\.\d\d s after the line came in$")))
     for tid in ("ALERT-OTP-01", "FU-OTP-01"):
@@ -550,7 +551,9 @@ def replies_stop(ctx: Context):
         ctx.expect(sms == [], "opted out: alert skipped, no sms event (not 'failed'), no follow-up", sms)
         ctx.expect(len(ctx.outbox()) == out0, "nothing reached the simulated phone", ctx.outbox()[out0:])
         why = card(page, "^Why this alert")
-        ui_assert(ctx, "Why panel still explains the alert", lambda: pw_expect()(why).to_contain_text("Caller asked for a code"))
+        ui_assert(ctx, "Why panel still explains the alert", lambda: pw_expect()(dd(why, "Caught by")).to_have_text("CallSafe rules"))
+        ui_assert(ctx, "verdict still names the request",
+                  lambda: pw_expect()(card(page, "^Verdict").locator(".headline")).to_have_text("Caller asked for a code"))
         ui_assert(ctx, "Why panel says 'Monitoring opt-in: No. No text sent'",
                   lambda: pw_expect()(why).to_contain_text("Monitoring opt-in: No. No text sent"))
         ui_assert(ctx, "nothing reads as failed", lambda: pw_expect()(page.locator("main")).not_to_contain_text("failed"))
@@ -983,10 +986,11 @@ def live_mic_ui(ctx: Context):
                "the turn is transcribed as the caller asking for a code", seg)
     dec = ctx.wait_event(lambda e: e["session_ref"] == ref and e["type"] == "decision", mark, 15, "decision")["payload"]
     ctx.expect(dec["template_id"] == "ALERT-OTP-01", "ALERT-OTP-01 from the spoken turn", dec)
-    tr, why = card(page, "^Live transcript"), card(page, "^Why this alert")
+    tr = card(page, "^Live transcript")
     ui_assert(ctx, "transcript card shows the 'Live mic' tag", lambda: pw_expect()(tr.get_by_text("Live mic", exact=True)).to_be_visible())
     ui_assert(ctx, "transcript shows the spoken turn", lambda: pw_expect()(tr).to_contain_text(seg["text"]))
-    ui_assert(ctx, "Why panel headline 'Caller asked for a code'", lambda: pw_expect()(why).to_contain_text("Caller asked for a code"))
+    ui_assert(ctx, "verdict headline 'Caller asked for a code'",
+              lambda: pw_expect()(card(page, "^Verdict").locator(".headline")).to_have_text("Caller asked for a code"))
     ui_assert(ctx, "after the alert both speakers can still talk", lambda: pw_expect()(you).to_be_enabled())
     ctx.expect(not any(is_session(ref, "finished")(e) for e in events_for(ctx, mark, ref)), "the alert did not end the conversation")
     ctx.shot("alert-mid-call")
@@ -1057,7 +1061,7 @@ def negative_control(ctx: Context):
 
 # DESIGN.md "one accent, one meaning": magenta only on the request CallSafe acted on, the alert, the WRONG key and
 # the single primary action. Elements under these may be magenta; anything else is a violation.
-MAGENTA_ALLOWED = (".line.flagged, .line .rel, .verdict .headline.alerted, .primary-row, .why .request, .why mark, "
+MAGENTA_ALLOWED = (".line.flagged, .line .rel, .verdict .headline.alerted, .primary-row, "
                    ".bubble.in, .pill.wrong, .ttag.alert, .primary, .field")
 MAGENTA_AUDIT = """allowed => {
   const MAG = ["rgb(226, 0, 116)", "rgb(200, 0, 106)"];
@@ -1136,8 +1140,8 @@ def ticker_turns(ctx: Context):
               lambda: pw_expect()(items).to_have_count(len(turns) + len(sms)))
     texts = items.all_inner_texts()
     ctx.save_json("ticker", texts)
-    turn_items = [t for t in texts if "decided in" in t]
-    ctx.expect(len(turn_items) == len(turns) and all(re.search(r"(Caller|You) · .* · decided in \d+ ms", t) for t in turn_items),
+    turn_items = [t for t in texts if re.search(r"(Caller|You) · .+ · \d+ ms$", t)]
+    ctx.expect(len(turn_items) == len(turns),
                "each turn entry names the speaker, the AI verdict and the decision time", turn_items)
     ctx.expect(any("ALERT" in t.upper() and "Alert text" in t for t in texts), "the alert text has its own ALERT entry", texts)
     track = page.locator(".ticker-track")

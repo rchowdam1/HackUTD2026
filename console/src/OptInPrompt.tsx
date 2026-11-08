@@ -16,11 +16,11 @@ export default function OptInPrompt({ onDone }: { onDone: () => void }) {
         <ul className="choices" id="optin-choices">
           <li>
             <span className="label-text">Yes</span>
-            <span>CallSafe texts you when a caller asks for a code, money or access to your device.</span>
+            <span>Text me when a caller asks for a code, money or device access.</span>
           </li>
           <li>
             <span className="label-text">Not now</span>
-            <span>CallSafe still explains what it would flag, but sends no texts. You can turn it on later from the top bar.</span>
+            <span>No texts. Turn it on later from the top bar.</span>
           </li>
         </ul>
         <div className="modal-actions">
