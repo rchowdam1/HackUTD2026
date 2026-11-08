@@ -121,19 +121,18 @@ def test_payload_logged_only_in_debug_and_never_the_key(jev, caplog):
 
 # --- decision table -----------------------------------------------------------
 
-@pytest.mark.parametrize("nouls, lexicon_seen, expected", [
-    ({"otp": 0.95}, False, "solo"),
-    ({"otp": 0.95}, True, "confirm"),
-    ({"otp": 0.8}, True, "confirm"),
-    ({"otp": 0.8}, False, None),  # between the bars: the model alone isn't enough
-    ({"otp": 0.5}, True, None),
-    ({"otp": 0.95, "warning": 0.5}, False, None),  # a guard in the unsure band blocks a solo
-    ({"otp": 0.95, "warning": 0.5}, True, "confirm"),
-    ({"otp": 0.95, "self_service": 0.9}, True, None),  # a confident guard blocks everything
-    ({"otp": 0.95, "reported": 0.9}, True, None),
+@pytest.mark.parametrize("category, nouls, lexicon_seen, expected", [
+    ("otp", {"otp": 0.95}, False, "solo"),
+    ("otp", {"otp": 0.95}, True, "confirm"),
+    ("otp", {"otp": 0.8}, True, None),  # not confident enough, lexicon or not
+    ("otp", {"otp": 0.95, "warning": 0.6}, True, None),  # a raised guard blocks it
+    ("otp", {"otp": 0.95, "reported": 0.6}, False, None),
+    ("payment", {"payment": 0.95, "self_service": 0.9}, False, "solo"),  # "buy the cards yourself" is a scam
+    ("remote", {"remote": 0.95, "self_service": 0.9}, True, None),  # "update it yourself" is not
+    ("remote", {"remote": 0.95, "otp": 0.99}, False, "solo"),  # categories are judged separately
 ])
-def test_judge(nouls, lexicon_seen, expected):
-    assert intent.judge({**NO, **nouls}, "otp", lexicon_seen) == expected
+def test_judge(category, nouls, lexicon_seen, expected):
+    assert intent.judge({**NO, **nouls}, category, lexicon_seen) == expected
 
 
 # --- arm C through app.rules ----------------------------------------------------
@@ -150,13 +149,13 @@ def test_solo_detection_has_its_own_rule_id(jev):
 
 
 def test_confirmation_needs_the_lexicon(jev):
-    # "code" is in the window, the request isn't one B can parse, Jev is fairly sure.
-    jev(lambda turn: {"otp": 0.8} if "need that" in turn else {})
+    # "code" is in the window, the request isn't one B can parse, Jev is sure.
+    jev(lambda turn: {"otp": 0.95} if "need that" in turn else {})
     segs = call("The system will text you a code.", "I'm going to need that from you to verify.")
     assert decide(segs, "B", V) == []
     assert rules_of(segs) == ["C-INTENT-OTP-01"]
-    # The same answer with no lexicon support anywhere is below the solo bar.
-    assert rules_of(call("I'm going to need that from you to verify.")) == []
+    # The same answer with no lexicon support anywhere is a model-only detection.
+    assert rules_of(call("I'm going to need that from you to verify.")) == ["C-INTENT-OTP-SOLO"]
 
 
 def test_guards_block_model_detections(jev):

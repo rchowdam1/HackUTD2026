@@ -4,7 +4,7 @@ Jev makes atomic judgments; code decides. For each caller turn we send one reque
 whose state is the current caller turn plus the few turns before it (speaker-labelled)
 and ask one Noul per alert category plus Nouls for the known false-positive patterns.
 `judge` combines those answers with thresholds into "confirm" (the lexicon saw the
-category, the model agrees), "solo" (the model alone, stricter bar) or nothing.
+category in the window), "solo" (the model alone) or nothing.
 All question wording and thresholds live in this module.
 
 Only on when env INTENT_MODEL=on and TYPESAFE_API_KEY is set. A failed call is an
@@ -84,13 +84,17 @@ QUESTIONS: dict[str, dict] = {
     },
 }
 CATEGORIES: tuple[Category, ...] = ("otp", "payment", "remote")
-GUARDS = ("warning", "reported", "self_service")
+# Guards per category. "self_service" only guards remote access: for codes and money it also
+# fires on real scams ("go buy the cards yourself"), and on training data it cost recall there.
+GUARDS: dict[Category, tuple[str, ...]] = {"otp": ("warning", "reported"),
+                                           "payment": ("warning", "reported"),
+                                           "remote": ("warning", "reported", "self_service")}
 
-# Noul thresholds (skill defaults 0.7 / 0.3, then tuned on training data t1).
-CONFIRM = 0.7  # the category's request Noul, when the lexicon saw the category
-SOLO = 0.9  # the category's request Noul, with no lexicon support
-GUARD_MAX = 0.3  # every guard Noul must be below this for a solo detection
-GUARD_CONFIRM_MAX = 0.7  # ... and below this for a confirmation
+# Noul thresholds. Started at the 0.7 / 0.3 defaults, then tuned on training data (t1 + half
+# of t2) with the other half of t2 held out: a lower bar for lexicon-confirmed turns added no
+# recall there, only false alerts, so both paths share one bar.
+REQUEST = 0.9  # the category's request Noul
+GUARD_MAX = 0.5  # every guard Noul for the category must be below this
 
 Judgment = Literal["confirm", "solo"]
 
@@ -157,13 +161,10 @@ def answers(window: list[Segment]) -> dict[str, float] | None:
 
 
 def judge(ans: dict[str, float], category: Category, lexicon_seen: bool) -> Judgment | None:
-    """The decision table. A confirmation needs the lexicon to have seen the category."""
-    p = ans[category]
-    guard = max(ans[g] for g in GUARDS)
-    if p >= SOLO and guard < GUARD_MAX:
+    """The decision table: a confident request with no guard raised is evidence. It confirms
+    the category when the lexicon saw it in the window, otherwise it is a model-only (solo) detection."""
+    if ans[category] >= REQUEST and max(ans[g] for g in GUARDS[category]) < GUARD_MAX:
         return "confirm" if lexicon_seen else "solo"
-    if lexicon_seen and p >= CONFIRM and guard < GUARD_CONFIRM_MAX:
-        return "confirm"
     return None
 
 
