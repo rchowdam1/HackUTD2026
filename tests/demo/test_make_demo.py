@@ -58,30 +58,34 @@ def test_busy_port_falls_back_to_first_free():
     assert got > taken and demo.port_free(got)
 
 
-def test_webhook_update_argv_and_read_back(monkeypatch):
+@pytest.mark.parametrize("voice_route", [True, False])
+def test_webhook_update_argv_and_read_back(monkeypatch, voice_route):
     base, number = "https://brave-otter.trycloudflare.com", "+14132883877"
+    monkeypatch.setattr(demo, "live_calls", lambda: voice_route)
     calls = []
 
     def run(argv, **kw):
         calls.append(argv)
-        out = json.dumps([{"phoneNumber": number, "voiceUrl": f"{base}/voice/incoming",
-                           "smsUrl": f"{base}/sms/inbound"}])
+        # Without the voice route the number keeps whatever voice URL it had; only smsUrl is read back.
+        out = json.dumps([{"phoneNumber": number, "smsUrl": f"{base}/sms/inbound",
+                           "voiceUrl": f"{base}/voice/incoming" if voice_route else "https://old.example/x"}])
         return subprocess.CompletedProcess(argv, 0, stdout=out if "phone-numbers:list" in argv else "", stderr="")
     monkeypatch.setattr(demo.subprocess, "run", run)
     demo.point_webhooks(number, base)
+    voice = [f"--voice-url={base}/voice/incoming", "--voice-method=POST"] if voice_route else []
     assert calls == [
-        ["twilio", "phone-numbers:update", number, f"--voice-url={base}/voice/incoming", "--voice-method=POST",
-         f"--sms-url={base}/sms/inbound", "--sms-method=POST"],
+        ["twilio", "phone-numbers:update", number, *voice, f"--sms-url={base}/sms/inbound", "--sms-method=POST"],
         ["twilio", "phone-numbers:list", "-o", "json"],
     ]
 
 
 def test_webhook_read_back_mismatch_aborts(monkeypatch):
+    monkeypatch.setattr(demo, "live_calls", lambda: True)
     stale = json.dumps([{"phoneNumber": "+14132883877", "voiceUrl": "https://old.example/voice/incoming",
                          "smsUrl": "https://old.example/sms/inbound"}])
     monkeypatch.setattr(demo.subprocess, "run",
                         lambda argv, **kw: subprocess.CompletedProcess(argv, 0, stdout=stale, stderr=""))
-    with pytest.raises(SystemExit, match="voiceUrl, smsUrl"):
+    with pytest.raises(SystemExit, match="smsUrl, voiceUrl"):
         demo.point_webhooks("+14132883877", "https://new.trycloudflare.com")
 
 
@@ -122,10 +126,12 @@ def test_no_twilio_skips_tunnel_and_twilio_cli(env, monkeypatch, capsys):
     assert "(413) 288-3877" not in out  # no live-call line without Twilio
 
 
-def test_twilio_mode_uses_env_account_not_a_cli_profile(env, monkeypatch, capsys):
+@pytest.mark.parametrize("voice_route", [True, False])
+def test_twilio_mode_uses_env_account_not_a_cli_profile(env, monkeypatch, capsys, voice_route):
     # .env credentials outrank any CLI profile, so `profiles:list` shows the env profile active and a named one
     # inactive; the old profile check aborted here before the tunnel or backend started.
     base, number = "https://brave-otter.trycloudflare.com", SECRETS["TWILIO_FROM"]
+    monkeypatch.setattr(demo, "live_calls", lambda: voice_route)
     ran = []
 
     def run(argv, **kw):
@@ -150,5 +156,6 @@ def test_twilio_mode_uses_env_account_not_a_cli_profile(env, monkeypatch, capsys
     assert not any(argv[:2] == ["twilio", "profiles:use"] or argv[:2] == ["twilio", "profiles:list"] for argv in ran)
     assert demo.webhook_argv(number, base) in ran
     out = capsys.readouterr().out
-    assert "Call (413) 288-3877 to start a live call" in out
+    assert ("Call (413) 288-3877 to start a live call" in out) == voice_route
+    assert ("Live calls: not in this build" in out) != voice_route
     assert demo.os.environ["PUBLIC_BASE_URL"] == base

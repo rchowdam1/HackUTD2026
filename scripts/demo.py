@@ -80,9 +80,24 @@ def require_twilio_cli() -> None:
                  "or run `make demo ARGS=--no-twilio`")
 
 
+def live_calls() -> bool:
+    # /voice/incoming arrives with #94; pointing the number's voice webhook at a 404 would turn every call
+    # into Twilio's "application error", so leave the voice webhook alone on builds without it.
+    return (REPO_ROOT / "backend" / "app" / "api" / "voice.py").exists()
+
+
+def webhook_urls(base: str) -> dict[str, str]:
+    urls = {"smsUrl": f"{base}/sms/inbound"}
+    if live_calls():
+        urls["voiceUrl"] = f"{base}/voice/incoming"
+    return urls
+
+
 def webhook_argv(number: str, base: str) -> list[str]:
-    return ["twilio", "phone-numbers:update", number, f"--voice-url={base}/voice/incoming", "--voice-method=POST",
-            f"--sms-url={base}/sms/inbound", "--sms-method=POST"]
+    argv = ["twilio", "phone-numbers:update", number]
+    if live_calls():
+        argv += [f"--voice-url={base}/voice/incoming", "--voice-method=POST"]
+    return argv + [f"--sms-url={base}/sms/inbound", "--sms-method=POST"]
 
 
 def point_webhooks(number: str, base: str) -> None:
@@ -93,11 +108,11 @@ def point_webhooks(number: str, base: str) -> None:
     listed = twilio("phone-numbers:list", "-o", "json")
     rows = json.loads(listed.stdout or "[]") if listed.returncode == 0 else []
     row = next((r for r in rows if r.get("phoneNumber") == number), {})
-    want = {"voiceUrl": f"{base}/voice/incoming", "smsUrl": f"{base}/sms/inbound"}
+    want = webhook_urls(base)
     wrong = [k for k, v in want.items() if row.get(k) != v]
     if wrong:
         sys.exit(f"demo: the number's {', '.join(wrong)} did not take (read back from `twilio phone-numbers:list`)")
-    say(f"Twilio webhooks: voice POST {base}/voice/incoming, SMS POST {base}/sms/inbound (read back ok)")
+    say("Twilio webhooks (read back ok): " + ", ".join(f"{k} POST {v}" for k, v in want.items()))
 
 
 def tunnel_answers(base: str, timeout_s: float = 60) -> bool:
@@ -248,7 +263,8 @@ def summary(console_port: int, tailnet_url: str | None, use_twilio: bool) -> str
     if tailnet_url:
         lines.append(f"  Tailnet:  {tailnet_url}")
     if use_twilio:
-        lines.append(f"  Call {format_us(os.environ['TWILIO_FROM'])} to start a live call")
+        lines.append(f"  Call {format_us(os.environ['TWILIO_FROM'])} to start a live call" if live_calls()
+                     else "  Live calls: not in this build (no /voice/incoming, #94); voice webhook left unchanged")
         lines.append("  Real SMS: carrier-blocked until 10DLC registration (Twilio 30034) "
                      "— console phone frame mirrors every send")
     else:
