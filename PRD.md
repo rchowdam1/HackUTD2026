@@ -9,7 +9,7 @@ method: "BMAD-aligned PM PRD: essential spine + enterprise/privacy adaptations +
 ---
 
 # Safe Signal
-## Product Requirements Document | Hackathon v1.3
+## Product Requirements Document | Hackathon v1.4
 
 **One-line pitch:** *Protect the person, not just the phone number.*
 
@@ -77,7 +77,7 @@ The competitive hypothesis **[ASSUMPTION]** is **device-independent, carrier-ope
 
 **UJ-01 — Ruth receives a legitimate call that mentions a code.** Ruth uses an older phone, is expecting a clinic callback, and opted into monitoring by replying YES to an invitation text. The caller confirms her appointment and says, “We'll text you a confirmation code. Please don't share it with anyone who calls.” Because the code is mentioned in a warning and nothing is asked of Ruth, no text is sent and the call continues uninterrupted. Safe Signal never sends an “all clear” either. If the optional Screening Proxy (P1) is built, Ruth hears the clinic's stated name and reason when she picks up, labeled as what the caller stated, and presses 1 to connect; if screening fails, the call rings through normally. **Value:** important calls are preserved and benign mentions of codes don't cause alarms. **Edge:** a blocked/withheld number is not classified as criminal merely because caller ID is missing.
 
-**UJ-02 — Daniel hears a bank impersonator request an OTP.** An unfamiliar caller opens with a generic, benign introduction. Daniel opted into monitoring. The caller later asks Daniel to read out a six-digit verification code. Python rules identify a high-risk request, and within seconds Daniel's phone buzzes with a text from Safe Signal's fixed sender: **“Safe Signal: caller wants a code. Don't share it. Hang up, call your bank using the number on your card.”** Daniel glances at it and ends the call. After he hangs up, a follow-up text (FR-23) repeats the advice and lists reply keywords: SHARED for next steps if he already gave the code, WRONG if the warning was a mistake, STOP to end Safe Signal. If Daniel's phone is at his ear, the text's vibration and tone are the in-call cue; an audible in-call cue is P1 (FR-17). **Value:** Safe Signal intervenes when the *request* becomes dangerous, irrespective of whether the voice is genuine or synthetic, doesn't leave Daniel on his own afterward, and needs nothing but his phone. **Edge:** if classification is inconclusive, nothing is sent and no definitive scam label is shown anywhere.
+**UJ-02 — Daniel hears a bank impersonator request an OTP.** An unfamiliar caller opens with a generic, benign introduction. Daniel opted into monitoring. The caller later asks Daniel to read out a six-digit verification code. Python rules identify a high-risk request, and within seconds Daniel's phone buzzes with a text from Safe Signal's fixed sender: **“Safe Signal: caller is asking for a code. Don't share it. Hang up, call your bank's number yourself.”** (§19.5) Daniel glances at it and ends the call. After he hangs up, a follow-up text (FR-23) repeats the advice and lists reply keywords: SHARED for next steps if he already gave the code, WRONG if the warning was a mistake, STOP to end Safe Signal. If Daniel's phone is at his ear, the text's vibration and tone are the in-call cue; an audible in-call cue is P1 (FR-17). **Value:** Safe Signal intervenes when the *request* becomes dangerous, irrespective of whether the voice is genuine or synthetic, doesn't leave Daniel on his own afterward, and needs nothing but his phone. **Edge:** if classification is inconclusive, nothing is sent and no definitive scam label is shown anywhere.
 
 **UJ-03 — Sofia receives a family-impersonation call with no explicit scam phrase.** A caller claiming to be her grandson says he's in trouble, needs her help with bail today, and asks her not to tell his parents. No deterministic rule fires because the script avoids the FR-07 payment phrases (send, transfer, wire, gift card); if a payment phrase appears, this becomes a rule case, not a model-coverage case. The weak-signal trigger (FR-12, T2) sees a relationship claim, urgency, secrecy and a payment request in the same window and invokes the scam-intent model, which returns urgency/payment Intent Evidence. Versioned policy sends a text: **“Safe Signal: caller is asking for money. Don't send any. Call your relative back on a number you already have.”** If the Voice Evidence model passed Gate 0, it runs on the same window and may add “voice authenticity uncertain” to the operator console as supporting context. **Value:** help under an unfamiliar attack pattern, whether the voice is synthetic or a human impersonator. **Edge:** a suspicious voice score alone produces “voice authenticity uncertain,” never “fraud confirmed”; if Intent Evidence is insufficient, policy abstains and nothing is sent.
 
@@ -211,11 +211,11 @@ The competitive hypothesis **[ASSUMPTION]** is **device-independent, carrier-ope
 **P1 — Built only after the P0 slice runs end to end [DECIDED]:** Screening Proxy (FR-04/05); real controlled Twilio call; audible in-call cue; Class 0 flash cue, paired with the stored SMS and tested on demo handsets; Voice Evidence model (FR-10, also subject to the Gate 0 kill criterion); Nemotron policy-improvement agent (§6.1); follow-up-only opt-out; drift paging; 50/100-session load tests; usability study (SM-03); real authorized sandbox reputation endpoint (depends on G-01). Failure to complete P1 must not be disguised as a carrier integration.
 
 **Cut order when behind schedule [DECIDED]:** drop P1 items in this order:
-1. Screening Proxy, since it isn't a differentiator (§1.3) and adds telephony risk. (If the team targets Photon's voice-call prize, move it to the end of this list; §6.1.)
+1. Screening Proxy, since it isn't a differentiator (§1.3) and adds telephony risk.
 2. Live Twilio call and audible in-call cue, since replay and real SMS demonstrate the same pipeline.
 3. Class 0 flash cue.
 4. Voice Evidence model.
-5. Nemotron policy-improvement agent. (If the team commits to the NVIDIA track, move it to the end of this list.)
+5. Nemotron policy-improvement agent.
 6. Usability study.
 7. 50/100-session load tests, drift paging and the follow-up-only opt-out.
 
@@ -239,8 +239,8 @@ P0 items are never cut. If P0 itself is at risk, shrink the held-out batches (H1
 
 | Sponsor track | Fit | Decision |
 |---|---|---|
-| NVIDIA — Nemotron beyond a chatbot | Strong if scoped to operators. A Nemotron agent in the console can run the V5 loop with tools: read aggregate feedback and drift flags, draft a policy change, run development-set evaluations, and write a promotion proposal for operator approval. Nemotron can also be benchmarked as an Intent Evidence candidate (§4.3). | P1 option **[DECIDED]**. The agent never promotes a change, never reads sealed held-out batches, never sees raw content, and never controls a live intervention. Brev credits can host it. |
-| Photon API | Partial. Photon describes itself as infrastructure for AI agents in messaging apps and phone calls; we found no public detail on SMS or voice features. Its natural fit is the P1 Screening Proxy, an agent that answers and asks the caller's reason, which could target the voice-call prize. | Optional; confirm capabilities with the sponsor. Don't use iMessage or other app channels for alerts: anyone can message there, which weakens the fixed-sender trust signal. |
+| NVIDIA — Nemotron beyond a chatbot | Strong if scoped to operators. A Nemotron agent in the console can run the V5 loop with tools: read aggregate feedback and drift flags, draft a policy change, run development-set evaluations, and write a promotion proposal for operator approval. Nemotron can also be benchmarked as an Intent Evidence candidate (§4.3). | Skip for the hackathon **[DECIDED, v1.4]**: not in §19.2 scope, and the Devpost deadline leaves no time. If revisited after the hackathon, the agent never promotes a change, never reads sealed held-out batches, never sees raw content, and never controls a live intervention. Brev credits can host it. |
+| Photon API | Partial. Photon describes itself as infrastructure for AI agents in messaging apps and phone calls; we found no public detail on SMS or voice features. Its natural fit is the P1 Screening Proxy, an agent that answers and asks the caller's reason, which could target the voice-call prize. | Skip **[DECIDED, v1.4]**: the Screening Proxy is Out (§19.2). Don't use iMessage or other app channels for alerts: anyone can message there, which weakens the fixed-sender trust signal. |
 | Capital One — Nessie | Weak. Mock bank accounts and P2P data would pull the product toward bank-account integration, which §5 rules out. | Skip. |
 | Spacetime — main track and ScrabbleBot | None. The main track requires a majority SpacetimeDB backend, which conflicts with the T-Mobile-aligned stack story (§11.4); ScrabbleBot is unrelated. | Skip. |
 
@@ -382,7 +382,7 @@ The subscriber side of the demo is a real, team-owned test phone, shown on scree
 2. **Legitimate callback (30 s):** The clinic replay mentions a confirmation code while telling Ruth not to share it; the test phone stays silent.
 3. **Benign then dangerous (75 s):** The bank-impersonation replay opens benignly, then asks for an OTP. The test phone buzzes with the alert SMS, and the console shows Rule ID -> Risk Event -> template -> SMS message ID -> delivery receipt. After the call ends, the follow-up arrives; reply SHARED on the phone and the recovery steps come back.
 4. **Unseen variation (40 s):** A family-emergency paraphrase evades the rules; the T2 trigger invokes the intent model and the alert SMS arrives. Then an abstention case: nothing is sent. If Voice Evidence passed Gate 0, show “voice authenticity uncertain” in the console as supporting context only.
-5. **Evidence and limits (50 s):** The gate board shows V1–V5 with evidence links. Show A/K/B/C numbers led by B vs K, C vs B and hard-benign false alerts. Then the promotion: WRONG replies cluster on one rule, policy v1.1 is scored on H2 (SM-10), the operator approves, and the audit record appears. Show degraded mode in one click.
+5. **Evidence and limits (50 s):** The gate board shows V1–V5 with evidence links. Show A/K/B/C numbers led by B vs K, C vs B and hard-benign false alerts. Then the promotion: WRONG replies cluster on one rule, policy v1.1 is scored on H1 reused, labelled as such (SM-10; H2 dropped, §19.6), the operator approves, and the audit record appears. Show degraded mode in one click.
 6. **Close (20 s):** “We don't replace Scam Shield or on-device protection. Calls that pass number filters can still turn into a request for a code or a transfer; we catch the request, text one independent next step to any phone, and follow up afterward. Our numbers are against our own baselines only; lift over Scam Shield or Pixel would need carrier routing we don't have.”
 
 **Replay framing:** label replayed calls on screen as “replayed call through the live ingestion path,” and never present replay as a live or carrier call. Use consented recordings of real voices at 8 kHz so the replay doesn't sound synthetic. If real SMS delivery fails at Gate 0, the console's phone-frame view labeled “simulated SMS” stands in, and the demo says so.
@@ -501,7 +501,7 @@ Synthetic replay (P0) / controlled VoIP call (P1)
 
 **Intervention SMS (illustrative; template `ALERT-OTP-01`):**
 ```json
-{"level":"action_warning","channel":"sms","template_id":"ALERT-OTP-01","message":"Safe Signal: caller wants a code. Don't share it. Hang up, call your bank using the number on your card.","segments":1,"basis":["POL-OTP-01"],"certainty":"risk_pattern_detected","policy_version":"1.0"}
+{"level":"action_warning","channel":"sms","template_id":"ALERT-OTP-01","message":"Safe Signal: caller is asking for a code. Don't share it. Hang up, call your bank's number yourself.","segments":1,"basis":["POL-OTP-01"],"certainty":"risk_pattern_detected","policy_version":"1.0"}
 ```
 
 **Follow-up SMS (illustrative; template `FU-OTP-01`):**
@@ -586,7 +586,7 @@ If the team has a Java developer, building the messaging gateway as a small Spri
 
 | Item | State | Required resolution / owner |
 |---|---|---|
-| G-01: T-Mobile internal risk/verified-number API availability | **Open** | Obtain sandbox access, contract, fields, quotas, authorization from carrier sponsor |
+| G-01: T-Mobile internal risk/verified-number API availability | **Unavailable to the team** | T-Mobile has this internally, but the team can't get access for the hackathon. The Reputation Signal stays a mock adapter (§19.4) and is said so in the pitch. A pilot needs sandbox access, contract, fields, quotas and authorization from the carrier sponsor |
 | G-02: Authorized controlled-call route for live monitoring (P1; P0 uses replay) | **Open** | Verify unidirectional-stream track mapping on the actual bridge, caller notice and bridge behavior (§11.2); telephony lead |
 | G-03: Consent, privacy, sector/legal review | **Open** | Security/privacy/legal approval before non-synthetic calls, including caller notice in all-party-consent states and a data-retention matrix |
 | G-04: Licensed pretrained checkpoints and hardware | **Open** | Test exact weights/license and benchmark speed; run the 8 kHz Voice Evidence kill criterion (§4.3); ML lead |
@@ -621,7 +621,7 @@ If the team has a Java developer, building the messaging gateway as a small Spri
 - **D-21 [DECIDED]:** Standard SMS from one fixed sender is the alert channel; Class 0 flash is an optional P1 cue and never the only copy.
 - **D-22 [DECIDED]:** Outbound (subscriber-placed) calls are excluded from monitoring in v1.
 - **D-23 [DECIDED]:** Policy changes are promoted only through V5 with operator approval; no automatic promotion, including by any agent.
-- **D-24 [DECIDED]:** Sponsor tracks: NVIDIA as a P1 option scoped to the operator-side improvement agent; Photon optional for the Screening Proxy; Nessie and Spacetime skipped (§6.1).
+- **D-24 [DECIDED, revised v1.4]:** Sponsor tracks: T-Mobile challenge only. NVIDIA, Photon, Nessie and Spacetime are skipped (§6.1).
 - **D-25 [ASSUMPTION]:** The hackathon architecture maps onto T-Mobile's publicly signaled stack (§11.4).
 - **D-26 [DECIDED]:** FR-18 (post-call summary) retired; there is no subscriber UI to host it, and FR-23 covers follow-up.
 
@@ -662,6 +662,7 @@ Public sources reviewed November 7, 2026. These support descriptions of existing
 - **Consent:** subscriber opt-in is necessary, not sufficient; caller-notice gate (§12, G-03). The routing answer in §9.4 no longer dodges audio routing.
 - **Evaluation:** H2 dropped; promotion is a no-regression workflow demo (§8.5, SM-10, UJ-05); H1 at least 20 hard-benign, text-only, hash-sealed (§9.1, §19.6).
 - **Scope:** "P0 never cut" replaced by §19.2 and the §19.10 slip plan; SQLite replaces PostgreSQL for the hackathon (§11.2); UJ-03 avoids FR-07 payment phrases.
+- **Open questions answered:** Devpost deadline 2026-11-07 23:00 CST; no sleep rotation; H1 author Rithik; T-Mobile track only (NVIDIA and Photon skipped, D-24); G-01 unavailable, so the reputation signal stays mocked; subtitle, UJ-02, §9.3 and §11.3 aligned with §19.
 - **Out list completed (§19.2):** arm A, load tests, health-metrics panel, drift/feedback panel and the gate board console view are named as Out; the gate board is a static Q&A slide.
 - **Messaging:** follow-up teaches the tactic with "Hang up, look up, call back"; "verified offline" became "independent"; undefined "informational" level removed (FR-16, FR-23).
 
@@ -700,10 +701,12 @@ Both reviews assess v1.0 and have not been updated for the v1.1, v1.2 or v1.3 ch
 
 This section is what the team and its agents build from. Where it conflicts with §1–§18, this section wins. It was produced by four model-council reviews and two final readiness checks on 2026-11-07.
 
-### 19.0 Assumptions (confirm or correct)
-- About 24 hours of build time remain; judging is Sunday 2026-11-08 at in-person tables (3 min pitch + 2 min Q&A, repeated for several judges over 3 hours). Devpost deadline: **[fill in]**.
+### 19.0 Assumptions (confirmed)
+- About 24 hours of build time remain; judging is Sunday 2026-11-08 at in-person tables (3 min pitch + 2 min Q&A, repeated for several judges over 3 hours). Devpost deadline: **2026-11-07 23:00 CST**, before the build finishes. Submit whatever is real by then; results not yet measured stay as placeholders and are never invented.
 - Three developers, each running several AI coding agents on separate branches and worktrees (AGENTS.md): **Arnav (Track A), Ameya (Track B), Rithik (Track C)**.
 - One laptop runs everything at the table. Two team-owned phones (primary + spare), both pre-enrolled.
+- H1 author: **Rithik** (Track C). He never writes rules, lexicons, triggers, templates or thresholds.
+- Sponsor tracks: T-Mobile challenge only (D-24).
 
 ### 19.1 What we pitch
 **Line:** "We don't ask you to trust AI. We tell you what the caller just asked for, give one step that's safe even if we're wrong, and teach you the trick so you catch it next time, on any phone."
@@ -803,7 +806,7 @@ All templates: ASCII GSM-7 only (straight apostrophes), <= 160 characters, no di
 
 ### 19.6 Evaluation (minimum honest version)
 - **Dev set:** 20 scam + 20 benign (at least 10 hard-benign), written by Track C in `scenarios/dev/`. Track A tunes rules only on it, reads it, and never edits it.
-- **H1:** 30 scam + 30 benign, at least 20 hard-benign. Written by a named human who is not on the rules or intent work, starting at H+0, outside the shared tree until sealed. Sealing = commit `scenarios/H1/` plus `scenarios/H1.sha256` = sha256 over the sorted file contents. Rules/intent agents never read `scenarios/H1`. `eval.run` refuses to score H1 if the hash doesn't match.
+- **H1:** 30 scam + 30 benign, at least 20 hard-benign. Written by Rithik, who is not on the rules or intent work, starting at H+0, outside the shared tree until sealed. Sealing = commit `scenarios/H1/` plus `scenarios/H1.sha256` = sha256 over the sorted file contents. Rules/intent agents never read `scenarios/H1`. `eval.run` refuses to score H1 if the hash doesn't match.
 - **H1 runs on scenario text only** (`source:"script"`), no audio and no ASR. The report says "scripted transcripts, not ASR". ASR is checked only on demo clips.
 - **Labels:** a scenario is predicted positive iff any Decision is `action_warning`. TP/FN on scam, FP/TN on benign. `hard_benign` = a benign call containing a code, money or access phrase in a non-request use; the H1 author sets it.
 - **Report per arm:** TP/FP/FN/TN, recall with Wilson 95% CI, hard-benign false alerts "x of n (upper bound y%)", paired discordant counts B vs K. Call a win only at 5 or more one-directional discordant calls.
@@ -818,7 +821,8 @@ All templates: ASCII GSM-7 only (straight apostrophes), <= 160 characters, no di
 - **H+6:** full loop (clinic silent, bank alert, auto end-call, follow-up, WRONG, reset) in simulated mode, and on the real phone if the SMS check passed.
 - **H+12:** Why panel complete; K vs B on sealed H1 with report on the results card.
 - **H+16:** feature freeze. Stretch only if H+12 is green.
-- **After freeze:** 10 timed table-loop rehearsals, hallway test (5 people, printed alert/follow-up/fake "go ahead" text), deck, Devpost. Sleep rotation: **[fill in]**.
+- **Devpost:** submitted by 2026-11-07 23:00 CST, whatever milestone the build has reached.
+- **After freeze:** 10 timed table-loop rehearsals, hallway test (5 people, printed alert/follow-up/fake "go ahead" text), deck. Sleep rotation: none; the team works through the night.
 
 **Preflight (`scripts/preflight`, run before every judging block):** models cached and the app starts offline; cached-transcript fallback works; tunnel URL matches the Twilio webhook; one real test SMS round trip; both phones opted in; laptop on power, sleep disabled, on a phone hotspot.
 
