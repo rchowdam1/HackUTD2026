@@ -25,8 +25,7 @@ def env(tmp_path, monkeypatch):
                  "OPERATOR_PASSWORD": "op", "SESSION_SECRET": "secret"}.items():
         monkeypatch.setenv(k, v)
     monkeypatch.setattr(sms, "_mode", "simulated")
-    monkeypatch.setattr(sms, "_last_alert", None)
-    monkeypatch.setattr(sms, "_seen_sids", set())
+    monkeypatch.setattr(sms, "_last_alerts", {})
     monkeypatch.setattr(sms, "_simulated", sms.SimulatedGateway())
     monkeypatch.setattr(sms, "_photon", None)
 
@@ -145,6 +144,45 @@ def test_duplicate_message_sid_ignored(events):
     assert inbound("WRONG", "SMdup") is None
     assert replies() == ["R-WRONG"]
     assert storage.aggregates()["replies"] == [{"keyword": "WRONG", "template_id": "ALERT-OTP-01", "count": 1}]
+    assert storage.inbound_seen("SMdup")  # in SQLite: a restart doesn't accept the same text again
+
+
+def test_failed_stop_is_processed_when_retried(events, monkeypatch):
+    consent.set_state("active")
+    real_set_state = consent.set_state
+
+    def locked(state, phone=None):
+        raise RuntimeError("database is locked")
+    monkeypatch.setattr(consent, "set_state", locked)
+    with pytest.raises(RuntimeError):
+        inbound("STOP", "SMretry")
+    assert consent.get_state() == "active" and not storage.inbound_seen("SMretry")
+    monkeypatch.setattr(consent, "set_state", real_set_state)
+    assert inbound("STOP", "SMretry").keyword == "STOP"  # the bridge's retry is not swallowed as a duplicate
+    assert consent.get_state() == "stopped"
+
+
+# --- reply attribution ---------------------------------------------------------
+
+def test_reply_after_failed_alert_is_not_counted(events, monkeypatch):
+    sms.set_mode("real")
+    consent.set_state("active")
+    gateway = sms.PhotonGateway()
+    gateway.http = httpx.Client(base_url="http://bridge", transport=httpx.MockTransport(lambda r: httpx.Response(502)))
+    monkeypatch.setattr(sms, "_photon", gateway)
+    with pytest.raises(httpx.HTTPStatusError):
+        sms.get_gateway().send("ALERT-OTP-01", "sess1")
+    sms.set_mode("simulated")
+    assert inbound("WRONG", "SM1").counted is False
+    assert storage.aggregates()["replies"] == []
+
+
+def test_reply_from_unalerted_spare_phone_is_not_counted(events, monkeypatch):
+    spare = DEMO[:-1] + "9"
+    monkeypatch.setenv("SPARE_PHONE", spare)
+    alerted()  # alerts go to DEMO_PHONE
+    assert inbound("WRONG", "SM1", spare).counted is False
+    assert inbound("WRONG", "SM2", DEMO).counted is True
 
 
 # --- consent refusal -----------------------------------------------------------
@@ -158,7 +196,7 @@ def test_send_refuses_without_consent(events, photon, mode):
         with pytest.raises(RuntimeError):
             sms.get_gateway().send("ALERT-OTP-01", "sess1")
     assert sms._simulated.outbox == [] and photon == []
-    assert sms._last_alert is None
+    assert sms._last_alerts == {}
 
 
 def test_photon_send_posts_template_text_to_bridge(events, photon):
@@ -199,6 +237,36 @@ def test_inbound_rejects_bad_bridge_token(client, events, monkeypatch):
     monkeypatch.delenv("PHOTON_BRIDGE_TOKEN")
     assert post(client, "WRONG").status_code == 403  # fails closed without a token
     assert [e for e in events if e[0] == "reply"] == []
+
+
+@pytest.mark.parametrize("sender", [None, "", "+10000000000", "someone@example.com"])
+def test_inbound_ignores_missing_or_unenrolled_sender(client, events, photon, sender):
+    sms.set_mode("real")
+    consent.set_state("stopped")
+    r = client.post("/sms/inbound", json={"id": "spc-in-x", "text": "YES", "sender": sender},
+                    headers={"x-bridge-token": TOKEN})
+    assert r.status_code == 204
+    assert consent.get_state() == "stopped"  # an unidentified YES never opts the demo phone back in
+    assert photon == [] and [e for e in events if e[0] == "reply"] == []
+
+
+def test_inbound_replies_only_to_the_configured_number(client, events, photon):
+    sms.set_mode("real")
+    consent.set_state("active")
+    formatted = DEMO.lstrip("+")  # same digits, different formatting from the bridge
+    r = client.post("/sms/inbound", json={"id": "spc-in-y", "text": "HELP", "sender": formatted},
+                    headers={"x-bridge-token": TOKEN})
+    assert r.status_code == 204
+    assert [body["to"] for _, _, body in photon] == [DEMO]
+
+
+def test_inbound_processing_failure_is_5xx_so_the_bridge_retries(events, monkeypatch):
+    def locked(state, phone=None):
+        raise RuntimeError("database is locked")
+    monkeypatch.setattr(consent, "set_state", locked)
+    r = TestClient(create_app(), raise_server_exceptions=False).post(
+        "/sms/inbound", json={"id": "spc-in-z", "text": "STOP", "sender": DEMO}, headers={"x-bridge-token": TOKEN})
+    assert r.status_code == 500 and not storage.inbound_seen("spc-in-z")
 
 
 def test_inbound_accepts_bridge_token_and_dedupes(client, events):

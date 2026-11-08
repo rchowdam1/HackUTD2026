@@ -151,3 +151,15 @@ def test_new_session_mid_replay_cancels_old_replay(demo):
     assert [e.payload["seq"] for e in events if e.type == "segment"] == [1]
     assert [(e.session_ref, e.payload["state"]) for e in events if e.type == "session"] == [
         (ref, "running"), (ref, "finished"), (other, "running")]  # finished by start(), not by ingest
+
+
+def test_asr_error_mid_replay_ends_the_call(demo, monkeypatch):
+    def transcribe(path):
+        if path.name == "t03.wav":
+            raise RuntimeError("decoder failed")
+        return FAKE_SEGMENTS[path.name], FAKE_DURATION_S
+    monkeypatch.setattr(asr, "transcribe", transcribe)
+    _, events, _ = replay(source="asr", realtime=False)
+    assert [s["seq"] for s in segments(events)] == [1, 2]
+    assert states(events) == ["running", "finished"]  # not stranded as "running"
+    assert pipeline.current().finished

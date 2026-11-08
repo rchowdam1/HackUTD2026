@@ -1,45 +1,99 @@
 import type { Event, Results, SmsMode } from "./types";
 
-async function post(path: string, body?: unknown): Promise<Response> {
-  return fetch(path, {
-    method: "POST",
-    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+// What GET /state returns: current values plus every event since the latest session running/reset.
+export interface Snapshot {
+  sms_mode: SmsMode;
+  wrong_count: number;
+  consent: "invited" | "active" | "stopped" | null;
+  events: Event[];
 }
 
-export const login = async (password: string) => (await post("/login", { password })).ok;
+// Console registers these: any 401 returns to login; other failures surface as a visible error.
+let handlers = { unauthorized: () => {}, error: (_message: string) => {} };
+export function onFailure(h: typeof handlers) {
+  handlers = h;
+}
+
+// Operator request; resolves to the response only when it is OK, otherwise reports and resolves null.
+async function call(action: string, path: string, body?: unknown, method = "POST"): Promise<Response | null> {
+  let r: Response;
+  try {
+    r = await fetch(path, {
+      method,
+      headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch {
+    handlers.error(`${action} failed (network error)`);
+    return null;
+  }
+  if (r.status === 401) handlers.unauthorized();
+  else if (!r.ok) handlers.error(`${action} failed (HTTP ${r.status})`);
+  return r.ok ? r : null;
+}
+
+// Resolves to an error message for the login form, or null on success.
+export async function login(password: string): Promise<string | null> {
+  try {
+    const r = await fetch("/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password }) });
+    if (r.ok) return null;
+    if (r.status === 429) return `Too many attempts, try again in ${r.headers.get("Retry-After") ?? "a few"} s`;
+    return r.status === 401 ? "Wrong password" : `Login failed (HTTP ${r.status})`;
+  } catch {
+    return "Login failed (network error)";
+  }
+}
 export const loggedIn = async () => (await fetch("/aggregates")).ok;
-export const runScenario = (id: "clinic" | "bank") => post(`/demo/run/${id}`);
-export const endCall = () => post("/demo/end-call");
-export const reset = () => post("/demo/reset");
-export const setSmsMode = (mode: SmsMode) => post("/demo/sms-mode", { mode });
-export const simulateReply = (body: string) => post("/sms/simulate-inbound", { body });
+export const logout = () => call("Log out", "/logout");
+export const runScenario = (id: "clinic" | "bank") => call(`Run ${id}`, `/demo/run/${id}`);
+export const endCall = () => call("End call", "/demo/end-call");
+export const reset = () => call("Reset", "/demo/reset");
+export const setSmsMode = (mode: SmsMode) => call("SMS mode change", "/demo/sms-mode", { mode });
+export const simulateReply = (body: string) => call(`Simulated ${body} reply`, "/sms/simulate-inbound", { body });
 
 export async function results(): Promise<Results> {
-  const r = await fetch("/results/latest");
-  return r.ok ? r.json() : { status: "pending" };
+  const r = await fetch("/results/latest").catch(() => null);
+  if (r?.status === 401) handlers.unauthorized();
+  return r?.ok ? r.json() : { status: "pending" };
 }
 
-export async function wrongCount(): Promise<number> {
-  const r = await fetch("/aggregates");
-  if (!r.ok) return 0;
-  const agg: { replies: { keyword: string; count: number }[] } = await r.json();
-  return agg.replies.filter((x) => x.keyword === "WRONG").reduce((n, x) => n + x.count, 0);
+// Snapshot for reconciliation; null on any failure (401 also returns to login).
+export async function snapshot(): Promise<Snapshot | null> {
+  const r = await fetch("/state").catch(() => null);
+  if (r?.status === 401) handlers.unauthorized();
+  return r?.ok ? r.json() : null;
 }
 
 const textCache = new Map<string, Promise<string | null>>();
 export function templateText(id: string): Promise<string | null> {
   if (!textCache.has(id)) {
-    textCache.set(id, fetch(`/sms/templates/${encodeURIComponent(id)}`).then((r) => (r.ok ? r.json().then((j) => j.text) : null)));
+    const text = fetch(`/sms/templates/${encodeURIComponent(id)}`).then((r) => (r.ok ? r.json().then((j) => j.text) : null));
+    textCache.set(id, text);
+    text.then((t) => t === null && textCache.delete(id), () => textCache.delete(id)); // don't cache failures
   }
   return textCache.get(id)!;
 }
 
-export function subscribe(onEvent: (e: Event) => void): () => void {
-  const source = new EventSource("/events/stream");
-  source.onmessage = (m) => onEvent(JSON.parse(m.data));
-  return () => source.close();
+// EventSource retries on its own after a dropped connection, but gives up (CLOSED) on an HTTP error
+// such as 401; then we probe via onError(closed=true) and reconnect ourselves.
+export function subscribe(h: { event: (e: Event) => void; open: () => void; error: (closed: boolean) => void }): () => void {
+  let source: EventSource;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const connect = () => {
+    source = new EventSource("/events/stream");
+    source.onopen = h.open;
+    source.onmessage = (m) => h.event(JSON.parse(m.data));
+    source.onerror = () => {
+      const closed = source.readyState === EventSource.CLOSED;
+      h.error(closed);
+      if (closed) timer = setTimeout(connect, 3000);
+    };
+  };
+  connect();
+  return () => {
+    clearTimeout(timer);
+    source.close();
+  };
 }
 
 // Fixture replay (?fixtures): Track A's example events, in event_id order, without a backend.

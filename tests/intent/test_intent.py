@@ -112,15 +112,16 @@ def test_request_shape_auth_timeout_and_cache(jev):
                for q in body["questions"].values())
 
 
-def test_payload_logged_only_in_debug_and_never_the_key(jev, caplog):
+def test_request_logged_only_in_debug_and_never_the_text_or_key(jev, caplog):
     jev(lambda turn: {})
     with caplog.at_level(logging.INFO, logger="app.intent"):
         intent.answers(call("First."))
     assert not caplog.records
     with caplog.at_level(logging.DEBUG, logger="app.intent"):
-        intent.answers(call("Second."))
+        intent.answers(call("Earlier words.", "Second."))
     (rec,) = caplog.records
-    assert "Second." in rec.getMessage() and "test-key" not in rec.getMessage()
+    msg = rec.getMessage()
+    assert "1 earlier turns" in msg and "Second." not in msg and "Earlier" not in msg and "test-key" not in msg
 
 
 # --- decision table -----------------------------------------------------------
@@ -214,3 +215,20 @@ def test_demo_replays_with_the_model_on(jev, scenario_id, expected):
     sc = Scenario.model_validate(json.loads((DEMO / f"{scenario_id}.json").read_text()))
     segs = call(*[t.text if t.speaker == "caller" else ("subscriber", t.text) for t in sc.turns])
     assert [d.template_id for d in decide(segs, "C", V)] == expected
+
+
+def test_failures_are_counted(on, monkeypatch):
+    def post(*a, **k):
+        raise httpx.ConnectTimeout("down")
+    monkeypatch.setattr(httpx, "post", post)
+    before = intent.failures
+    intent.answers(call("One."))
+    intent.answers(call("One."))  # cached failure: not a second call
+    intent.answers(call("Two."))
+    assert intent.failures - before == 2
+
+
+def test_preload_records_the_data_flow_when_on(on, caplog):
+    with caplog.at_level(logging.INFO, logger="app.intent"):
+        intent.preload()
+    assert any("api.typesafe.ai" in r.getMessage() and "3 prior turns" in r.getMessage() for r in caplog.records)

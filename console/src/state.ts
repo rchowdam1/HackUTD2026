@@ -1,3 +1,4 @@
+import type { Snapshot } from "./api";
 import type { Decision, Event, RiskEvent, Segment, SessionPayload, SmsMode, SmsPayload } from "./types";
 
 // One phone-frame bubble: a text we sent, or a keyword the phone sent back.
@@ -25,7 +26,7 @@ export const initial: State = {
   consent: null,
 };
 
-export type Action = Event | { type: "sms_mode"; mode: SmsMode } | { type: "wrong_count"; count: number };
+export type Action = Event | { type: "sms_mode"; mode: SmsMode } | { type: "hydrate"; snapshot: Snapshot; after: Event[] };
 
 export function reduce(s: State, a: Action): State {
   switch (a.type) {
@@ -54,14 +55,20 @@ export function reduce(s: State, a: Action): State {
     case "reply":
       return {
         ...s,
-        wrongCount: a.payload.wrong_count,
+        wrongCount: Math.max(s.wrongCount, a.payload.wrong_count), // WRONG total never decreases
         bubbles: [...s.bubbles, { kind: "in", keyword: a.payload.keyword, id: a.event_id }],
       };
     case "consent":
       return { ...s, consent: a.payload.state };
     case "sms_mode":
       return { ...s, smsMode: a.mode };
-    case "wrong_count":
-      return { ...s, wrongCount: a.count };
+    case "hydrate": {
+      // Rebuild from GET /state, then apply live events that arrived after it, minus duplicates.
+      const { snapshot: snap, after } = a;
+      const seen = new Set(snap.events.map((e) => e.event_id));
+      const replayed = snap.events.reduce(reduce, { ...initial, wrongCount: Math.max(s.wrongCount, snap.wrong_count) });
+      const current = { ...replayed, smsMode: snap.sms_mode, consent: snap.consent }; // snapshot values are newer than its events
+      return after.filter((e) => !seen.has(e.event_id)).reduce(reduce, current);
+    }
   }
 }

@@ -84,12 +84,19 @@ async def _audio_turns(scenario_id: str) -> list[tuple[Speaker, Path]] | None:
 async def _replay_audio(
     turns: list[tuple[Speaker, Path]], *, arm: Arm, policy_version: str, sms_mode: SmsMode, realtime: bool,
 ) -> str:
-    """Transcribe each turn off the event loop; emit its segments no earlier than the turn's audio end."""
+    """Transcribe each turn off the event loop; emit its segments no earlier than the turn's audio end.
+    A transcription error ends the call (finish runs on the segments so far) instead of leaving it running."""
     ref = await pipeline.start(arm, policy_version, sms_mode)
     t0 = asyncio.get_running_loop().time()
     offset_ms = seq = 0
     for speaker, wav in turns:
-        segments, duration_s = await asyncio.to_thread(asr.transcribe, wav)
+        try:
+            segments, duration_s = await asyncio.to_thread(asr.transcribe, wav)
+        except Exception:
+            log.exception("ASR failed mid-replay; ending the call")
+            if _alive(ref):
+                await pipeline.finish(ref)
+            return ref
         end_ms = offset_ms + round(duration_s * 1000)
         if realtime:
             await _sleep_until(t0, end_ms)

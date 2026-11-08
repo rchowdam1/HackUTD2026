@@ -14,15 +14,18 @@ from __future__ import annotations
 import argparse
 import hashlib
 import math
+import subprocess
 import sys
 from pathlib import Path
 
+from app import intent
 from app.models import ArmCounts, Discordant, Results, Scenario, Segment
 
 ROOT = Path(__file__).resolve().parents[1]
 SCENARIOS = ROOT / "scenarios"
 RESULTS = ROOT / "results"
 Z = 1.96
+ARMS = ("K", "B", "C")
 
 
 def h1_digest(scenarios_dir: Path = SCENARIOS) -> str:
@@ -43,10 +46,23 @@ def load_batch(batch: str, scenarios_dir: Path = SCENARIOS) -> list[Scenario]:
         raise SystemExit(f"no scenarios in scenarios/{batch}/")
     scenarios = [Scenario.model_validate_json(p.read_text()) for p in paths]
     assert all(s.set == batch for s in scenarios), f"scenario with wrong set in {batch}"
+    ids = [s.id for s in scenarios]
+    if dupes := sorted({i for i in ids if ids.count(i) > 1}):
+        raise SystemExit(f"duplicate scenario id in scenarios/{batch}/: {', '.join(dupes)}")
     return scenarios
 
 
+def revision() -> str:
+    """Short git sha of the measured tree, "-dirty" if it has uncommitted changes; "unknown" without git."""
+    try:
+        git = lambda *a: subprocess.run(["git", *a], cwd=ROOT, capture_output=True, text=True, check=True).stdout
+        return git("rev-parse", "--short", "HEAD").strip() + ("-dirty" if git("status", "--porcelain").strip() else "")
+    except (OSError, subprocess.CalledProcessError):
+        return "unknown"
+
+
 def predict(scenario: Scenario, arm: str, policy_version: str, decide) -> bool:
+    intent.clear_cache()  # one scenario = one live session: no intent answers carried across
     segments = [Segment(seq=i, speaker=t.speaker, text=t.text, source="script")
                 for i, t in enumerate(scenario.turns, 1)]
     return any(d.level == "action_warning" for d in decide(segments, arm, policy_version))
@@ -95,11 +111,14 @@ def verdict(k_only: int, b_only: int) -> str:
             f"(have K-only {k_only}, B-only {b_only}).")
 
 
-def report(batch: str, policy_version: str, scenarios, results: Results, fired, disc_ids) -> str:
+def report(batch: str, policy_version: str, scenarios, results: Results, fired, disc_ids,
+           c_failures: int | None = None) -> str:
     n_scam = sum(s.label == "scam" for s in scenarios)
     n_benign = len(scenarios) - n_scam
     lines = [
         f"# Eval: batch {batch}, policy {policy_version}",
+        "",
+        f"Measured: revision {revision()}, arms {','.join(results.arms)}, policy {policy_version}.",
         "",
         f"**Scripted transcripts, not ASR.** {len(scenarios)} calls: {n_scam} scam, {n_benign} benign "
         f"({results.arms[next(iter(results.arms))].hard_benign_n} hard-benign).",
@@ -124,6 +143,8 @@ def report(batch: str, policy_version: str, scenarios, results: Results, fired, 
         fn = [s.id for s in scenarios if s.label == "scam" and not fired[arm][s.id]]
         fp = [s.id for s in scenarios if s.label == "benign" and fired[arm][s.id]]
         lines.append(f"- {arm}: missed scams: {', '.join(fn) or 'none'}; false alerts: {', '.join(fp) or 'none'}")
+    if c_failures is not None:
+        lines += ["", f"C: {c_failures} TypeSafe calls failed and fell back to arm B."]
     lines += ["", "Percentages: estimates and lower bounds rounded down, upper bounds rounded up. "
               f"Sample is small; this is not a production accuracy claim."]
     return "\n".join(lines) + "\n"
@@ -131,8 +152,18 @@ def report(batch: str, policy_version: str, scenarios, results: Results, fired, 
 
 def run(arms: list[str], batch: str, policy_version: str, decide,
         scenarios_dir: Path = SCENARIOS, out_dir: Path = RESULTS) -> Results:
+    if not arms or len(set(arms)) != len(arms) or not set(arms) <= set(ARMS):
+        raise SystemExit(f"bad arms {','.join(arms)}: give each of K, B, C at most once")
+    if "C" in arms and not intent.enabled():
+        raise SystemExit("refusing to score arm C: the intent model is off (set INTENT_MODEL=on and "
+                         "TYPESAFE_API_KEY); without it C would just repeat B")
     scenarios = load_batch(batch, scenarios_dir)
-    fired = {arm: {s.id: predict(s, arm, policy_version, decide) for s in scenarios} for arm in arms}
+    fired, c_failures = {}, None
+    for arm in arms:
+        before = intent.failures
+        fired[arm] = {s.id: predict(s, arm, policy_version, decide) for s in scenarios}
+        if arm == "C":
+            c_failures = intent.failures - before
     disc_ids = discordant(scenarios, fired["K"], fired["B"]) if {"K", "B"} <= set(arms) else ([], [])
     results = Results(
         batch=batch,
@@ -141,7 +172,8 @@ def run(arms: list[str], batch: str, policy_version: str, decide,
     )
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "latest.json").write_text(results.model_dump_json(indent=2) + "\n")
-    (out_dir / "latest.md").write_text(report(batch, policy_version, scenarios, results, fired, disc_ids))
+    (out_dir / "latest.md").write_text(report(batch, policy_version, scenarios, results, fired, disc_ids,
+                                              c_failures))
     return results
 
 

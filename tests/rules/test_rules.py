@@ -279,3 +279,43 @@ def test_arm_c_confirm_needs_lexicon_solo_has_its_own_id(monkeypatch):
 def test_empty_session():
     for arm in "KBC":
         assert decide([], arm, V) == [] and detect([], arm, V) == []
+
+
+def test_symbol_amount_is_a_payment_term_like_the_word():
+    # F04: "$100" is the same payment object as "100 dollars", under both arms.
+    for text in ("Please send $100.", "Please send 100 dollars.", "Please send $ 2,500 today."):
+        for arm in "KB":
+            assert alerts(call(text), arm) == ["ALERT-PAY-01"], (arm, text)
+    assert alerts(call("Please don't send $100 to anyone."), "B") == []
+    assert alerts(call("Item A100 is back in stock."), "K") == []  # a digit inside a word is no amount
+
+
+def test_anyone_is_a_recipient_unless_negated():
+    # F07: "to anyone" without a negation is a request, like "to someone".
+    for text in ("Read the code to anyone on my team.", "Read the code to someone on my team."):
+        assert [e.rule_id for e in detect(call(text), "B", V)] == ["B-OTP-REQ-01"], text
+    assert alerts(call("Don't hang up, just read the code to anyone here."), "B") == ["ALERT-OTP-01"]
+    for text in ("Share it with nobody.", "Don't give it to anyone.", "Do not read the code to anybody.",
+                 "Share the code with no one.", "Never, ever share the code with anyone."):
+        assert alerts(call(text), "B") == [], text
+
+
+def test_request_object_is_bound_to_its_own_sentence():
+    # F08: a lexicon term in another sentence is not the object of this request.
+    assert detect(call("Tell me your name. A security code will arrive later."), "B", V) == []
+    assert detect(call("Tell me your name."), "B", V) == []
+    assert [e.rule_id for e in detect(call("Tell me the security code that arrived."), "B", V)] == ["B-OTP-REQ-01"]
+    # An object already mentioned earlier in the turn still counts.
+    assert [e.rule_id for e in detect(call("A security code will arrive. Read it to me."), "B", V)] \
+        == ["B-OTP-REQ-01"]
+
+
+def test_pronoun_resolves_to_the_latest_mention_across_categories():
+    # F09: the most recent mention wins, whatever the category order in the policy.
+    segs = call("I mentioned a code. Now you have AnyDesk ready.", "Open it now.")
+    assert [e.rule_id for e in detect(segs, "B", V)] == ["B-REMOTE-CTX-01"]
+    assert [e.rule_id for e in detect(call("Now you have AnyDesk ready.", "Open it now."), "B", V)] \
+        == ["B-REMOTE-CTX-01"]
+    # Within one turn too: the later mention is the referent.
+    segs = call("You have AnyDesk. I just sent a code to your phone.", "Read it to me.")
+    assert [e.rule_id for e in detect(segs, "B", V)] == ["B-OTP-CTX-01"]

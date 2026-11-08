@@ -9,6 +9,7 @@ from collections.abc import AsyncIterator
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
+from app import consent, sms, storage
 from app.api.auth import require_operator
 from app.events import hub
 
@@ -25,3 +26,16 @@ async def event_lines() -> AsyncIterator[str]:
 @router.get("/events/stream")
 def stream() -> StreamingResponse:
     return StreamingResponse(event_lines(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
+
+
+@router.get("/state")
+def state() -> dict:
+    """Snapshot a console loads on every (re)connect, so events it missed are not lost: SMS mode,
+    WRONG total, DEMO_PHONE consent, and every event since the latest session start or reset."""
+    try:
+        consent_state = consent.get_state()
+    except RuntimeError:  # CONSENT_SALT unset
+        consent_state = None
+    wrong = sum(r["count"] for r in storage.aggregates()["replies"] if r["keyword"] == "WRONG")
+    return {"sms_mode": sms.get_mode(), "wrong_count": wrong, "consent": consent_state,
+            "events": [e.model_dump(mode="json") for e in hub.history]}

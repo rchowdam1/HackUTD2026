@@ -103,3 +103,14 @@ def test_reset_keeps_consent_and_aggregates(events):
     asyncio.run(pipeline.reset())
     assert consent.is_active()
     assert storage.aggregates()["replies"][0]["count"] == 1
+
+
+def test_hash_is_hmac_and_legacy_rows_migrate(events):
+    import hashlib
+    from contextlib import closing
+    legacy = hashlib.sha256(("test-salt" + DEMO).encode()).hexdigest()
+    assert consent._hash(DEMO) != legacy
+    with closing(storage.connect()) as conn, conn:
+        conn.execute("INSERT INTO consent (phone_hash, state) VALUES (?, 'active')", (legacy,))
+    assert consent.get_state() == "active"  # an enrolled phone survives the upgrade
+    assert stored_rows() == [(consent._hash(DEMO), "active")]

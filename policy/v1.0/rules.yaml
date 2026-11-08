@@ -18,6 +18,8 @@ negation_max_object_gap: 8
 
 # Clauses are split on sentence punctuation, "but" and "then"/"and then" (a new step).
 clause_split: '[.!?;]+|\bbut\b|,?\s+(?:and\s+)?then\b'
+# A request's object (lexicon term) must be in its sentence or an earlier one of the turn.
+sentence_split: '[.!?;]+'
 
 negation:
   - "don'?t"
@@ -51,8 +53,9 @@ negation:
 # negation and opens an aside ("do not, under any circumstances, share").
 negation_blockers: [and, then, just, now, instead, so]
 negation_max_aside_words: 5
-# A negated recipient after the verb: "share it with no one".
-negated_object: '(with|to) (no ?one|nobody|anyone|anybody)'
+# A negated recipient after the verb: "share it with no one". Not "anyone": it is negative
+# only under a negation of the verb ("don't give it to anyone"), which `negation` covers.
+negated_object: '(with|to) (no ?one|nobody)'
 # Only within the request's own object: a comma, "and" or "then" starts another
 # action ("read me the code and share it with nobody else" is still a request).
 negated_object_end: ',|\b(and|then)\b'

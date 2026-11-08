@@ -37,6 +37,9 @@ header { display: flex; align-items: center; gap: 1rem; }
 header .status { margin-left: auto; font-size: 1.2rem; font-weight: 600; }
 .tag { font-size: 0.75rem; padding: 0.15rem 0.5rem; border-radius: 999px; border: 1px solid var(--muted); color: var(--muted); text-transform: none; letter-spacing: 0; vertical-align: middle; }
 .tag.warn { border-color: #ffb020; color: #ffb020; }
+.tag.stale { border: 2px solid var(--alert); color: var(--alert); font-size: 1rem; font-weight: 700; }
+.action-error { margin: 0; padding: 0.5rem 1rem; border-radius: 8px; background: var(--alert); color: #000; font-weight: 700; display: flex; align-items: center; gap: 1rem; }
+.action-error button { margin-left: auto; border-color: #000; color: #000; padding: 0.2rem 0.8rem; }
 .controls { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
 .controls .spacer { flex: 1; }
 main { display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; flex: 1; }
@@ -56,6 +59,9 @@ footer { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 .why dl { display: grid; grid-template-columns: auto 1fr; gap: 0.3rem 1rem; margin: 0; font-size: 1.1rem; }
 .why dt { color: var(--muted); }
 .why dd { margin: 0; font-weight: 600; }
+.why .dispatch { margin: 0.8rem 0 0; font-size: 1.1rem; font-weight: 700; color: var(--muted); }
+.why .dispatch.sent, .why .dispatch.delivered { color: var(--ok); }
+.why .dispatch.failed { padding: 0.6rem 0.8rem; border-radius: 8px; background: var(--alert); color: #000; font-size: 1.4rem; font-weight: 800; }
 
 .counter .big { font-size: 4.5rem; font-weight: 800; line-height: 1; }
 
@@ -63,7 +69,9 @@ footer { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 .bubble { padding: 0.6rem 0.8rem; border-radius: 14px; font-size: 1.05rem; max-width: 92%; }
 .bubble small { display: block; font-size: 0.7rem; color: var(--muted); margin-top: 0.2rem; }
 .bubble.out { background: #2a2f3a; align-self: flex-start; }
-.bubble.out.failed { border: 2px solid var(--alert); }
+.bubble.out.failed { border: 3px solid var(--alert); background: #4a1c1c; }
+.bubble.out.failed small { color: var(--alert); font-size: 0.85rem; font-weight: 800; text-transform: uppercase; }
+.phone.compact .thread { max-height: 12rem; margin-bottom: 0; }
 .bubble.in { background: var(--ok); color: #000; align-self: flex-end; font-weight: 700; }
 .phone .keys { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.4rem; }
 

@@ -1,68 +1,38 @@
-"""Start the demo stack: cloudflared tunnel + Photon Spectrum bridge + app (PRD §19.3, #29, #68).
+"""Start the demo stack: app on 127.0.0.1:8000 + Photon Spectrum bridge (PRD §19.3, #68).
 
-Named tunnel when CLOUDFLARED_TUNNEL is set (PUBLIC_BASE_URL must already be its stable https URL);
-otherwise a quick tunnel, whose random trycloudflare.com URL is written to .env as PUBLIC_BASE_URL.
-Then starts the iMessage bridge in hackutd/ (`bun start`; skipped when PHOTON_BRIDGE_TOKEN is unset:
-simulated mode) and runs the app on :8000 with .env loaded.
+Nothing is published to the internet: the bridge reaches Photon over the SDK's own outbound
+connection, so no tunnel or public webhook is needed (docs/photon-live.md). The app starts first and
+the bridge only once /health answers, so inbound texts (STOP) are not dropped at startup. The bridge
+is skipped when PHOTON_BRIDGE_TOKEN is unset (simulated SMS only).
 Ctrl-C stops both. Never prints numbers or secrets.
 """
 from __future__ import annotations
 
 import os
-import re
 import subprocess
 import sys
-import threading
 import time
-from pathlib import Path
+import urllib.request
 
-from preflight_checks import REPO_ROOT, load_env, missing
+from preflight_checks import REPO_ROOT, load_env
 
 PORT = 8000
 ENV_FILE = REPO_ROOT / ".env"
 BRIDGE_DIR = REPO_ROOT / "hackutd"
-QUICK_URL = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
 
 
-def find_quick_url(line: str) -> str | None:
-    m = QUICK_URL.search(line)
-    return m.group(0) if m else None
-
-
-def set_env_line(text: str, key: str, value: str) -> str:
-    """Replace (or append) KEY=... in .env text, keeping every other line as is."""
-    lines = text.splitlines()
-    for i, line in enumerate(lines):
-        if line.strip().removeprefix("export ").split("=", 1)[0].strip() == key:
-            lines[i] = f"{key}={value}"
-            break
-    else:
-        lines.append(f"{key}={value}")
-    return "\n".join(lines) + "\n"
-
-
-def start_tunnel() -> tuple[subprocess.Popen, str]:
-    name = os.environ.get("CLOUDFLARED_TUNNEL", "").strip()
-    if name:
-        base = os.environ.get("PUBLIC_BASE_URL", "").strip().rstrip("/")
-        if not base.startswith("https://"):
-            sys.exit("CLOUDFLARED_TUNNEL is set: set PUBLIC_BASE_URL in .env to that tunnel's https hostname")
-        proc = subprocess.Popen(["cloudflared", "tunnel", "--no-autoupdate", "run", "--url",
-                                 f"http://localhost:{PORT}", name])
-        return proc, base
-    proc = subprocess.Popen(["cloudflared", "tunnel", "--no-autoupdate", "--url", f"http://localhost:{PORT}"],
-                            stderr=subprocess.PIPE, text=True)
-    deadline = time.monotonic() + 30
-    for line in proc.stderr:
-        if url := find_quick_url(line):
-            threading.Thread(target=proc.stderr.read, daemon=True).start()  # drain so the pipe never fills
-            ENV_FILE.write_text(set_env_line(ENV_FILE.read_text() if ENV_FILE.exists() else "",
-                                             "PUBLIC_BASE_URL", url))
-            return proc, url
-        if time.monotonic() > deadline:
-            break
-    proc.kill()
-    sys.exit("cloudflared quick tunnel printed no trycloudflare.com URL within 30 s")
+def wait_healthy(app: subprocess.Popen, url: str, timeout_s: float = 120) -> bool:
+    """Poll url until it answers 200, the app exits, or timeout_s passes."""
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline and app.poll() is None:
+        try:
+            with urllib.request.urlopen(url, timeout=2) as r:
+                if r.status == 200:
+                    return True
+        except OSError:
+            pass
+        time.sleep(0.5)
+    return False
 
 
 def start_bridge() -> subprocess.Popen | None:
@@ -76,20 +46,29 @@ def start_bridge() -> subprocess.Popen | None:
 
 def main() -> int:
     load_env(ENV_FILE)
-    tunnel, base = start_tunnel()
-    os.environ["PUBLIC_BASE_URL"] = base  # beats .env: uvicorn's --env-file never overrides set vars
-    print(f"demo_up: tunnel {base} -> localhost:{PORT}", flush=True)
-    bridge = start_bridge()
+    procs: list[subprocess.Popen] = []
     try:
-        app = subprocess.run(["uvicorn", "app.main:app", "--port", str(PORT),
-                              *(["--env-file", str(ENV_FILE)] if ENV_FILE.exists() else [])])
-        return app.returncode
+        app = subprocess.Popen(["uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", str(PORT),
+                                *(["--env-file", str(ENV_FILE)] if ENV_FILE.exists() else [])])
+        procs.append(app)
+        if not wait_healthy(app, f"http://127.0.0.1:{PORT}/health"):
+            print("demo_up: app did not become healthy; not starting the bridge", file=sys.stderr, flush=True)
+            return 1
+        print(f"demo_up: app on http://127.0.0.1:{PORT} (localhost only)", flush=True)
+        bridge = start_bridge()
+        if bridge:
+            procs.append(bridge)
+        return app.wait()
     except KeyboardInterrupt:
         return 0
     finally:
-        tunnel.terminate()
-        if bridge:
-            bridge.terminate()
+        for proc in reversed(procs):
+            proc.terminate()
+        for proc in procs:
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
 
 
 if __name__ == "__main__":

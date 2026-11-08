@@ -19,7 +19,7 @@ CallSafe texts you during a call when the caller asks for a code, money or acces
 make install                      # uv sync
 make run                          # backend on :8000 (needs OPERATOR_PASSWORD, SESSION_SECRET, CONSENT_SALT set)
 cd console && npm ci && npm run dev   # operator console; proxies the API to :8000
-make demo-up                      # demo laptop: tunnel + Photon bridge + app (docs/photon-live.md)
+make demo-up                      # demo laptop: app (127.0.0.1 only) + Photon bridge (docs/photon-live.md)
 scripts/preflight                 # go/no-go before judging
 python -m eval.run --arms K,B --batch dev   # writes results/latest.json and .md
 ```

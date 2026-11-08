@@ -1,11 +1,13 @@
-"""Consent (Track B): state per enrolled phone, stored only as a salted SHA-256.
+"""Consent (Track B): state per enrolled phone, stored only as an HMAC keyed by CONSENT_SALT.
 
-Numbers are E.164 strings; `phone=None` means env DEMO_PHONE. A phone with no
+Numbers are E.164 strings; `phone=None` means env DEMO_PHONE (operator simulation only:
+external inbound must name an enrolled sender, see app.sms.webhooks). A phone with no
 record is "invited" (not yet opted in). Every state change emits a `consent` event.
 """
 from __future__ import annotations
 
 import hashlib
+import hmac
 import os
 from contextlib import closing
 from typing import Literal
@@ -17,11 +19,20 @@ from app.models import ConsentPayload
 State = Literal["invited", "active", "stopped"]
 
 
-def _hash(phone: str) -> str:
+def _salt() -> str:
     salt = os.environ.get("CONSENT_SALT")
     if not salt:
         raise RuntimeError("CONSENT_SALT is not set")
-    return hashlib.sha256((salt + phone).encode()).hexdigest()
+    return salt
+
+
+def _hash(phone: str) -> str:
+    """HMAC-SHA256 keyed by CONSENT_SALT. Keep the salt out of any backup of data/."""
+    return hmac.new(_salt().encode(), b"consent-phone:" + phone.encode(), hashlib.sha256).hexdigest()
+
+
+def _legacy_hash(phone: str) -> str:
+    return hashlib.sha256((_salt() + phone).encode()).hexdigest()  # before HMAC; migrated on first read
 
 
 def _phone(phone: str | None) -> str | None:
@@ -29,8 +40,13 @@ def _phone(phone: str | None) -> str | None:
 
 
 def _stored(number: str) -> State | None:
-    with closing(storage.connect()) as conn:
+    with closing(storage.connect()) as conn, conn:
         row = conn.execute("SELECT state FROM consent WHERE phone_hash = ?", (_hash(number),)).fetchone()
+        if row is None:
+            row = conn.execute("SELECT state FROM consent WHERE phone_hash = ?", (_legacy_hash(number),)).fetchone()
+            if row is not None:
+                conn.execute("UPDATE consent SET phone_hash = ? WHERE phone_hash = ?",
+                             (_hash(number), _legacy_hash(number)))
     return row[0] if row else None
 
 
