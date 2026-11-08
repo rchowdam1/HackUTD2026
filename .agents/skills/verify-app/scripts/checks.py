@@ -34,6 +34,7 @@ UI_HANDLES = [
     "Why this alert", "No alert detected", "Caller asked for a code", "Caught by", "CallSafe rules",
     "Start live conversation", "Caller", "tap to stop", "Live mic", "Transcribing...",
     "Possible scam. Listen.", "Return to call", "Hang up", "They asked for a security code",
+    "The numbers", "Back to the call", "Blind test", "No production claim.",
     "Why it matters", "Whoever has the code can get into your account", "Speed", "Verdict", "Call time",
     "fixture replay", "call ended", "call running", "No texts yet.",
     "Opt in to call monitoring?", "Not now", "Monitoring on", "real SMS", "Alert text", "Follow-up text",
@@ -1134,14 +1135,37 @@ def design_fit(ctx: Context):
                    f"{w}x{h}: the alert bubble is fully visible on the phone", [b, s])
         ctx.shot(f"bank-alert-{w}")
     page.set_viewport_size({"width": 1440, "height": 900})
+    ctx.expect(page.locator(".results, .numbers").count() == 0, "the call screen carries no results band")
+
+
+@check("numbers.page", "console-design", ui=True)
+def numbers_page(ctx: Context):
+    page = open_console(ctx)
+    click_link = page.get_by_role("link", name="The numbers")
+    ctx.action("click the 'The numbers' link")
+    click_link.click()
+    nums = page.locator(".numbers")
+    ui_assert(ctx, "the numbers page opens", lambda: pw_expect()(nums).to_be_visible())
+    ui_assert(ctx, "the blind test is labelled with its size",
+              lambda: pw_expect()(nums).to_contain_text("Blind test · 6,228 scripted calls"))
+    dev = nums.locator("section", has=page.get_by_role("heading", name=re.compile("^Dev set")))
+    ui_assert(ctx, "the dev set says the rules were tuned on it",
+              lambda: pw_expect()(dev).to_contain_text("scripted calls the rules were tuned on"))
     results = ctx.api.get("/results/latest").json()
-    band = card(page, "^Results")
-    ui_assert(ctx, "results band labels the dev batch as the tuning set",
-              lambda: pw_expect()(band).to_contain_text("scripted calls the rules were tuned on"))
     for arm, c in results["arms"].items():
         want = f"{c['hard_benign_fp']} of {c['hard_benign_n']}"
-        ui_assert(ctx, f"results band shows arm {arm}'s false alerts from results/latest.json ({want})",
-                  lambda: pw_expect()(band).to_contain_text(want))
+        ui_assert(ctx, f"dev table shows arm {arm}'s hard-benign false alerts from results/latest.json ({want})",
+                  lambda: pw_expect()(dev).to_contain_text(want))
+    ui_assert(ctx, "no production claim", lambda: pw_expect()(nums).to_contain_text("No production claim."))
+    for w, h in ((1440, 900), (1280, 720), (390, 844)):
+        page.set_viewport_size({"width": w, "height": h})
+        page.wait_for_timeout(300)
+        fit = page.evaluate("() => [document.documentElement.scrollWidth, innerWidth]")
+        ctx.expect(fit[0] <= fit[1], f"{w}x{h}: the numbers page never scrolls sideways", fit)
+        ctx.shot(f"numbers-{w}")
+    page.set_viewport_size({"width": 1440, "height": 900})
+    page.get_by_role("link", name="Back to the call").click()
+    ui_assert(ctx, "back to the call screen", lambda: pw_expect()(page.get_by_role("button", name="Run bank")).to_be_visible())
 
 
 @check("ticker.turns", "console-design", ui=True)
