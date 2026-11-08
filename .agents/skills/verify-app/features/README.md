@@ -16,7 +16,7 @@ This directory is the maintained source for verifying what CallSafe's users can 
 - Prefer roles and accessible names: buttons by exact name (`Run bank`, `WRONG`), cards (`.card`, a `<section>` or, for the WRONG counter, a `<div>`) by their H2 (`Live transcript`, `Why this alert`, `Phone`, `WRONG replies`, `Held-out results`, `Where we fail`). The password input has no label; use its placeholder `Operator password`.
 - Every UI string a check depends on is listed in `UI_HANDLES` in `../scripts/checks.py`; `verify.py lint` fails when one disappears from `console/src`.
 - Wait on events, never on sleeps: the harness's own SSE subscriber (`events-<profile>.jsonl`) is the clock. The only fixed waits are "wait past the replay's natural end" to prove that nothing late arrives.
-- Replays are real time: clinic ≈14 s, bank ≈22 s. A full run takes about 4 minutes.
+- Replays are paced for the console's word-by-word typing: clinic ≈5.5 s, bank ≈8 s.
 
 ## Proof and skip reporting
 

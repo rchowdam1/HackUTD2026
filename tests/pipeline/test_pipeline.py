@@ -151,7 +151,9 @@ def test_process_with_stale_or_unknown_ref_is_dropped(gw):
     assert [(e.type, e.payload.get("state")) for e in events] == [("session", "running"), ("session", "reset")]
 
 
-def test_reset_mid_replay(gw, tmp_path):
+def test_reset_mid_replay(gw, tmp_path, monkeypatch):
+    monkeypatch.setattr(ingest, "WORD_MS", 60)  # 5 words: segment 2 at 300 ms; 6 more: segment 3 at 660 ms
+    monkeypatch.setattr(ingest, "TURN_GAP_MS", 0)
     lines = [(1, "caller", 20, "Hi, this is your bank."),
              (2, "caller", 40, "Can you read me the code?"),
              (3, "subscriber", 400, "Okay."),
@@ -162,7 +164,7 @@ def test_reset_mid_replay(gw, tmp_path):
 
     async def scenario():
         replay = asyncio.create_task(ingest.replay_transcript(path, realtime=True))
-        await asyncio.sleep(0.2)  # segments 1-2 processed, alert sent
+        await asyncio.sleep(0.45)  # segments 1-2 processed, alert sent
         ref = pipeline.current().ref
         await pipeline.reset()
         await replay  # ingest may stop early or keep feeding stale segments; either way they're dropped

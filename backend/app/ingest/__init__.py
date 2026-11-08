@@ -2,8 +2,8 @@
 
 Track B's `POST /demo/run/{scenario_id}` calls `run(scenario_id, ...)`.
 Source `asr` transcribes audio/demo/<id>/tNN.wav with whisper; source `cached`
-replays scenarios/demo/<id>/transcript.json. ASR falls back to cached when the
-scenario has no audio or the model can't load.
+replays scenarios/demo/<id>/transcript.json, paced for the console's word-by-word
+typing. ASR falls back to cached when the scenario has no audio or the model can't load.
 
 Cancellation is cooperative: a replay stops, without calling finish, as soon as
 another session (or none) is current.
@@ -21,6 +21,9 @@ from app.models import Scenario, Segment, SmsMode, Speaker, TranscriptLine
 
 DEMO_DIR = ROOT / "scenarios" / "demo"
 AUDIO_DIR = ROOT / "audio" / "demo"
+# Cached replay pacing. WORD_MS must match WORD_MS in console/src/App.tsx (the typing speed).
+WORD_MS = 100
+TURN_GAP_MS = 500
 log = logging.getLogger(__name__)
 
 # (ms into the call the segment is due, Segment fields except session_ref)
@@ -83,8 +86,12 @@ async def _replay(segments: Timed, sms_mode: SmsMode, realtime: bool) -> str:
 
 
 async def _cached(lines: list[TranscriptLine]) -> Timed:
+    """Each line is due once the one before has typed out in the console, plus a turn gap, so the
+    next line (and any alert it triggers) arrives just as the previous one finishes."""
+    due_ms = 0
     for line in lines:
-        yield line.t_end_ms, {"source": "cached", **line.model_dump()}
+        yield due_ms, {"source": "cached", **line.model_dump()}
+        due_ms += len(line.text.split()) * WORD_MS + TURN_GAP_MS
 
 
 async def _asr_turns(scenario_id: str) -> list[tuple[Speaker, Path]] | None:

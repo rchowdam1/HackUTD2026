@@ -124,6 +124,19 @@ def test_realtime_asr_emits_each_turn_no_earlier_than_its_audio_end(demo):
     assert seg_events[-1][1] - t0 < 5 * FAKE_DURATION_S + 0.5
 
 
+def test_realtime_cached_paces_each_line_by_its_typing_time(demo, monkeypatch):
+    monkeypatch.setattr(ingest, "WORD_MS", 10)
+    monkeypatch.setattr(ingest, "TURN_GAP_MS", 20)
+    _, events, t0 = replay(source="cached", realtime=True)
+    seg_events = [(e.payload, at) for e, at in events if e.type == "segment"]
+    expected_at = 0.0
+    for payload, at in seg_events:
+        # 30 ms slack: Windows timers tick at ~15.6 ms, so asyncio.sleep can wake a tick early.
+        assert at - t0 >= expected_at - 0.03
+        expected_at += (len(payload["text"].split()) * 10 + 20) / 1000
+    assert seg_events[0][1] - t0 < 0.5  # first line starts typing right away
+
+
 @pytest.mark.parametrize("source", ["asr", "cached"])
 def test_reset_mid_replay_stops_without_finish(demo, monkeypatch, source):
     real_process = pipeline.process

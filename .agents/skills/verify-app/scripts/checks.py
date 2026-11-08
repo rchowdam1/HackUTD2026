@@ -480,8 +480,8 @@ def controls_end_call(ctx: Context):
     click(ctx, page, "End call")
     fin = ctx.wait_event(lambda e: e["session_ref"] == ref and e["type"] == "session" and e["payload"]["state"] == "finished",
                          mark, 10, "session finished after End call")
-    ctx.action("wait past the replay's natural end (≈22 s) for late events")
-    time.sleep(max(0.0, 24 - (time.monotonic() - t0)))
+    ctx.action("wait past the replay's natural end (≈8 s) for late events")
+    time.sleep(max(0.0, 10 - (time.monotonic() - t0)))
     evs = events_for(ctx, mark, ref)
     after = evs[evs.index(fin) + 1:]
     ctx.expect(not after, "no events for the call after it finished", after)
