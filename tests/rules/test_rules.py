@@ -154,6 +154,19 @@ def test_negation_scope_ends_at_a_new_clause():
     assert alerts(call("Never, just read me the code."), "B") == ["ALERT-OTP-01"]
 
 
+def test_negated_recipient_scopes_to_the_matched_request():
+    # A secrecy instruction after "and" doesn't negate the request before it.
+    for template, text in (("ALERT-OTP-01", "Read me the code and share it with nobody else."),
+                           ("ALERT-REMOTE-01", "Download AnyDesk and talk to nobody about this."),
+                           ("ALERT-OTP-01", "Tell me the PIN, then share it with no one.")):
+        for arm in "KB":
+            assert alerts(call(text), arm) == [template], (arm, text)
+    # The negated recipient of the request itself still negates it.
+    for text in ("Share it with no one.", "Share the code with no one and hang up.",
+                 "Please send your PIN to nobody, ever."):
+        assert alerts(call(text), "B") == [], text
+
+
 def test_not_a_request():
     for text in ("We sent a code, tell me when you get it.",
                  "Give me a second while I pull up the code.",
