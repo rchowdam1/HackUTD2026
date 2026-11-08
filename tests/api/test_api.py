@@ -85,6 +85,7 @@ def test_sse_relays_a_fake_event(fixtures_dir):
 
     async def first_line():
         lines = stream.event_lines()
+        assert await anext(lines) == ": connected\n\n"  # sent at once, so EventSource opens without an event
         nxt = asyncio.create_task(anext(lines))
         while not hub._subscribers:
             await asyncio.sleep(0)

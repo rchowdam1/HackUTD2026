@@ -18,6 +18,9 @@ router = APIRouter(dependencies=[Depends(require_operator)])
 
 async def event_lines() -> AsyncIterator[str]:
     async with hub.subscribe() as q:
+        # A comment right away: the response headers go out now, so the console's EventSource opens (and
+        # reconciles from GET /state) without waiting for the next event.
+        yield ": connected\n\n"
         while True:
             event = await q.get()
             yield f"data: {event.model_dump_json()}\n\n"

@@ -29,7 +29,7 @@ Preconditions:
 ## Gotchas
 
 - Real mode is safe to toggle in the sandbox: `PHOTON_BRIDGE_URL` points at the discard port, the clinic call never alerts, and each real-mode call is reset immediately. Never run the bank call in real mode against a configured Photon bridge.
-- The console only learns the SMS mode from a click or a `session running` event; there is no API to read it. `controls.sms-mode-after-reload` fails for that reason: it is marked `known_gap` ([#64](https://github.com/rchowdam1/HackUTD2026/issues/64)), so the report shows it as KNOWN-GAP (assertion unchanged, verdict not failed). When it passes, the report says so; then drop the marker. After such a reload the Phone card is also shown although real mode is active.
+- On every (re)connect the console loads `GET /state`, which carries the backend's SMS mode, so `controls.sms-mode-after-reload` holds after a reload (the #64 gap is fixed; the check no longer carries `known_gap`). In real mode the Phone card becomes an outgoing-texts list without reply keys.
 - End call and Reset both cancel the replay task; Reset additionally invalidates the generation so late SMS tasks drop. Only Reset clears the transcript.
 - Reset emits `session reset` with the old `session_ref` (or null when idle). Filter late events by events *after* the reset event.
 - Not yet covered by a check: End call *after* the alert (≈20 s into the bank call) still sends the follow-up before `finished`; Run during a live call finishes the old session first; unknown scenario ids return 404.

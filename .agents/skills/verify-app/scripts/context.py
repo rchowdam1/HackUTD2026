@@ -8,6 +8,7 @@ that goes wrong inside a check is reported as FAIL with category `harness-error`
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import sqlite3
 import threading
@@ -159,8 +160,8 @@ class Context:
             conn.close()
 
     def phone_hash(self, phone: str) -> str:
-        """Computed independently from the documented scheme: sha256(CONSENT_SALT + E.164)."""
-        return hashlib.sha256((self.env["CONSENT_SALT"] + phone).encode()).hexdigest()
+        """Computed independently from the documented scheme: HMAC-SHA256(key=CONSENT_SALT, "consent-phone:" + E.164)."""
+        return hmac.new(self.env["CONSENT_SALT"].encode(), b"consent-phone:" + phone.encode(), hashlib.sha256).hexdigest()
 
     def consent_db(self, phone: str | None = None) -> str | None:
         rows = self.db_rows("SELECT state FROM consent WHERE phone_hash = ?", (self.phone_hash(phone or self.env["DEMO_PHONE"]),))
