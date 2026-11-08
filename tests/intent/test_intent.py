@@ -35,19 +35,29 @@ def on(monkeypatch):
     intent.clear_cache()
 
 
+class FakeClient:
+    """Stands in for intent's shared httpx.Client: `post` is the test's function."""
+    def __init__(self, post):
+        self.post = post
+
+
+def use_post(monkeypatch, post):
+    monkeypatch.setattr(intent, "_client", lambda: FakeClient(post))
+
+
 @pytest.fixture
 def jev(on, monkeypatch):
-    """Fake httpx.post: answers from `script(caller_turn) -> {question: noul}`; records requests."""
+    """Fake client: answers from `script(caller_turn) -> {question: noul}`; records requests."""
     sent = []
 
     def install(script):
-        def post(url, json, timeout, headers):
+        def post(url, json, headers, timeout):
             sent.append(dict(url=url, json=json, timeout=timeout, headers=headers))
             nouls = {**NO, **script(json["state"]["caller_turn"])}
             body = {"model": json["model"], "usage": {"input_tokens": 1, "output_tokens": 1},
                     "answers": {q: {"type": "noul", "noul": nouls[q]} for q in json["questions"]}}
             return httpx.Response(200, json=body, request=httpx.Request("POST", url))
-        monkeypatch.setattr(httpx, "post", post)
+        use_post(monkeypatch, post)
         return sent
     return install
 
@@ -65,7 +75,7 @@ def test_off_without_flag_or_key(monkeypatch):
     monkeypatch.setenv("INTENT_MODEL", "on")
     monkeypatch.delenv("TYPESAFE_API_KEY")
     assert not intent.enabled()
-    monkeypatch.setattr(httpx, "post", lambda *a, **k: pytest.fail("no call when off"))
+    use_post(monkeypatch, lambda *a, **k: pytest.fail("no call when off"))
     segs = call("Grandma, the lawyer says it's a lot.")
     assert intent.answers(segs) is None
     assert decide(segs, "C", V) == decide(segs, "B", V)
@@ -79,12 +89,37 @@ def test_off_without_flag_or_key(monkeypatch):
 def test_failed_call_is_an_error_and_falls_back_to_b(on, monkeypatch, caplog, failure):
     def post(*a, **k):
         raise failure
-    monkeypatch.setattr(httpx, "post", post)
+    use_post(monkeypatch, post)
     segs = call("Hi, it's the bank.", "I just sent a code. Read it to me.")
     with caplog.at_level(logging.ERROR, logger="app.intent"):
         assert intent.answers(segs) is None
         assert decide(segs, "C", V) == decide(segs, "B", V)
     assert any("falls back to arm B" in r.message for r in caplog.records)
+
+
+def test_connect_failure_is_retried_once_within_the_turn_budget(jev, monkeypatch, caplog):
+    sent = jev(lambda turn: {"otp_code": 0.99})
+    ok = intent._client().post
+    tries = []
+
+    def flaky(url, json, headers, timeout):
+        tries.append(timeout)
+        if len(tries) == 1:
+            raise httpx.ConnectTimeout("handshake timed out")
+        return ok(url, json=json, headers=headers, timeout=timeout)
+    use_post(monkeypatch, flaky)
+    with caplog.at_level(logging.WARNING, logger="app.intent"):
+        assert intent.answers(call("Read me the code."))["otp_code"] == 0.99
+    assert len(tries) == 2 and 0 < tries[1] < intent.TIMEOUT_S  # the retry gets what is left
+    assert any("retrying once" in r.message for r in caplog.records) and len(sent) == 1
+    # A second connect failure is an error: arm C falls back to arm B for that turn.
+    tries.clear()
+
+    def down(url, json, headers, timeout):
+        tries.append(timeout)
+        raise httpx.ConnectError("refused")
+    use_post(monkeypatch, down)
+    assert intent.answers(call("Read me the PIN.")) is None and len(tries) == 2
 
 
 def test_request_shape_auth_timeout_and_cache(jev):
@@ -96,7 +131,7 @@ def test_request_shape_auth_timeout_and_cache(jev):
     (req,) = sent
     assert req["url"] == "https://api.typesafe.ai/v1/systemone"
     assert req["headers"] == {"Authorization": "Bearer test-key"}
-    assert req["timeout"] == intent.TIMEOUT_S <= 1.5
+    assert req["timeout"].read == intent.TIMEOUT_S <= 1.5 and req["timeout"].connect == intent.CONNECT_S
     body = req["json"]
     assert body["model"].startswith("jev-")
     assert body["state"] == {

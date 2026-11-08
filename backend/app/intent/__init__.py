@@ -22,6 +22,7 @@ import json
 import logging
 import os
 import threading
+import time
 from typing import Literal
 
 import httpx
@@ -30,7 +31,12 @@ from app.models import Category, Segment
 
 URL = "https://api.typesafe.ai/v1/systemone"
 MODEL = "jev-1.14.0"  # pinned: thresholds below were tuned on this version
-TIMEOUT_S = 1.5  # per caller turn (PRD 19.7 latency budget)
+TIMEOUT_S = 1.5  # per caller turn, retry included (PRD 19.7 latency budget)
+CONNECT_S = 0.5  # a TLS handshake slower than this is abandoned and retried once ...
+RETRY_MIN_S = 0.3  # ... if at least this much of the turn's budget is left
+KEEPALIVE_S = 120  # keep the connection warm between turns of a call
+_RETRYABLE = (httpx.ConnectError, httpx.ConnectTimeout, httpx.RemoteProtocolError, httpx.ReadError,
+              httpx.WriteError)
 CONTEXT_TURNS = 3  # earlier turns sent with the caller turn
 
 # Who is who, in plain words; every question refers to the state by these paths.
@@ -172,6 +178,7 @@ log = logging.getLogger(__name__)
 _cache: dict[str, dict[str, float] | None] = {}
 _lock = threading.Lock()
 failures = 0  # failed calls since start (each fell back to arm B), for eval provenance
+_http: httpx.Client | None = None
 
 
 def enabled() -> bool:
@@ -202,10 +209,29 @@ def payload(window: list[Segment]) -> dict:
     return {"model": MODEL, "state": state(window), "questions": QUESTIONS}
 
 
+def _client() -> httpx.Client:
+    """One client per process, so turns reuse a warm TLS connection (keep-alive)."""
+    global _http
+    with _lock:
+        if _http is None:
+            _http = httpx.Client(limits=httpx.Limits(keepalive_expiry=KEEPALIVE_S))
+        return _http
+
+
 def _post(body: dict) -> dict:
-    """POST one System One request. Raises on any transport or HTTP error."""
-    r = httpx.post(URL, json=body, timeout=TIMEOUT_S,
-                   headers={"Authorization": f"Bearer {os.environ['TYPESAFE_API_KEY'].strip()}"})
+    """POST one System One request within TIMEOUT_S in total. A connection that fails to open, or a
+    kept-alive one the server already closed, is retried once if time is left (the request is
+    idempotent). Raises on any other transport or HTTP error."""
+    deadline = time.monotonic() + TIMEOUT_S
+    headers = {"Authorization": f"Bearer {os.environ['TYPESAFE_API_KEY'].strip()}"}
+    try:
+        r = _client().post(URL, json=body, headers=headers, timeout=httpx.Timeout(TIMEOUT_S, connect=CONNECT_S))
+    except _RETRYABLE as e:
+        left = deadline - time.monotonic()
+        if left < RETRY_MIN_S:
+            raise
+        log.warning("TypeSafe connection failed (%s); retrying once", type(e).__name__)
+        r = _client().post(URL, json=body, headers=headers, timeout=left)
     r.raise_for_status()
     return r.json()
 
