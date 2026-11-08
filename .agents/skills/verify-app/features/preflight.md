@@ -26,4 +26,4 @@ Preconditions:
 
 - The live half (Photon bridge, consent, SMS round trip, AC power) is external; a FAIL there in the sandbox is expected and not a product bug.
 - Preflight reads `.env` from the repo root it runs in; the sandbox has none, by design.
-- `check_replay` patches the SMS gateway, so preflight never texts anyone even when Twilio is configured.
+- `check_replay` patches the SMS gateway, so preflight never texts anyone even when real SMS is configured.
