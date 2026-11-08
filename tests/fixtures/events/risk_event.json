@@ -13,7 +13,8 @@
       4
     ],
     "confidence_class": "high",
-    "policy_version": "v1.0"
+    "policy_version": "v1.0",
+    "match_spans": []
   },
   "generation": 1
 }

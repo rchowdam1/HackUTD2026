@@ -22,6 +22,7 @@ export interface RiskEvent {
   confidence_class: "high" | "medium" | "low";
   policy_version: string;
   score: number | null; // intent events: the model's probability that the caller asked
+  match_spans: [number, number][]; // rule events: [start, end) offsets into segment span_seq[-1]
 }
 
 export interface Decision {

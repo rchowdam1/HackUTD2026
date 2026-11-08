@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { Fragment, type ReactNode, useCallback, useEffect, useReducer, useRef, useState } from "react";
 import * as api from "./api";
 import OptInPrompt from "./OptInPrompt";
 import { initial, reduce, type Action, type Bubble, type State } from "./state";
@@ -14,6 +14,11 @@ const CATEGORY_WORDS: Record<RiskEvent["category"], string> = {
   otp: "Caller asked for a code",
   payment: "Caller asked for money",
   remote: "Caller asked for access to the device",
+};
+const DANGER_WORDS: Record<RiskEvent["category"], string> = {
+  otp: "Whoever has the code can get into your account. Your bank never asks you to read one back.",
+  payment: "Money sent this way is almost never recovered. Real organisations let you hang up and call back.",
+  remote: "Remote access lets a stranger control your device, including your banking apps.",
 };
 const DISPATCH_WORDS: Record<SmsPayload["status"], string> = {
   queued: "Alert text queued",
@@ -85,6 +90,7 @@ function Console({ onLoggedOut }: { onLoggedOut: (why: string | null) => void })
   const [stream, setStream] = useState<"connecting" | "live" | "stale">(FIXTURES ? "live" : "connecting");
   const [error, setError] = useState<string | null>(null);
   const live = useRef(new Set<string>()); // segments that arrived over the stream type out; hydrated ones don't
+  const arrived = useRef(new Map<string, number>()); // receive time per segment / sms, before the typing hold
 
   useEffect(() => {
     if (!error) return;
@@ -128,7 +134,11 @@ function Console({ onLoggedOut }: { onLoggedOut: (why: string | null) => void })
       setStream("live");
     };
     const unsubscribe = api.subscribe({
-      event: (e) => (buffer ? buffer.push(e) : paced(e)),
+      event: (e) => {
+        const key = e.type === "segment" ? segKey(e.payload) : e.type === "sms" ? e.payload.message_id : null;
+        if (key && !arrived.current.has(key)) arrived.current.set(key, Date.now());
+        return buffer ? buffer.push(e) : paced(e);
+      },
       open: () => {
         buffer = [];
         clearTimeout(retry);
@@ -170,7 +180,7 @@ function Console({ onLoggedOut }: { onLoggedOut: (why: string | null) => void })
       <main>
         <Transcript state={state} live={live.current} />
         <aside>
-          <WhyPanel state={state} />
+          <WhyPanel state={state} arrived={arrived.current} />
           <Phone bubbles={state.bubbles} simulated={state.smsMode === "simulated"} off={monitoringOff(state)} />
         </aside>
       </main>
@@ -260,8 +270,10 @@ function TypedText({ text, animate }: { text: string; animate: boolean }) {
   return <span className="typing">{all.slice(0, shown).join(" ")}</span>;
 }
 
-function WhyPanel({ state }: { state: State }) {
+function WhyPanel({ state, arrived }: { state: State; arrived: Map<string, number> }) {
   const alert = state.decisions.find((d) => d.level === "action_warning");
+  const sms = alert && state.bubbles.find((b) => b.kind === "out" && b.sms.template_id === alert.template_id);
+  const told = useTemplateText(sms && alert ? alert.template_id : null);
   if (!alert) {
     return (
       <section className="card why">
@@ -271,14 +283,42 @@ function WhyPanel({ state }: { state: State }) {
     );
   }
   const risk = state.risks.find((r) => r.rule_id && alert.basis.includes(r.rule_id));
-  const sms = state.bubbles.find((b) => b.kind === "out" && b.sms.template_id === alert.template_id);
   const status = sms?.kind === "out" ? sms.sms.status : null;
   const optedOut = !sms && monitoringOff(state);
+  const line = risk && state.segments.find((s) => s.seq === risk.span_seq[risk.span_seq.length - 1]);
+  const lineAt = line && arrived.get(segKey(line));
+  const smsAt = sms?.kind === "out" ? arrived.get(sms.sms.message_id) : undefined;
   return (
     <section className="card why alert">
       <h2>Why this alert</h2>
       <p className="big-text">{risk ? CATEGORY_WORDS[risk.category] : alert.template_id}</p>
       <dl>
+        {line && (
+          <>
+            <dt>{line.speaker === "caller" ? "Caller said" : "You said"}</dt>
+            <dd className="quote">
+              &ldquo;<Highlighted text={line.text} spans={risk.match_spans} />&rdquo;
+            </dd>
+          </>
+        )}
+        {risk && (
+          <>
+            <dt>Why it matters</dt>
+            <dd>{DANGER_WORDS[risk.category]}</dd>
+          </>
+        )}
+        {told && (
+          <>
+            <dt>We texted</dt>
+            <dd>{told.replace(/^CallSafe:\s*(\w)/, (_, c: string) => c.toUpperCase())}</dd>
+          </>
+        )}
+        {lineAt && smsAt && (
+          <>
+            <dt>Speed</dt>
+            <dd>Alert went out {Math.max(0, smsAt - lineAt)} ms after the line came in</dd>
+          </>
+        )}
         <dt>Caught by</dt>
         <dd>{risk ? caughtBy(risk) : "-"}</dd>
       </dl>
@@ -287,6 +327,19 @@ function WhyPanel({ state }: { state: State }) {
       </p>
     </section>
   );
+}
+
+// The words the rule matched (RiskEvent.match_spans: sorted [start, end) offsets into the line).
+function Highlighted({ text, spans }: { text: string; spans: [number, number][] }) {
+  const parts: ReactNode[] = [];
+  let at = 0;
+  for (const [a, b] of spans) {
+    if (a < at) continue;
+    parts.push(text.slice(at, a), <mark key={a}>{text.slice(a, b)}</mark>);
+    at = b;
+  }
+  parts.push(text.slice(at));
+  return <>{parts}</>;
 }
 
 function caughtBy(r: RiskEvent): string {
@@ -324,11 +377,16 @@ function Phone({ bubbles, simulated, off }: { bubbles: Bubble[]; simulated: bool
   );
 }
 
-function OutBubble({ b }: { b: Extract<Bubble, { kind: "out" }> }) {
+function useTemplateText(id: string | null): string | null {
   const [text, setText] = useState<string | null>(null);
   useEffect(() => {
-    if (!FIXTURES) api.templateText(b.sms.template_id).then(setText);
-  }, [b.sms.template_id]);
+    if (id && !FIXTURES) api.templateText(id).then(setText);
+  }, [id]);
+  return id ? text : null;
+}
+
+function OutBubble({ b }: { b: Extract<Bubble, { kind: "out" }> }) {
+  const text = useTemplateText(b.sms.template_id);
   return (
     <div className={`bubble out ${b.sms.status}`}>
       {text ?? b.sms.template_id}
