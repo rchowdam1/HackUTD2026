@@ -16,7 +16,7 @@ For subscribers who opt in by text, Safe Signal follows the call's transcript. W
 - SQLite holding consent (salted hashes of numbers) and counts only; no audio, transcripts or raw numbers stored
 - React + TypeScript + Vite operator console
 - Demo call voices generated offline with Qwen3-TTS (synthetic voices)
-- Evaluation: a 40-call dev set for tuning, and 60 held-out scripted calls (H1) written by a teammate who never saw the rules, sealed by hash before scoring
+- Evaluation: a 40-call dev set for tuning, and 60 held-out scripted calls (H1) written by an AI agent in a separate context that never saw the rules, the rule tests or any results, sealed by hash before scoring
 
 ## Results
 On H1 (60 scripted calls, scored on scripted transcripts rather than ASR): keyword baseline [recall x of n; hard-benign false alerts x of n], Safe Signal [recall x of n; hard-benign false alerts x of n], paired discordant [k vs b]. This sample is too small for a production claim.
