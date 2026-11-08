@@ -4,10 +4,11 @@ Jev makes atomic judgments; code decides. For each caller turn we send one reque
 whose state is the current caller turn plus the few turns before it (speaker-labelled).
 It bundles, answered in parallel:
 - request Nouls, several per alert category (one per way of handing over a code, money or
-  device access), combined with OR (the max);
+  device access), combined with OR (the max) within a request group;
 - guard Nouls for the known false-positive patterns (a warning, a request someone else
-  made, something already done, paying a payee the listener chose, doing it yourself);
-- a pressure Noul (urgency or threats) that lets a likely request through raised guards.
+  made, something already done, paying a payee the listener chose, doing it yourself),
+  each applied only to the request groups where it separates scams from benign calls;
+- a pressure Noul (urgency or threats) that lets a sure request through situational guards.
 `judge` maps those answers to a decision per category: evidence ("confirm" when the
 lexicon saw the category in the window, else model-only "solo"), a "veto" of the rules'
 request on that turn, or nothing. All question wording and thresholds live in this module.
@@ -22,6 +23,7 @@ import json
 import logging
 import os
 import threading
+import time
 from typing import Literal
 
 import httpx
@@ -30,7 +32,12 @@ from app.models import Category, Segment
 
 URL = "https://api.typesafe.ai/v1/systemone"
 MODEL = "jev-1.14.0"  # pinned: thresholds below were tuned on this version
-TIMEOUT_S = 1.5  # per caller turn (PRD 19.7 latency budget)
+TIMEOUT_S = 1.5  # per caller turn, retry included (PRD 19.7 latency budget)
+CONNECT_S = 0.5  # a TLS handshake slower than this is abandoned and retried once ...
+RETRY_MIN_S = 0.3  # ... if at least this much of the turn's budget is left
+KEEPALIVE_S = 120  # keep the connection warm between turns of a call
+_RETRYABLE = (httpx.ConnectError, httpx.ConnectTimeout, httpx.RemoteProtocolError, httpx.ReadError,
+              httpx.WriteError)
 CONTEXT_TURNS = 3  # earlier turns sent with the caller turn
 
 # Who is who, in plain words; every question refers to the state by these paths.
@@ -72,6 +79,9 @@ QUESTIONS: dict[str, dict] = {
         "The caller wants to learn the secret, including by having the listener key it in on the phone keypad "
         "during the call.",
         "The caller only mentions a password or PIN, or tells the listener to change it on their own."),
+    "otp_hear": _noul(
+        "In `caller_turn`, does the caller want the listener to read out, say or repeat to them a number or code "
+        "from a text, email, letter, card or screen?"),
     # Money.
     "payment": {
         "type": "noul",
@@ -113,6 +123,15 @@ QUESTIONS: dict[str, dict] = {
     "rem_control": _noul(
         "In `caller_turn`, does the caller ask the listener to share their screen, or to let the caller or "
         "their staff see, connect to or control the listener's device?"),
+    # Who ends up inside the device: the caller's side (a scam) or nobody (do-it-yourself help).
+    "rem_access": _noul(
+        "In `caller_turn`, does the caller ask for a step that would let the caller, or people working with the "
+        "caller, see, connect to or control the listener's computer, phone or online accounts?",
+        "The caller's side would get into the listener's device or account, e.g. through a tool the listener "
+        "installs, a connection or session the listener accepts or joins, the listener sharing their screen, or "
+        "remote control turned on.",
+        "The listener makes the change or installs something on their own, the caller shows the listener the "
+        "caller's own screen, or the caller is retelling what someone else asked for."),
     # --- Guards: the usual false-positive patterns, one judgment each. ---
     "warning": {
         "type": "noul",
@@ -143,28 +162,40 @@ QUESTIONS: dict[str, dict] = {
         "frozen account, lost money or harm to someone if they don't?"),
 }
 CATEGORIES: tuple[Category, ...] = ("otp", "payment", "remote")
-REQUESTS: dict[Category, tuple[str, ...]] = {
-    "otp": ("otp", "otp_code", "otp_secret"),
-    "payment": ("payment", "pay_cards", "pay_send", "pay_details"),
-    "remote": ("remote", "rem_install", "rem_control"),
+# Per category, request groups: (request Nouls combined with OR, the guards that block them).
+# Each guard only where it separates the classes on training data (all three writer sets):
+# - "done" never separated codes (it fires on "read it and you're all set"), so codes don't use it;
+# - "known_payee" is for money only;
+# - "self_service" blocks only the broad device requests (install, open), and only when near-sure:
+#   real scams also say "install it yourself", but they still want the caller's side let in, which
+#   rem_control / rem_access ask directly.
+_SAY = ("warning", "reported")
+GROUPS: dict[Category, tuple[tuple[tuple[str, ...], tuple[str, ...]], ...]] = {
+    "otp": ((("otp", "otp_code", "otp_secret", "otp_hear"), _SAY),),
+    "payment": ((("payment", "pay_cards", "pay_send", "pay_details"), _SAY + ("done", "known_payee")),),
+    "remote": ((("rem_control", "rem_access"), _SAY),
+               (("remote", "rem_install"), _SAY + ("done", "self_service"))),
 }
-# Each guard only where it separates the classes on training data: "known_payee" for money,
-# "self_service" for device access only (for codes and money it also fires on real scams:
-# "go buy the cards yourself").
-_COMMON_GUARDS = ("warning", "reported", "done")
-GUARDS: dict[Category, tuple[str, ...]] = {
-    "otp": _COMMON_GUARDS,
-    "payment": _COMMON_GUARDS + ("known_payee",),
-    "remote": _COMMON_GUARDS + ("self_service",),
-}
+REQUESTS: dict[Category, tuple[str, ...]] = {c: tuple(q for qs, _ in GROUPS[c] for q in qs) for c in CATEGORIES}
+GUARDS: dict[Category, tuple[str, ...]] = {c: tuple(dict.fromkeys(g for _, gs in GROUPS[c] for g in gs))
+                                           for c in CATEGORIES}
+# Near-certain evidence whatever the situational guards say. For device access only the direct
+# "let the caller in" Nouls: a sure "install it" is just as sure when the listener does it alone.
+SURE: dict[Category, tuple[str, ...]] = {"otp": REQUESTS["otp"], "payment": REQUESTS["payment"],
+                                         "remote": ("rem_control", "rem_access")}
+PRESSABLE = ("reported", "done", "known_payee")  # situational guards that scam pressure overrules
 
-# Thresholds, tuned on dev + t1/t2 (Claude-written calls) and validated on H2 (GPT-written),
-# and the reverse; both directions chose this region (report on issue #67).
-CERTAIN = 0.97  # a request this sure is evidence whatever the guards say
-LIKELY = 0.7  # a request this sure is evidence when no guard is raised
-GUARD_MAX = 0.3  # a guard at or above this is raised
-PRESSED_REQUEST = 0.85  # ... but a request this sure
-PRESSURE = 0.7  # ... from a caller pressing this hard overrules the guards
+# Thresholds, chosen by leave-one-writer-set-out validation (Claude / GPT+Cursor / mixed sets;
+# report on issue #67).
+CERTAIN = 0.95  # a SURE request this sure is evidence unless the caller is warning about it
+LIKELY = 0.7  # a request this sure is evidence when none of its group's guards is raised
+GUARD_MAX = 0.4  # a guard at or above this is raised ...
+GUARD_BAR = {"reported": 0.5, "self_service": 0.8}  # ... except these, which also fire on scams
+WARNED = 0.7  # a warning this sure blocks even a near-certain request and vetoes a rules hit
+PRESSED_REQUEST = 0.85  # a request this sure
+PRESSURE = 0.7  # ... from a caller pressing this hard overrules the PRESSABLE guards
+NO_REQUEST = 0.3  # a rules hit Jev scores below this as a request ...
+DIY = 0.8  # ... is vetoed when Jev is this sure the caller says "do it yourself"
 
 Judgment = Literal["confirm", "solo", "veto"]
 
@@ -172,6 +203,7 @@ log = logging.getLogger(__name__)
 _cache: dict[str, dict[str, float] | None] = {}
 _lock = threading.Lock()
 failures = 0  # failed calls since start (each fell back to arm B), for eval provenance
+_http: httpx.Client | None = None
 
 
 def enabled() -> bool:
@@ -202,10 +234,29 @@ def payload(window: list[Segment]) -> dict:
     return {"model": MODEL, "state": state(window), "questions": QUESTIONS}
 
 
+def _client() -> httpx.Client:
+    """One client per process, so turns reuse a warm TLS connection (keep-alive)."""
+    global _http
+    with _lock:
+        if _http is None:
+            _http = httpx.Client(limits=httpx.Limits(keepalive_expiry=KEEPALIVE_S))
+        return _http
+
+
 def _post(body: dict) -> dict:
-    """POST one System One request. Raises on any transport or HTTP error."""
-    r = httpx.post(URL, json=body, timeout=TIMEOUT_S,
-                   headers={"Authorization": f"Bearer {os.environ['TYPESAFE_API_KEY'].strip()}"})
+    """POST one System One request within TIMEOUT_S in total. A connection that fails to open, or a
+    kept-alive one the server already closed, is retried once if time is left (the request is
+    idempotent). Raises on any other transport or HTTP error."""
+    deadline = time.monotonic() + TIMEOUT_S
+    headers = {"Authorization": f"Bearer {os.environ['TYPESAFE_API_KEY'].strip()}"}
+    try:
+        r = _client().post(URL, json=body, headers=headers, timeout=httpx.Timeout(TIMEOUT_S, connect=CONNECT_S))
+    except _RETRYABLE as e:
+        left = deadline - time.monotonic()
+        if left < RETRY_MIN_S:
+            raise
+        log.warning("TypeSafe connection failed (%s); retrying once", type(e).__name__)
+        r = _client().post(URL, json=body, headers=headers, timeout=left)
     r.raise_for_status()
     return r.json()
 
@@ -236,26 +287,49 @@ def answers(window: list[Segment]) -> dict[str, float] | None:
     return result
 
 
+def _bar(guard: str) -> float:
+    return GUARD_BAR.get(guard, GUARD_MAX)
+
+
+def _evidence(ans: dict[str, float], category: Category) -> bool:
+    """Does Jev, on its own, find a request in this category on this turn?"""
+    if ans["warning"] >= WARNED:
+        return False
+    if max(ans[q] for q in SURE[category]) >= CERTAIN:
+        return True
+    pressured = ans["pressure"] >= PRESSURE
+    for requests, guards in GROUPS[category]:
+        request = max(ans[q] for q in requests)
+        if request < LIKELY:
+            continue
+        raised = [g for g in guards if ans[g] >= _bar(g)]
+        if not raised or (request >= PRESSED_REQUEST and pressured and set(raised) <= set(PRESSABLE)):
+            return True
+    return False
+
+
 def judge(ans: dict[str, float], category: Category, lexicon_seen: bool,
           rule_fired: bool = False) -> Judgment | None:
     """The decision table for one category on one caller turn.
 
-    request = max of the category's request Nouls; guarded = any of its guards >= GUARD_MAX;
-    pressed = request >= PRESSED_REQUEST and pressure >= PRESSURE (overrules raised guards).
-    - request >= CERTAIN, or request >= LIKELY and (not guarded or pressed): evidence. It
-      confirms the category when the lexicon saw it in the window, else it is model-only (solo).
-    - the rules fired on this turn (rule_fired), but guarded, not pressed and request < CERTAIN:
-      "veto" (a warning, a report or a done deal that the rules read as a request).
-    - anything else: no judgment (a rules request stands; no model evidence).
+    Evidence (`_evidence`), unless the caller is warning (warning >= WARNED):
+    - a SURE request Noul >= CERTAIN; or
+    - in some request group, request (max of its Nouls) >= LIKELY and none of its guards raised
+      (guard >= its bar), or request >= PRESSED_REQUEST under pressure >= PRESSURE with only
+      PRESSABLE guards raised.
+    Evidence confirms the category when the lexicon saw it in the window, else it is model-only (solo).
+    The rules fired on this turn (rule_fired) and Jev finds no evidence: "veto" when a warning, a guard
+    of the category is raised, or Jev scores the request < NO_REQUEST and do-it-yourself >= DIY.
+    Anything else: no judgment (a rules request stands; no model evidence).
     """
-    request = max(ans[q] for q in REQUESTS[category])
-    guarded = max(ans[g] for g in GUARDS[category]) >= GUARD_MAX
-    pressed = request >= PRESSED_REQUEST and ans["pressure"] >= PRESSURE
-    if rule_fired:
-        return "veto" if guarded and not pressed and request < CERTAIN else None
-    if request >= CERTAIN or (request >= LIKELY and (pressed or not guarded)):
-        return "confirm" if lexicon_seen else "solo"
-    return None
+    evidence = _evidence(ans, category)
+    if not rule_fired:
+        return ("confirm" if lexicon_seen else "solo") if evidence else None
+    if evidence:
+        return None
+    guarded = any(ans[g] >= _bar(g) for g in GUARDS[category])
+    no_request = max(ans[q] for q in REQUESTS[category]) < NO_REQUEST and ans["self_service"] >= DIY
+    return "veto" if guarded or no_request else None
 
 
 def clear_cache() -> None:
