@@ -1,6 +1,6 @@
 ---
 name: maintain-verification
-description: "Keep Safe Signal's verification honest as the code changes: map git diffs to verify-app features, detect stale recipes and selectors, re-drive affected features live, rerun the TLA+ pipeline check, and ship one PR of proven verification fixes without masking app bugs. Use after merges, before a release/demo, when verify-app fails in a way that smells like drift, or for 'audit the verify skill'."
+description: "Keep CallSafe's verification honest as the code changes: map git diffs to verify-app features, detect stale recipes and selectors, re-drive affected features live, rerun the TLA+ pipeline check, and ship one PR of proven verification fixes without masking app bugs. Use after merges, before a release/demo, when verify-app fails in a way that smells like drift, or for 'audit the verify skill'."
 ---
 
 # Maintain the verification skills

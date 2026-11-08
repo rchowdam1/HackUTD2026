@@ -1,6 +1,6 @@
-# Safe Signal verification map
+# CallSafe verification map
 
-This directory is the maintained source for verifying what Safe Signal's users can do: the operator at the judging table (console), the subscriber's phone (SMS replies), the Photon bridge (inbound), and the team's CLIs (eval, preflight). Read this index before driving the app, then use the matching feature file as the recipe. `coverage.json` is the machine-readable half: which source paths each feature covers, which paths force a full run, what is out of automated scope, and the commit each feature was last verified at.
+This directory is the maintained source for verifying what CallSafe's users can do: the operator at the judging table (console), the subscriber's phone (SMS replies), the Photon bridge (inbound), and the team's CLIs (eval, preflight). Read this index before driving the app, then use the matching feature file as the recipe. `coverage.json` is the machine-readable half: which source paths each feature covers, which paths force a full run, what is out of automated scope, and the commit each feature was last verified at.
 
 ## Baseline preconditions
 

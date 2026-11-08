@@ -140,7 +140,7 @@ BLOCKED is never a pass. Report a FAIL in an area you don't own to its owner; do
 
 ## Project Context
 
-- What we're building: Safe Signal, an SMS alert sent during a call when the caller asks for a code, money or access (`PRD.md` §19 is the spec).
+- What we're building: CallSafe, an SMS alert sent during a call when the caller asks for a code, money or access (`PRD.md` §19 is the spec).
 - Stack: Python 3.11 FastAPI backend (`backend/app`), React/Vite console (`console/`), SQLite, Twilio or a simulated SMS gateway, faster-whisper, uv.
 - Setup / run: `make install`, `make run` (backend :8000), `cd console && npm ci && npm run dev`, `make demo-up` on the demo laptop. See README.md.
 - Test: `make smoke` before every merge; `make verify-changed` for live verification of what you touched (`docs/verification.md`).

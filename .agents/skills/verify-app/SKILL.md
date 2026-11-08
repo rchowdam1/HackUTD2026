@@ -1,11 +1,11 @@
 ---
 name: verify-app
-description: "Verify Safe Signal end to end: launch the real FastAPI backend + Vite operator console in an isolated sandbox, drive user journeys with Playwright, the API, Photon bridge inbound posts and the CLIs, and prove outcomes via SSE, SQLite and files. Use after changing backend/, console/, policy/, scenarios/demo/, eval/ or scripts/, before opening a PR, or when asked whether a feature actually works."
+description: "Verify CallSafe end to end: launch the real FastAPI backend + Vite operator console in an isolated sandbox, drive user journeys with Playwright, the API, Photon bridge inbound posts and the CLIs, and prove outcomes via SSE, SQLite and files. Use after changing backend/, console/, policy/, scenarios/demo/, eval/ or scripts/, before opening a PR, or when asked whether a feature actually works."
 ---
 
-# Verify Safe Signal
+# Verify CallSafe
 
-Safe Signal is one FastAPI process (`backend/app`) plus a React/Vite operator console (`console/`). Users touch it through the console (operator), the simulated or real phone (SMS keywords), the Photon bridge's inbound posts, and two CLIs (`python -m eval.run`, `scripts/preflight`). This skill launches the real app, drives those paths the way a user would, and writes PASS / FAIL / BLOCKED with evidence. The recipes per feature live in [`features/`](features/README.md); start there to know what a check proves.
+CallSafe is one FastAPI process (`backend/app`) plus a React/Vite operator console (`console/`). Users touch it through the console (operator), the simulated or real phone (SMS keywords), the Photon bridge's inbound posts, and two CLIs (`python -m eval.run`, `scripts/preflight`). This skill launches the real app, drives those paths the way a user would, and writes PASS / FAIL / BLOCKED with evidence. The recipes per feature live in [`features/`](features/README.md); start there to know what a check proves.
 
 Everything goes through one helper, `scripts/verify.py` (stdlib + the project venv + Playwright 1.64.1). Run it from the repo root (any worktree):
 
@@ -33,7 +33,7 @@ What launch does, in order:
 2. Snapshots the working tree (`git ls-files -co --exclude-standard`, so uncommitted edits are included; `scenarios/H1/` excluded) into `.verify/sandbox/<run_id>/`. The app resolves `data/` and `results/` from its own file path, so the sandbox's copies are what it writes.
 3. Writes a clean environment (nothing inherited but PATH/HOME/locale): random `OPERATOR_PASSWORD`, `SESSION_SECRET`, `CONSENT_SALT`; random `PHOTON_BRIDGE_TOKEN` and `PHOTON_BRIDGE_URL=http://127.0.0.1:9`; fictional `DEMO_PHONE=+15550100001`, `SPARE_PHONE=+15550100002`; `PUBLIC_BASE_URL=http://127.0.0.1:<port>`; `REPLAY_SOURCE=cached` (profile `cached`) or `asr`; `HF_HUB_OFFLINE=1`; `PYTHONPATH=<sandbox>/backend`. `.env` is never read; with the bridge URL on the discard port the app cannot reach Photon, so no real phone is ever texted.
 4. Starts `python -m uvicorn app.main:app --app-dir <sandbox>/backend --port <free port>` in its own process group. Ready = `/health` 200, which uvicorn only answers after the lifespan (`storage.init`, ASR preload) completed.
-5. For UI checks: `npm ci --prefer-offline` in the sandbox console, then `node node_modules/vite/bin/vite.js --port <free> --strictPort` with `BACKEND_URL` pointing at the backend. Ready = `/` serves the "Safe Signal" page.
+5. For UI checks: `npm ci --prefer-offline` in the sandbox console, then `node node_modules/vite/bin/vite.js --port <free> --strictPort` with `BACKEND_URL` pointing at the backend. Ready = `/` serves the "CallSafe" page.
 
 Profiles run serially: `cached` (most features), `asr` (`asr-replay`, its own instance), `cli` (preflight, no server).
 

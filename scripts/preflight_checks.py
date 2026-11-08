@@ -216,7 +216,7 @@ def check_consent(env: dict) -> Result:
     off = {var: s for var, s in states.items() if s != "active"}
     if off:
         detail = ", ".join(f"{var} {mask_phone(env[var])} is {s}" for var, s in off.items())
-        return Result("FAIL", "consent", detail, "text YES from each listed phone to the Safe Signal number, "
+        return Result("FAIL", "consent", detail, "text YES from each listed phone to the CallSafe number, "
                       "with the app and tunnel running")
     return Result("PASS", "consent", "DEMO_PHONE and SPARE_PHONE are active")
 
@@ -285,7 +285,7 @@ def check_reply(env: dict, sms_ok: bool, timeout_s: float = REPLY_TIMEOUT_S) -> 
     start = datetime.now(timezone.utc) - timedelta(seconds=5)
 
     def prompt():
-        print(f"  >> now reply HELP from DEMO_PHONE {to} to the Safe Signal number "
+        print(f"  >> now reply HELP from DEMO_PHONE {to} to the CallSafe number "
               f"(waiting up to {timeout_s:.0f}s)", file=sys.stderr, flush=True)
 
     try:

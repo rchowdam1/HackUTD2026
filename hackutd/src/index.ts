@@ -1,7 +1,7 @@
 import { Spectrum } from "spectrum-ts";
 import { imessage } from "@spectrum-ts/imessage";
 
-// Safe Signal <-> Photon Spectrum (iMessage) bridge (docs/photon-live.md, #68).
+// CallSafe <-> Photon Spectrum (iMessage) bridge (docs/photon-live.md, #68).
 // Spectrum has no HTTP send API, so the Python backend calls this process instead:
 //   POST http://127.0.0.1:$BRIDGE_PORT/send {to, text} -> {id}
 // and every inbound text is forwarded to $BACKEND_URL/sms/inbound as {id, text, sender}.

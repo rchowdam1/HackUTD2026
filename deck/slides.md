@@ -1,4 +1,4 @@
-# Safe Signal: slides (4)
+# CallSafe: slides (4)
 
 Numbers from `results/latest.md`: sealed H1, policy v1.0, main `fefb2d3`, scripted transcripts. Update them only from a new eval run.
 
@@ -15,7 +15,7 @@ Numbers from `results/latest.md`: sealed H1, policy v1.0, main `fefb2d3`, script
 
 ## 3. One number
 **Title:** Fewer false alarms on calls that only mention codes or money
-- Hard-benign false alerts: keyword baseline (K) 6 of 22 vs Safe Signal (B) 0 of 22 (upper bound 14.9%)
+- Hard-benign false alerts: keyword baseline (K) 6 of 22 vs CallSafe (B) 0 of 22 (upper bound 14.9%)
 - Scams caught: K 9 of 30 (30.0%, 95% CI 16.6% to 47.9%), B 5 of 30 (16.6%, 95% CI 7.3% to 33.6%)
 - Paired: 4 calls only K got right, 6 only B got right. No win called (needs 5 or more in one direction).
 - Small print: "60 held-out scripted calls written blind by an AI agent that never saw the rules. Scripted transcripts, not ASR. Too small for a production claim."

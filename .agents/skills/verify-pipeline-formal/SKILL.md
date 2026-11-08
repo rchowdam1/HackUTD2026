@@ -1,6 +1,6 @@
 ---
 name: verify-pipeline-formal
-description: "Model-check Safe Signal's call-session lifecycle (backend/app/pipeline.py with ingest replay and the /demo routes) in TLA+/TLC: stale-generation SMS sends, one follow-up per call, no events after reset, alert/follow-up ordering. Use when a change touches pipeline.py, ingest/__init__.py or api/demo.py, or when asked whether Reset / End call / Run races are safe."
+description: "Model-check CallSafe's call-session lifecycle (backend/app/pipeline.py with ingest replay and the /demo routes) in TLA+/TLC: stale-generation SMS sends, one follow-up per call, no events after reset, alert/follow-up ordering. Use when a change touches pipeline.py, ingest/__init__.py or api/demo.py, or when asked whether Reset / End call / Run races are safe."
 ---
 
 # Verify the pipeline's ordering guarantees

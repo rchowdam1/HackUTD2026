@@ -38,7 +38,7 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Safe Signal", lifespan=lifespan)
+    app = FastAPI(title="CallSafe", lifespan=lifespan)
     for router in discover_routers():
         app.include_router(router)
     return app
