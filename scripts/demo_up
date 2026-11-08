@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Demo bring-up: cloudflared quick tunnel, PUBLIC_BASE_URL into .env, backend on :8000, Twilio SMS webhook.
+# Usage: scripts/demo_up  (Ctrl-C stops the tunnel and backend). Then run scripts/preflight in another terminal.
+cd "$(dirname "$0")/.." || exit 1
+exec env -u PYTHONPATH -u PYTHONHOME -u VIRTUAL_ENV uv run python scripts/demo_up.py "$@"
