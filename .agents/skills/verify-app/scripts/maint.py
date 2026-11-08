@@ -80,7 +80,7 @@ def declared_routes() -> set[str]:
         src = py.read_text()
         m = re.search(r'APIRouter\(\s*prefix\s*=\s*"([^"]+)"', src)
         prefix = m.group(1) if m else ""
-        for d in re.finditer(r'@router\.(?:get|post|put|delete|patch)\(\s*"([^"]*)"', src):
+        for d in re.finditer(r'@router\.(?:get|post|put|delete|patch|websocket)\(\s*"([^"]*)"', src):
             routes.add(prefix + d.group(1))
     return routes
 

@@ -22,20 +22,24 @@ router = APIRouter(prefix="/sms", tags=["tunnel"])
 EMPTY_TWIML = '<?xml version="1.0" encoding="UTF-8"?><Response></Response>'
 
 
-async def _verified_form(request: Request) -> dict[str, str]:
+def signed(url: str, params: dict[str, str], signature: str) -> bool:
+    """True if Twilio signed this request. False when TWILIO_AUTH_TOKEN or PUBLIC_BASE_URL is unset:
+    RequestValidator("") accepts a signature anyone can compute."""
     token = os.environ.get("TWILIO_AUTH_TOKEN", "")
-    base = sms.public_base_url()
-    if not token or not base:  # RequestValidator("") accepts a signature anyone can compute
-        raise HTTPException(403, "twilio webhook not configured")
+    return bool(token and sms.public_base_url()) and RequestValidator(token).validate(url, params, signature)
+
+
+async def verified_form(request: Request) -> dict[str, str]:
+    """The form of a Twilio webhook POST signed against PUBLIC_BASE_URL + path, else 403."""
     form = {k: str(v) for k, v in (await request.form()).items()}
-    if not RequestValidator(token).validate(base + request.url.path, form, request.headers.get("X-Twilio-Signature", "")):
-        raise HTTPException(403, "bad signature")
+    if not signed(sms.public_base_url() + request.url.path, form, request.headers.get("X-Twilio-Signature", "")):
+        raise HTTPException(403, "bad or missing twilio signature")
     return form
 
 
 @router.post("/inbound")
 async def inbound(request: Request) -> Response:
-    form = await _verified_form(request)
+    form = await verified_form(request)
     number = consent.enrolled(form.get("From"))
     if number is None:
         log.warning("inbound text from a missing or unenrolled sender ignored")
@@ -46,6 +50,6 @@ async def inbound(request: Request) -> Response:
 
 @router.post("/status")
 async def status(request: Request) -> Response:
-    form = await _verified_form(request)
+    form = await verified_form(request)
     sms.handle_status(form.get("MessageSid", ""), form.get("MessageStatus", ""))
     return Response(status_code=204)

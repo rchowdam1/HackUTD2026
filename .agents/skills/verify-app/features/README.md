@@ -43,6 +43,7 @@ Each feature file starts with an H1 title and one paragraph describing the user-
 - [Call controls](./call-controls.md) covers End call and Reset mid-replay and the real / simulated SMS-mode toggle.
 - [Results card](./results-card.md) covers `GET /results/latest` (pending, and `python -m eval.run` output served byte-for-byte); the console no longer shows results.
 - [Twilio webhooks](./twilio-webhooks.md) covers `X-Twilio-Signature` on `/sms/inbound` and `/sms/status`, sender binding, MessageSid dedupe and status callbacks.
+- [Live call](./live-call.md) covers the Twilio voice webhook TwiML, signature checks on `/voice/incoming` and the `/voice/stream` socket, and a signed synthetic Media Stream of the bank call transcribed live.
 - [Enrollment invite](./enrollment-invite.md) covers `POST /sms/invite` for the demo and spare phones and hashed-only storage.
 - [Fixture replay](./fixture-replay.md) covers the console's backend-free `?fixtures` mode.
 - [Live mic](./live-mic.md) covers the console's browser-mic conversation: Start, Caller / You turns, alert mid-call, follow-up on End call.

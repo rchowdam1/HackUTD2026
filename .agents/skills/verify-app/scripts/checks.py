@@ -42,7 +42,7 @@ UI_HANDLES = [
 API_ROUTES = ["/login", "/health", "/events/stream", "/demo/run/{scenario_id}", "/demo/end-call", "/demo/reset",
               "/demo/sms-mode", "/results/latest", "/aggregates", "/sms/simulate-inbound", "/sms/outbox",
               "/sms/invite", "/sms/inbound", "/sms/status", "/sms/templates/{template_id}", "/sms/consent",
-              "/live/start", "/live/utterance"]
+              "/live/start", "/live/utterance", "/voice/incoming", "/voice/stream"]
 
 
 @dataclass
@@ -728,6 +728,110 @@ def webhooks_status(ctx: Context):
     r = post_twilio(ctx, "/sms/status", {"MessageSid": "SMunknown" + uuid.uuid4().hex[:8], "MessageStatus": "delivered"})
     time.sleep(1)
     ctx.expect(r.status_code == 204 and not ctx.tap.since(mark), "unknown MessageSid -> 204, no event", [r.status_code, ctx.tap.since(mark)])
+
+
+# --- live-call (Twilio voice webhook + Media Stream socket) -----------------------------------
+
+def stream_url(ctx: Context) -> str:
+    return "ws" + ctx.env["PUBLIC_BASE_URL"].removeprefix("http") + "/voice/stream"
+
+
+def ws_connect(ctx: Context, signature: str | None):
+    """Open /voice/stream the way Twilio does: the handshake carries x-twilio-signature over the
+    stream URL with no params."""
+    from websockets.sync.client import connect
+    headers = {} if signature is None else {"x-twilio-signature": signature}
+    return connect(ctx.inst["backend"].replace("http", "ws", 1) + "/voice/stream", additional_headers=headers)
+
+
+def ulaw_frames(wav_path: Path) -> list[bytes]:
+    """20 ms frames of 8 kHz mu-law, encoded by the stdlib (independent of the app's decoder)."""
+    import audioop  # deprecated, still in 3.11
+    import wave
+    with wave.open(str(wav_path)) as w:
+        assert (w.getframerate(), w.getsampwidth(), w.getnchannels()) == (8000, 2, 1), wav_path
+        u = audioop.lin2ulaw(w.readframes(w.getnframes()), 2)
+    return [u[i:i + 160] for i in range(0, len(u), 160)]
+
+
+@check("voice.signature-required", "live-call")
+def voice_sig(ctx: Context):
+    from websockets.exceptions import InvalidStatus
+    mark = ctx.tap.mark()
+    params = {"CallSid": "CAverify" + uuid.uuid4().hex[:24], "From": "+10000000000"}
+    for label, kw in (("unsigned", {"sign": False}), ("bad signature", {"bad": True})):
+        r = post_twilio(ctx, "/voice/incoming", params, **kw)
+        ctx.expect(r.status_code == 403, f"{label} POST /voice/incoming -> 403", r.status_code)
+    good = twilio_signature(ctx.env["TWILIO_AUTH_TOKEN"], stream_url(ctx), {})
+    for label, sig in (("unsigned", None), ("bad signature", ("B" if good[0] == "A" else "A") + good[1:])):
+        try:
+            ws_connect(ctx, sig).close()
+            status = "accepted"
+        except InvalidStatus as e:
+            status = e.response.status_code
+        ctx.expect(status == 403, f"{label} /voice/stream handshake -> 403", status)
+    time.sleep(1)
+    ctx.expect(not [e for e in ctx.tap.since(mark) if e["type"] == "session"], "no call session started", ctx.tap.since(mark))
+
+
+@check("voice.incoming-twiml", "live-call")
+def voice_twiml(ctx: Context):
+    import xml.etree.ElementTree as ET
+    r = post_twilio(ctx, "/voice/incoming", {"CallSid": "CAverify" + uuid.uuid4().hex[:24], "From": "+10000000000"})
+    ctx.expect(r.status_code == 200 and r.headers["content-type"].startswith("text/xml"),
+               "signed POST /voice/incoming -> 200 TwiML", [r.status_code, r.headers.get("content-type"), r.text])
+    root = ET.fromstring(r.text)
+    stream, dial = root.find("Start/Stream"), root.find("Dial")
+    ctx.expect(stream is not None and stream.get("url") == stream_url(ctx) and stream.get("track") == "both_tracks",
+               "TwiML starts a both-track stream to PUBLIC_BASE_URL/voice/stream", r.text)
+    ctx.expect([c.tag for c in root] == ["Start", "Dial"] and dial.text == ctx.env["DEMO_PHONE"],
+               "then dials DEMO_PHONE (stream first, so the bridge runs after it)", r.text)
+
+
+@check("voice.bank-live-stream", "live-call", profile="asr", ui=True)
+def voice_bank(ctx: Context):
+    ctx.api_reset()
+    ctx.ensure_opted_in()
+    page = open_console(ctx)
+    turns = json.loads((ctx.sandbox / "scenarios/demo/bank.json").read_text())["turns"]
+    quiet = b"\xff" * 160
+    ctx.action(f"stream the bank call's {len(turns)} turns over a signed /voice/stream in real time "
+               "(caller -> inbound track, subscriber -> outbound, 0.8 s pause between turns)")
+    mark, t = ctx.tap.mark(), 0
+    sig = twilio_signature(ctx.env["TWILIO_AUTH_TOKEN"], stream_url(ctx), {})
+    t0 = time.monotonic()
+    with ws_connect(ctx, sig) as ws:
+        ws.send(json.dumps({"event": "connected"}))
+        ws.send(json.dumps({"event": "start", "start": {"tracks": ["inbound", "outbound"]}}))
+        for turn in turns:
+            track = "inbound" if turn["speaker"] == "caller" else "outbound"
+            frames = ulaw_frames(ctx.sandbox / "audio/demo" / turn["audio"])
+            for f in frames + [quiet] * 40:
+                for tr, payload in ((track, f), ("outbound" if track == "inbound" else "inbound", quiet)):
+                    ws.send(json.dumps({"event": "media", "media": {"track": tr, "timestamp": str(t),
+                                                                   "payload": base64.b64encode(payload).decode()}}))
+                t += 20
+                time.sleep(max(0.0, t0 + t / 1000 - time.monotonic()))
+        ws.send(json.dumps({"event": "stop"}))
+    start = ctx.wait_event(lambda e: e["type"] == "session" and e["payload"]["state"] == "running", mark, 5, "session running")
+    ref = start["session_ref"]
+    ctx.wait_event(lambda e: e["session_ref"] == ref and e["type"] == "session" and e["payload"]["state"] == "finished",
+                   mark, 60, "session finished")
+    segs = [e["payload"] for e in events_for(ctx, mark, ref, "segment")]
+    ctx.save_json("live-segments", segs)
+    ctx.expect(segs and all(s["source"] == "asr" for s in segs), "every segment came from whisper (source asr)",
+               [s["source"] for s in segs])
+    ctx.expect({s["speaker"] for s in segs} == {"caller", "subscriber"},
+               "both tracks transcribed and labelled (inbound caller, outbound subscriber)", [s["speaker"] for s in segs])
+    ctx.expect([s["seq"] for s in segs] == list(range(1, len(segs) + 1)), "seq increases without gaps", [s["seq"] for s in segs])
+    decs = events_for(ctx, mark, ref, "decision")
+    ctx.expect([d["payload"]["template_id"] for d in decs] == ["ALERT-OTP-01"], "rules fire ALERT-OTP-01 on the live stream",
+               [d["payload"] for d in decs])
+    tr = card(page, "^Live transcript")
+    ui_assert(ctx, "console shows the live transcript", lambda: pw_expect()(tr).to_contain_text(segs[0]["text"]))
+    ui_assert(ctx, "transcript not labelled cached", lambda: pw_expect()(tr.get_by_text("cached transcript")).to_have_count(0))
+    ctx.rec["timing"] = {"stream_wall_s": round(time.monotonic() - t0, 1)}
+    ctx.shot("live-finished")
 
 
 # --- enrollment-invite ------------------------------------------------------------------------
