@@ -2,7 +2,7 @@ import { Fragment, type ReactNode, useCallback, useEffect, useReducer, useRef, u
 import * as api from "./api";
 import OptInPrompt from "./OptInPrompt";
 import { initial, reduce, type Action, type Bubble, type State } from "./state";
-import type { Event, RiskEvent, Segment, SmsPayload } from "./types";
+import type { Event, RiskEvent, Segment, SmsPayload, Speaker } from "./types";
 
 const FIXTURES = new URLSearchParams(location.search).has("fixtures");
 // Live transcript typing speed. Must match WORD_MS in backend/app/ingest/__init__.py (cached replay pacing).
@@ -91,6 +91,33 @@ function Console({ onLoggedOut }: { onLoggedOut: (why: string | null) => void })
   const [error, setError] = useState<string | null>(null);
   const live = useRef(new Set<string>()); // segments that arrived over the stream type out; hydrated ones don't
   const arrived = useRef(new Map<string, number>()); // receive time per segment / sms, before the typing hold
+  // Live mic conversation (#100): the session we started, the open mic, and turns still being transcribed.
+  const [liveRef, setLiveRef] = useState<string | null>(null);
+  const mic = useRef<MediaStream | null>(null);
+  const [transcribing, setTranscribing] = useState(0);
+  const liveSession = liveRef !== null && state.sessionRef === liveRef;
+  const liveOn = liveSession && state.session?.state === "running";
+  const wasOn = useRef(false);
+  const stopMic = () => {
+    mic.current?.getTracks().forEach((t) => t.stop());
+    mic.current = null;
+  };
+  useEffect(() => {
+    if (wasOn.current && !liveOn) stopMic(); // End call, Reset or another run: release the mic
+    wasOn.current = liveOn;
+  }, [liveOn]);
+  const startLive = async () => {
+    try {
+      stopMic();
+      mic.current = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    } catch {
+      setError("Microphone unavailable (permission denied or no mic found)");
+      return;
+    }
+    const r = await api.liveStart();
+    if (r) setLiveRef((await r.json()).session_ref);
+    else stopMic();
+  };
 
   useEffect(() => {
     if (!error) return;
@@ -176,9 +203,11 @@ function Console({ onLoggedOut }: { onLoggedOut: (why: string | null) => void })
           {error} <button onClick={() => setError(null)}>Dismiss</button>
         </p>
       )}
-      <Controls state={state} dispatch={dispatch} />
+      <Controls state={state} dispatch={dispatch} onStartLive={startLive}>
+        {liveOn && mic.current && <LiveMic stream={mic.current} onTranscribing={(n) => setTranscribing((t) => t + n)} />}
+      </Controls>
       <main>
-        <Transcript state={state} live={live.current} />
+        <Transcript state={state} live={live.current} liveMic={liveSession} transcribing={transcribing > 0} />
         <aside>
           <WhyPanel state={state} arrived={arrived.current} />
           <Phone bubbles={state.bubbles} simulated={state.smsMode === "simulated"} off={monitoringOff(state)} />
@@ -194,13 +223,20 @@ function sessionLabel(s: State): string {
   return s.session.state === "finished" ? "call ended" : "reset";
 }
 
-function Controls({ state, dispatch }: { state: State; dispatch: (a: Action) => void }) {
+function Controls({ state, dispatch, onStartLive, children }: {
+  state: State;
+  dispatch: (a: Action) => void;
+  onStartLive: () => void;
+  children: ReactNode;
+}) {
   const mode = state.smsMode;
   return (
     <nav className="controls">
       <button disabled={FIXTURES} onClick={() => api.runScenario("clinic")}>Run clinic</button>
       <button disabled={FIXTURES} onClick={() => api.runScenario("bank")}>Run bank</button>
       <button disabled={FIXTURES} onClick={() => api.runScenario("family")}>Run grandson</button>
+      <button disabled={FIXTURES || Boolean(children)} onClick={onStartLive}>Start live conversation</button>
+      {children}
       <button disabled={FIXTURES} onClick={() => api.endCall()}>End call</button>
       <button disabled={FIXTURES} className="danger" onClick={() => api.reset()}>Reset</button>
       <span className="spacer" />
@@ -221,7 +257,50 @@ function Controls({ state, dispatch }: { state: State; dispatch: (a: Action) => 
   );
 }
 
-function Transcript({ state, live }: { state: State; live: Set<string> }) {
+// Tap a speaker to record a turn, tap again to send it. One mic, so one speaker at a time; either may go twice in a row.
+function LiveMic({ stream, onTranscribing }: { stream: MediaStream; onTranscribing: (delta: number) => void }) {
+  const [speaker, setSpeaker] = useState<Speaker | null>(null);
+  const rec = useRef<MediaRecorder | null>(null);
+  useEffect(
+    () => () => {
+      if (rec.current?.state !== "recording") return;
+      rec.current.onstop = null; // the call ended mid-turn: drop the clip
+      rec.current.stop();
+    },
+    [],
+  );
+  const toggle = (who: Speaker) => {
+    if (speaker === who) {
+      rec.current?.stop();
+      setSpeaker(null);
+      return;
+    }
+    const r = new MediaRecorder(stream);
+    const chunks: Blob[] = [];
+    r.ondataavailable = (e) => chunks.push(e.data);
+    r.onstop = () => {
+      onTranscribing(1);
+      api.liveTurn(who, new Blob(chunks, { type: r.mimeType })).finally(() => onTranscribing(-1));
+    };
+    r.start();
+    rec.current = r;
+    setSpeaker(who);
+  };
+  return (
+    <span className="live-mic">
+      {(["caller", "subscriber"] as const).map((who) => (
+        <button key={who} className={speaker === who ? "recording" : ""} disabled={speaker !== null && speaker !== who} onClick={() => toggle(who)}>
+          {SPEAKER_WORDS[who]}
+          {speaker === who && " - tap to stop"}
+        </button>
+      ))}
+    </span>
+  );
+}
+
+const SPEAKER_WORDS: Record<Speaker, string> = { caller: "Caller", subscriber: "You" };
+
+function Transcript({ state, live, liveMic, transcribing }: { state: State; live: Set<string>; liveMic: boolean; transcribing: boolean }) {
   const flagged = new Set(state.risks.flatMap((r) => r.span_seq));
   const cached = state.segments.some((s) => s.source === "cached");
   // A marker for each alert / follow-up text, right after the line that was last when it was sent.
@@ -233,12 +312,13 @@ function Transcript({ state, live }: { state: State; live: Set<string> }) {
     <section className="card transcript">
       <h2>
         Live transcript {cached && <span className="tag">cached transcript</span>}
+        {liveMic && <span className="tag live">Live mic</span>}
       </h2>
       {state.segments.length === 0 && <p className="muted">No call yet.</p>}
       {state.segments.map((s) => (
         <Fragment key={segKey(s)}>
           <p className={`line ${s.speaker} ${flagged.has(s.seq) ? "flagged" : ""}`}>
-            <span className="who">{s.speaker === "caller" ? "Caller" : "You"}</span>
+            <span className="who">{SPEAKER_WORDS[s.speaker]}</span>
             <TypedText text={s.text} animate={live.has(segKey(s))} />
           </p>
           {markers
@@ -250,6 +330,7 @@ function Transcript({ state, live }: { state: State; live: Set<string> }) {
             ))}
         </Fragment>
       ))}
+      {transcribing && <p className="muted">Transcribing...</p>}
     </section>
   );
 }
@@ -278,7 +359,7 @@ function WhyPanel({ state, arrived }: { state: State; arrived: Map<string, numbe
     return (
       <section className="card why">
         <h2>Why this alert</h2>
-        <p className="big-text">{state.session?.state === "finished" ? "No alert - not a safety verdict" : "No alert yet"}</p>
+        <p className="big-text">{state.session?.state === "finished" ? "No alert detected" : "No alert yet"}</p>
       </section>
     );
   }

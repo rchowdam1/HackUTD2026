@@ -10,7 +10,7 @@ import logging
 import os
 import threading
 from pathlib import Path
-from typing import Literal
+from typing import BinaryIO, Literal
 
 Source = Literal["asr", "cached"]
 MODEL_NAME = "small.en"
@@ -44,8 +44,9 @@ def preload() -> None:
         log.exception("ASR model failed to load; replays will use cached transcripts")
 
 
-def transcribe(path: Path) -> tuple[list[tuple[float, float, str]], float]:
-    """Blocking. Returns ([(start_s, end_s, text)], audio_duration_s) for a WAV path."""
-    segments, info = load_model().transcribe(str(path), beam_size=5)
+def transcribe(audio: Path | BinaryIO) -> tuple[list[tuple[float, float, str]], float]:
+    """Blocking. Returns ([(start_s, end_s, text)], audio_duration_s) for a WAV path or an in-memory
+    clip in any format PyAV decodes (the console mic's WebM/Opus), so live audio never touches disk."""
+    segments, info = load_model().transcribe(str(audio) if isinstance(audio, Path) else audio, beam_size=5)
     # `segments` is a lazy generator: the decoding happens here, on iteration.
     return [(s.start, s.end, s.text.strip()) for s in segments if s.text.strip()], info.duration

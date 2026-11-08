@@ -6,6 +6,7 @@ export type Bubble = { kind: "out"; sms: SmsPayload; afterSeq: number } | { kind
 
 export interface State {
   session: SessionPayload | null;
+  sessionRef: string | null; // the session the latest session event belongs to
   smsMode: SmsMode;
   segments: Segment[];
   risks: RiskEvent[];
@@ -16,6 +17,7 @@ export interface State {
 
 export const initial: State = {
   session: null,
+  sessionRef: null,
   smsMode: "simulated",
   segments: [],
   risks: [],
@@ -31,7 +33,7 @@ export function reduce(s: State, a: Action): State {
     case "session": {
       const p = a.payload;
       if (p.state === "running") {
-        return { ...s, session: p, smsMode: p.sms_mode ?? s.smsMode, segments: [], risks: [], decisions: [], bubbles: [] };
+        return { ...s, session: p, sessionRef: a.session_ref, smsMode: p.sms_mode ?? s.smsMode, segments: [], risks: [], decisions: [], bubbles: [] };
       }
       if (p.state === "reset") return { ...s, session: p, segments: [], risks: [], decisions: [], bubbles: [] };
       return { ...s, session: { ...p, sms_mode: p.sms_mode ?? s.session?.sms_mode ?? null } };

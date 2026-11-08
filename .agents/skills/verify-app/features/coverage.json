@@ -94,6 +94,19 @@
       ],
       "synced_commit": "35ed336647808a5fbe43a9567b383e5663e50c2f"
     },
+    "live-mic": {
+      "doc": "live-mic.md",
+      "paths": [
+        "backend/app/api/live.py",
+        "backend/app/asr/**",
+        "backend/app/pipeline.py",
+        "console/src/App.tsx",
+        "console/src/api.ts",
+        "console/src/state.ts",
+        "audio/demo/bank/**"
+      ],
+      "synced_commit": null
+    },
     "asr-replay": {
       "doc": "asr-replay.md",
       "paths": [

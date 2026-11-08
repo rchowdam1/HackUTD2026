@@ -15,7 +15,7 @@ router = APIRouter(prefix="/demo", dependencies=[Depends(require_operator)])
 _replay: asyncio.Task | None = None
 
 
-def _cancel_replay() -> None:
+def cancel_replay() -> None:
     if _replay is not None and not _replay.done():
         _replay.cancel()
 
@@ -25,7 +25,7 @@ async def run(scenario_id: str) -> dict:
     global _replay
     if scenario_id not in ingest.scenario_ids():
         raise HTTPException(404, "unknown scenario")
-    _cancel_replay()
+    cancel_replay()
     mode = sms.get_mode()
     _replay = asyncio.create_task(ingest.run(scenario_id, sms_mode=mode))
     return {"scenario_id": scenario_id, "sms_mode": mode}
@@ -33,7 +33,7 @@ async def run(scenario_id: str) -> dict:
 
 @router.post("/end-call")
 async def end_call() -> dict:
-    _cancel_replay()
+    cancel_replay()
     ref = pipeline.current_ref()
     if ref is not None:
         await pipeline.finish(ref)
@@ -42,7 +42,7 @@ async def end_call() -> dict:
 
 @router.post("/reset")
 async def reset() -> dict:
-    _cancel_replay()
+    cancel_replay()
     await pipeline.reset()
     return {"status": "ok"}
 

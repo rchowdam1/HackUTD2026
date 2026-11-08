@@ -81,7 +81,7 @@ FinFtasks(s) == IF Creates(s) THEN [ftasks EXCEPT ![s] = Append(@, [pc |-> "lock
 FinFin(s) == IF Creates(s) THEN [fin EXCEPT ![s] = TRUE] ELSE fin
 FinDone(w) == w.i = 0 \/ ftasks[w.s][w.i].pc = "done"
 
-\* demo._cancel_replay(): cancel the latest replay task wherever it awaits
+\* demo.cancel_replay(): cancel the latest replay task wherever it awaits
 Cancelled(r) == rp[r] \in {"start", "start_wait", "next", "eval", "fin_wait"}
 CancelRp == IF Cancelled(nruns) THEN [rp EXCEPT ![nruns] = "end"] ELSE rp
 CancelLock == IF rp[nruns] = "eval" THEN [lock EXCEPT ![nruns] = FALSE] ELSE lock   \* `async with` exits

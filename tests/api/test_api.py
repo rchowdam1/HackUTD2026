@@ -25,6 +25,8 @@ PROTECTED = [
     ("GET", "/sms/outbox"),
     ("POST", "/sms/invite"),
     ("POST", "/sms/consent"),
+    ("POST", "/live/start"),
+    ("POST", "/live/utterance"),
 ]
 
 

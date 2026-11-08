@@ -9,7 +9,7 @@ The console is read from about 2 m away at a judging table, so the important thi
 1. **One accent, one meaning.** Magenta marks the request CallSafe acted on: the flagged line, the alert, the WRONG key, the primary action. Don't spend it on decoration.
 2. **Rules, not boxes.** Group content with 1px hairlines and whitespace. No card backgrounds, no drop shadows on content (the only shadow is under a modal).
 3. **Big and thin for numbers, small and mono for labels.** Hierarchy comes from size and weight contrast, not colour.
-4. **Never say "safe."** No green "all clear" state exists. A call with no alert reads "No alert", with "not a safety verdict" nearby.
+4. **Never say "safe."** No green "all clear" state exists. A call with no alert reads "No alert detected", never "safe" or "no scam".
 5. **Colour never works alone.** Every status colour sits next to a word ("Delivered", "Code request").
 
 ## Colour tokens

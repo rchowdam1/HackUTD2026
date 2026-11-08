@@ -44,14 +44,14 @@ The `broken-*` configs prove each property can fail: each flips one guard consta
 ## Findings at the sync commit
 
 - **Reset can't stop an SMS that is already being sent (`NoStaleSend` violated).** Counterexample: the bank alert is queued; its worker thread runs `send_if_live`, sees the call live; the operator presses Reset (generation 1 → 2, task cancelled, but cancelling doesn't stop the thread); the thread calls `gateway.send(...)` and the alert goes out for a reset call. The window is from the thread's `_live` check through the consent lookup and the Twilio HTTP request (milliseconds to a few hundred ms). PRD §19.10's "never sends SMS" is stronger than the code can promise; what holds is `SendStartsLive`. Either the PRD wording or the design (e.g. a cancellable send) should change; this is a product decision, not a verification fix.
-- **The arm C lock in `_finish` is not load-bearing today.** With the lock removed, `NoAlertAfterFinished` still holds, because every route that finishes a call (`/demo/end-call`, `/demo/run`, `/demo/reset`) cancels the replay first, which drops an in-flight arm C evaluation. The lock would matter for a caller that runs `pipeline.finish` while `process` is evaluating without cancelling; keep it, but don't rely on it as the guard.
+- **The arm C lock in `_finish` is not load-bearing today.** With the lock removed, `NoAlertAfterFinished` still holds, because every route that finishes a call (`/demo/end-call`, `/demo/run`, `/demo/reset`) cancels the replay first, which drops an in-flight arm C evaluation. Since #100 that caller exists: `/live/utterance` runs `process` without a replay task, so End call during an arm C evaluation is ordered only by this lock (the alert is queued before `_finish` gathers sends, then the follow-up, then `finished`). The model doesn't include the live route yet.
 
 ## Coverage record
 
 - `backend/app/pipeline.py`: `_live`, `_emit`, `start`, `process`, `_evaluate`, `_queue_send`, `_send` (`send_if_live`), `finish`, `_finish`, `reset`.
 - `backend/app/ingest/__init__.py`: `replay_transcript` loop (`_alive` checks, final `finish`), `run` (cached path).
-- `backend/app/api/demo.py`: `run`, `end_call`, `reset`, `_cancel_replay`.
-- Not covered: `sms` gateway internals and consent, ASR replay timing, `events.Hub` back-pressure, rule correctness (tests/rules, verify-app).
+- `backend/app/api/demo.py`: `run`, `end_call`, `reset`, `cancel_replay`.
+- Not covered: `backend/app/api/live.py` (#100, a second `process` caller; see the lock note above), `sms` gateway internals and consent, ASR replay timing, `events.Hub` back-pressure, rule correctness (tests/rules, verify-app).
 - **Sync commit: `fefb2d3`** (origin/main, 2026-11-07). The model describes the covered code at this commit.
 
 ## When code changes

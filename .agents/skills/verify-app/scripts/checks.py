@@ -31,7 +31,8 @@ from harness import Blocked, DEFAULT_HF_HOME, WHISPER_MODEL_DIR, sandbox_env
 UI_HANDLES = [
     "Operator password", "Log in", "Wrong password", "Run clinic", "Run bank", "Run grandson", "End call", "Reset",
     "SMS mode", "simulated SMS", "Live transcript", "cached transcript", "No call yet.",
-    "Why this alert", "No alert - not a safety verdict", "Caller asked for a code", "Caught by", "CallSafe rules",
+    "Why this alert", "No alert detected", "Caller asked for a code", "Caught by", "CallSafe rules",
+    "Start live conversation", "Caller", "tap to stop", "Live mic", "Transcribing...",
     "Caller said", "Why it matters", "Whoever has the code can get into your account", "We texted", "Speed",
     "fixture replay", "call ended", "call running", "No texts yet.",
     "Opt in to call monitoring?", "Alert message sent to user", "Follow-up message sent to user",
@@ -40,7 +41,8 @@ UI_HANDLES = [
 # Routes the harness calls; lint checks each is still declared in backend/app.
 API_ROUTES = ["/login", "/health", "/events/stream", "/demo/run/{scenario_id}", "/demo/end-call", "/demo/reset",
               "/demo/sms-mode", "/results/latest", "/aggregates", "/sms/simulate-inbound", "/sms/outbox",
-              "/sms/invite", "/sms/inbound", "/sms/status", "/sms/templates/{template_id}", "/sms/consent"]
+              "/sms/invite", "/sms/inbound", "/sms/status", "/sms/templates/{template_id}", "/sms/consent",
+              "/live/start", "/live/utterance"]
 
 
 @dataclass
@@ -338,8 +340,8 @@ def replay_clinic(ctx: Context):
         ui_assert(ctx, f"transcript shows turn {x['seq']}", lambda: pw_expect()(tr).to_contain_text(x["text"]))
     ui_assert(ctx, "transcript labelled 'cached transcript'", lambda: pw_expect()(tr.get_by_text("cached transcript")).to_be_visible())
     ui_assert(ctx, "status shows 'call ended'", lambda: pw_expect()(page.get_by_role("banner")).to_contain_text("call ended"))
-    ui_assert(ctx, "Why panel: 'No alert - not a safety verdict'",
-              lambda: pw_expect()(card(page, "^Why this alert")).to_contain_text("No alert - not a safety verdict"))
+    ui_assert(ctx, "Why panel: 'No alert detected'",
+              lambda: pw_expect()(card(page, "^Why this alert")).to_contain_text("No alert detected"))
     ui_assert(ctx, "phone frame shows no texts", lambda: pw_expect()(card(page, "^Phone")).to_contain_text("No texts yet."))
     ui_assert(ctx, "no SMS marker in the transcript", lambda: pw_expect()(tr.locator("p.marker")).to_have_count(0))
     ctx.shot("clinic-finished")
@@ -366,8 +368,8 @@ def replay_grandson(ctx: Context):
     tr = card(page, "^Live transcript")
     for x in expected:
         ui_assert(ctx, f"transcript shows turn {x['seq']}", lambda: pw_expect()(tr).to_contain_text(x["text"]))
-    ui_assert(ctx, "Why panel: 'No alert - not a safety verdict'",
-              lambda: pw_expect()(card(page, "^Why this alert")).to_contain_text("No alert - not a safety verdict"))
+    ui_assert(ctx, "Why panel: 'No alert detected'",
+              lambda: pw_expect()(card(page, "^Why this alert")).to_contain_text("No alert detected"))
     ctx.shot("grandson-finished")
 
 
@@ -566,7 +568,7 @@ def controls_end_call(ctx: Context):
     ctx.expect(len(ctx.outbox()) == out0, "outbox unchanged", ctx.outbox()[out0:])
     ui_assert(ctx, "status 'call ended'", lambda: pw_expect()(page.get_by_role("banner")).to_contain_text("call ended"))
     ui_assert(ctx, "Why panel: no alert, not a verdict",
-              lambda: pw_expect()(card(page, "^Why this alert")).to_contain_text("No alert - not a safety verdict"))
+              lambda: pw_expect()(card(page, "^Why this alert")).to_contain_text("No alert detected"))
     ctx.shot("ended-early")
 
 
@@ -777,6 +779,93 @@ def asr_bank(ctx: Context):
     ui_assert(ctx, "transcript shows the first ASR segment", lambda: pw_expect()(tr).to_contain_text(segs[0]["text"]))
     ctx.rec["timing"] = {"replay_wall_s": round(time.monotonic() - t0, 1)}
     ctx.shot("asr-finished")
+
+
+# --- live-mic ---------------------------------------------------------------------------------
+
+def bank_turns(ctx: Context) -> list[tuple[str, Path]]:
+    sc = json.loads((ctx.sandbox / "scenarios/demo/bank.json").read_text())
+    return [(t["speaker"], ctx.sandbox / "audio/demo" / t["audio"]) for t in sc["turns"]]
+
+
+def is_session(ref: str, state: str):
+    return lambda e: e["session_ref"] == ref and e["type"] == "session" and e["payload"]["state"] == state
+
+
+@check("live.api-turns", "live-mic", profile="asr")
+def live_api_turns(ctx: Context):
+    ctx.api_reset()
+    ctx.ensure_opted_in()
+    turns = bank_turns(ctx)
+    out0, mark = len(ctx.outbox()), ctx.tap.mark()
+    ctx.action("POST /live/start")
+    r = ctx.api.post("/live/start", timeout=120)
+    ctx.expect(r.status_code == 200, "POST /live/start -> 200", r.text)
+    ref = r.json()["session_ref"]
+    for speaker, wav in turns:
+        ctx.action(f"POST /live/utterance speaker={speaker} audio={wav.name}")
+        r = ctx.api.post("/live/utterance", data={"speaker": speaker},
+                         files={"audio": (wav.name, wav.read_bytes(), "audio/wav")}, timeout=60)
+        ctx.expect(r.status_code == 200 and r.json()["text"], f"{wav.name} transcribed", r.text)
+    ctx.wait_event(lambda e: e["session_ref"] == ref and e["type"] == "sms" and e["payload"]["template_id"] == "ALERT-OTP-01",
+                   mark, 10, "alert sms")
+    ctx.wait_event(lambda e: e["session_ref"] == ref and e["type"] == "segment" and e["payload"]["seq"] == len(turns),
+                   mark, 10, "segment for the last turn")
+    evs = events_for(ctx, mark, ref)
+    segs = [e["payload"] for e in evs if e["type"] == "segment"]
+    ctx.save_json("live-segments", segs)
+    ctx.expect([(s["seq"], s["speaker"], s["source"]) for s in segs] == [(i, sp, "asr") for i, (sp, _) in enumerate(turns, 1)],
+               "one asr segment per turn, in order, with the speaker that was sent", segs)
+    ctx.expect([e["payload"]["template_id"] for e in evs if e["type"] == "decision"] == ["ALERT-OTP-01"],
+               "ALERT-OTP-01 fires mid-conversation", evs)
+    ctx.expect(not any(is_session(ref, "finished")(e) for e in evs),
+               "the alert did not end the conversation (the turn after it was still accepted)", evs)
+    ctx.action("POST /demo/end-call")
+    ctx.expect(ctx.api.post("/demo/end-call").status_code == 200, "POST /demo/end-call -> 200")
+    ctx.wait_event(is_session(ref, "finished"), mark, 15, "session finished")
+    order = [(e["type"], e["payload"].get("template_id") or e["payload"].get("state")) for e in events_for(ctx, mark, ref)
+             if e["type"] in ("sms", "session")]
+    ctx.save_json("event-order", order)
+    ctx.expect(order == [("session", "running"), ("sms", "ALERT-OTP-01"), ("sms", "FU-OTP-01"), ("session", "finished")],
+               "running -> alert -> follow-up only after End call -> finished", order)
+    new = [m["template_id"] for m in ctx.outbox()[out0:]]
+    ctx.expect(new == ["ALERT-OTP-01", "FU-OTP-01"], "outbox gained exactly the alert then the follow-up", new)
+
+
+@check("live.mic-ui", "live-mic", profile="asr", ui=True)
+def live_mic_ui(ctx: Context):
+    ctx.api_reset()
+    ctx.ensure_opted_in()
+    page = open_console(ctx)
+    mark = ctx.tap.mark()
+    click(ctx, page, "Start live conversation")
+    ref = ctx.wait_event(lambda e: e["type"] == "session" and e["payload"]["state"] == "running", mark, 120,
+                         "session running")["session_ref"]
+    you = page.get_by_role("button", name="You", exact=True)
+    click(ctx, page, "Caller")
+    ui_assert(ctx, "while Caller records, You is disabled", lambda: pw_expect()(you).to_be_disabled())
+    ctx.action("talk for 5 s (Chromium's fake mic loops audio/demo/bank/t04.wav)")
+    page.wait_for_timeout(5000)  # the length of the spoken turn, not a wait on the app
+    click(ctx, page, "Caller - tap to stop")
+    seg = ctx.wait_event(lambda e: e["session_ref"] == ref and e["type"] == "segment", mark, 60, "segment from the mic turn")["payload"]
+    ctx.save_json("mic-segment", seg)
+    ctx.expect(seg["speaker"] == "caller" and seg["source"] == "asr" and "code" in seg["text"].lower(),
+               "the turn is transcribed as the caller asking for a code", seg)
+    dec = ctx.wait_event(lambda e: e["session_ref"] == ref and e["type"] == "decision", mark, 15, "decision")["payload"]
+    ctx.expect(dec["template_id"] == "ALERT-OTP-01", "ALERT-OTP-01 from the spoken turn", dec)
+    tr, why = card(page, "^Live transcript"), card(page, "^Why this alert")
+    ui_assert(ctx, "transcript card shows the 'Live mic' tag", lambda: pw_expect()(tr.get_by_text("Live mic", exact=True)).to_be_visible())
+    ui_assert(ctx, "transcript shows the spoken turn", lambda: pw_expect()(tr).to_contain_text(seg["text"]))
+    ui_assert(ctx, "Why panel headline 'Caller asked for a code'", lambda: pw_expect()(why).to_contain_text("Caller asked for a code"))
+    ui_assert(ctx, "after the alert both speakers can still talk", lambda: pw_expect()(you).to_be_enabled())
+    ctx.expect(not any(is_session(ref, "finished")(e) for e in events_for(ctx, mark, ref)), "the alert did not end the conversation")
+    ctx.shot("alert-mid-call")
+    click(ctx, page, "End call")
+    ctx.wait_event(is_session(ref, "finished"), mark, 15, "session finished")
+    ui_assert(ctx, "follow-up marker after End call",
+              lambda: pw_expect()(tr.locator("p.marker")).to_have_text(["* Alert message sent to user", "* Follow-up message sent to user"]))
+    ui_assert(ctx, "speaker buttons are gone once the call ended", lambda: pw_expect()(page.get_by_role("button", name="Caller", exact=True)).to_have_count(0))
+    ctx.shot("ended")
 
 
 # --- preflight (CLI, no server) ---------------------------------------------------------------
