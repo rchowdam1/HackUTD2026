@@ -6,7 +6,7 @@
 - **So you transcribe all my calls?** Only for opted-in subscribers, processed in memory; we store no audio, transcripts or numbers, only counts.
 - **Can scammers fake your text?** Yes, which is why our texts only ever say stop and check; a fake that copies us gives safe advice, and one that says "go ahead" breaks our one rule.
 - **Is listening legal?** Subscriber opt-in is necessary but not sufficient; caller notice in all-party-consent states is a gate before any real customer.
-- **How good is it?** On 60 held-out scripted calls written blind by an AI agent that never saw the rules: [recall x of n and hard-benign false alerts x of n, per arm]. Too small for a production claim, and we say so.
+- **How good is it?** On 60 held-out scripted calls written blind by an AI agent that never saw the rules: keywords caught 9 of 30 scams with 6 of 22 false alerts on tricky benign calls; our rules caught 5 of 30 with 0 of 22; the intent model added no catches. Too small for a production claim, and we say so.
 - **What if the AI is wrong?** A false alarm costs one callback; silence is never a safety verdict; WRONG replies go to a human-approved, tested policy change.
 - **Why trust AI at all?** Rules decide, the model never acts alone, every alert cites a rule ID, and the advice is safe even if we're wrong.
 
