@@ -19,7 +19,7 @@ For subscribers who opt in by text, Safe Signal follows the call's transcript. W
 - Evaluation: a 40-call dev set for tuning, and 60 held-out scripted calls (H1) written by an AI agent in a separate context that never saw the rules, the rule tests or any results, sealed by hash before scoring
 
 ## Results
-On H1 (60 scripted calls, scored on scripted transcripts rather than ASR): keyword baseline [recall x of n; hard-benign false alerts x of n], Safe Signal [recall x of n; hard-benign false alerts x of n], paired discordant [k vs b]. This sample is too small for a production claim.
+On H1 (60 scripted calls, scored on scripted transcripts rather than ASR): keyword baseline caught 9 of 30 scams (30.0%, 95% CI 16.6% to 47.9%) with 6 of 22 false alerts on hard-benign calls; Safe Signal's rules caught 5 of 30 (16.6%, 95% CI 7.3% to 33.6%) with 0 of 22 false alerts (upper bound 14.9%); adding the intent model caught 5 of 30 with 1 of 22. Paired, 4 calls were right only under keywords and 6 only under our rules, so we call no win. The same rules catch 19 of 20 scams on the dev set they were tuned on: they don't yet generalise to new wording, and closing that gap is the main open problem. This sample is too small for a production claim.
 
 ## What's honest about the demo
 - Calls are **replayed** recordings, not live phone calls.
@@ -31,7 +31,10 @@ On H1 (60 scripted calls, scored on scripted transcripts rather than ASR): keywo
 - Telling "never share this code" apart from "read me the code": the words match, but the direction of the request is opposite.
 - Keeping the advice safe even when we're wrong, and never telling anyone a call is safe.
 - Keeping the evaluation honest: the held-out set is written blind, sealed by hash, and reported with denominators and confidence intervals.
-- [placeholder: real build problems from the board's LEARN posts]
+- faster-whisper's `transcribe` returns a lazy generator, so decoding happened inside the event loop until we consumed it in a worker thread.
+- A `data/` ignore rule silently dropped a test audio fixture.
+- Windows timers wake up to about 15 ms early, which made a real-time replay test flaky.
+- Windows line-ending conversion changed the bytes of the sealed held-out files; we store them as single-line JSON so the seal hash matches on every machine.
 
 ## What's next
 - Carrier routing on the Live Translation (*87) path, so it works on any phone

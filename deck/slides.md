@@ -1,6 +1,6 @@
 # Safe Signal: slides (4)
 
-Numbers stay as `[placeholders]` until H+12; fill them only from `results/latest.md` on sealed H1.
+Numbers from `results/latest.md`: sealed H1, policy v1.0, main `fefb2d3`, scripted transcripts. Update them only from a new eval run.
 
 ## 1. The problem
 **Title:** A call gets past Scam Shield. Then it asks for your code.
@@ -15,11 +15,11 @@ Numbers stay as `[placeholders]` until H+12; fill them only from `results/latest
 
 ## 3. One number
 **Title:** Fewer false alarms on calls that only mention codes or money
-- Hard-benign false alerts: keyword baseline (K) `[x of n]` vs Safe Signal (B) `[x of n]`
-- Scams caught: K `[x of n]`, B `[x of n]` (Wilson 95% CI `[lo-hi]`)
-- Paired: `[k]` calls only K got right, `[b]` only B got right. `[win called | no win called]`
+- Hard-benign false alerts: keyword baseline (K) 6 of 22 vs Safe Signal (B) 0 of 22 (upper bound 14.9%)
+- Scams caught: K 9 of 30 (30.0%, 95% CI 16.6% to 47.9%), B 5 of 30 (16.6%, 95% CI 7.3% to 33.6%)
+- Paired: 4 calls only K got right, 6 only B got right. No win called (needs 5 or more in one direction).
 - Small print: "60 held-out scripted calls written blind by an AI agent that never saw the rules. Scripted transcripts, not ASR. Too small for a production claim."
-- Side card, "Where we fail": `[missed scam types from results/latest.md]`
+- Side card, "Where we fail": B missed 25 of 30 held-out scams (code 9 of 12, payment 9 of 10, remote access 7 of 8). The same rules catch 19 of 20 on the dev set they were tuned on, so they don't yet generalise to new wording. The intent model (arm C) caught no extra scams (5 of 30) and added 1 hard-benign false alert.
 
 ## 4. Stack and next steps
 **Stack:** replayed call audio -> faster-whisper small.en (CPU) -> rules + policy (pure Python, versioned YAML) -> SMS via Twilio (or simulated) -> operator console (React). FastAPI, SQLite: counts and hashed numbers only, no audio or transcripts stored.
