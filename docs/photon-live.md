@@ -49,7 +49,6 @@ Text `YES` (or `START`) from `DEMO_PHONE` and `SPARE_PHONE` to the assigned line
 also opens the line for our sends. Photon has no carrier STOP handling, so the app answers STOP with R-STOP
 itself.
 
-## 4. Kill check and preflight
-`scripts/sms_kill_check.py` and the webhook/sms checks in `scripts/preflight` still call Twilio and will
-FAIL until a-preflight ports them (ASK on issue #1). `scripts/preflight --no-sms` is unaffected apart from the
-webhook check.
+## 4. Preflight
+The Twilio H+1 kill check (`scripts/sms_kill_check.py`) is retired. The webhook/sms checks in
+`scripts/preflight` still call Twilio and will FAIL until a-preflight ports them (ASK on issue #1).
