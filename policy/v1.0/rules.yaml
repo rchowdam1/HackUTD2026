@@ -19,7 +19,7 @@ negation:
   - 'do not'
   - 'never'
   - 'not'
-  - "won'?t"
+  - "won'?t(?! you)"
   - 'will not'
   - "shouldn'?t"
   - 'should not'
@@ -27,14 +27,22 @@ negation:
   - 'must not'
   - 'no one'
   - 'nobody'
+  - "can'?t(?! you)"
+  - 'cannot'
+# "won't you" / "can't you" open a request, not a negation.
 # A word in the gap that ends the negation's scope ("don't hang up, just read me").
+# A comma also ends it ("don't worry, read me"), unless the comma directly follows the
+# negation and opens an aside ("do not, under any circumstances, share").
 negation_blockers: [and, then, just, now, instead, so]
+negation_max_aside_words: 5
+# A negated recipient after the verb: "share it with no one".
+negated_object: '(with|to) (no ?one|nobody)'
 
 # Reported or hypothetical requests: "if anyone asks you to install ...".
 hedges:
   - 'if (someone|anyone|somebody|anybody|a caller|they|a stranger)'
   - '(anyone|someone|somebody|anybody|people|callers?) (who|that)'
-  - '(scammers?|fraudsters?|criminals?) (often |may |might |will |sometimes |usually |)(ask|tell|say|want|try|call|pretend)'
+  - '(scammers?|fraudsters?|criminals?|crooks?|thieves|someone|somebody|anyone|anybody|people) (often |may |might |could |can |will |would |sometimes |usually |)(ask|tell|say|want|try|call|pretend)'
 
 # Request frames: the subscriber is asked to act.
 frames:
@@ -42,12 +50,14 @@ frames:
   - '(need|want|like) you to'
   - "you('ll| will)? (need|have|got) to"
   - "you('re| are) (going|gonna) to"
-  - 'you (must|should)'
+  - 'you (must|should|can)'
   - 'go ahead and'
   - 'please'
   - 'make sure (you|to)'
 # Words allowed before an imperative verb at the start of a clause.
-fillers: "(ok|okay|so|now|just|please|alright|all right|right|and|then|first|well|great|sir|ma'am|go ahead and|quickly)"
+fillers: "(ok|okay|yes|yeah|yep|no|so|now|just|please|alright|all right|right|and|then|first|well|great|sir|ma'am|go ahead and|quickly)"
+# An introductory phrase ending in a comma before an imperative: "to unlock it, read me ...".
+intro: '(to|before|after|once|when|whenever|as soon as|if)'
 # Not a request even though it looks like one.
 exclusions:
   - '(tell|let|show) (me|us) (when|if|once|after|about|how|know)'
@@ -64,10 +74,11 @@ categories:
     c_rule: C-INTENT-OTP-01
     k_event: code_mention
     b_event: code_request
-    verbs: 'read|tell|give|send|text|say|share|repeat|provide|forward|spell|recite'
+    verbs: 'read|tell|give|send|text|say|share|repeat|provide|forward|spell|recite|confirm'
     extra:
       - "what('s| is| was| are| were)( \\w+){0,4}? (code|pin|password|passcode|digits)"
-      - "(i|we)('ll| will)? (need|want|require)( \\w+){0,3}? (code|pin|password|passcode|digits)"
+      - "(i|we)('ll| will)?( (just|only|still|also|really))? (need|want|require)( [\\w'-]+){0,3}? (codes?|pins?|passwords?|passcodes?|otps?|digits?)"
+      - "what (does|did) (it|that|this|the (text|message|screen|code|number)) (say|read|show)"
   payment:
     alert: ALERT-PAY-01
     followup: FU-PAY-01
@@ -76,7 +87,7 @@ categories:
     c_rule: C-INTENT-PAY-01
     k_event: payment_mention
     b_event: payment_request
-    verbs: 'buy|purchase|send|wire|transfer|pay|deposit|withdraw|move|load|mail|put|scratch|read'
+    verbs: 'buy|purchase|send|wire|transfer|pay|settle|deposit|withdraw|move|load|mail|put|scratch|read'
     extra: []
   remote:
     alert: ALERT-REMOTE-01
@@ -88,5 +99,5 @@ categories:
     b_event: remote_access_request
     verbs: 'download|install|open|run|allow|accept|grant|click|go to|type|visit|connect|enable|turn on|start'
     extra:
-      - 'let (me|us)( \w+){0,2}? (connect|in|access|see|take|control|remote|fix|into)'
+      - 'lets? (me|us)( \w+){0,2}? (connect|in|access|see|take|control|remote|fix|into)'
       - '(give|grant) (me|us)( remote)? access'
