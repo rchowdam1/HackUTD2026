@@ -284,3 +284,10 @@ def test_preload_records_the_data_flow_when_on(on, caplog):
     with caplog.at_level(logging.INFO, logger="app.intent"):
         intent.preload()
     assert any("openrouter.ai" in r.getMessage() for r in caplog.records)
+
+
+def test_verdict_names_the_top_request_and_whether_the_model_finds_one():
+    found, score, category = intent.verdict({**NO, "pay_send": 0.999})
+    assert (found, score, category) == (True, 0.999, "payment")
+    found, score, _ = intent.verdict(NO)
+    assert not found and score == 0.02

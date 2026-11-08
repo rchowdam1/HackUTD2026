@@ -20,7 +20,7 @@ Preconditions:
 - Demo phone opted in (`ctx.ensure_opted_in()`), otherwise alerts are skipped by design.
 
 - **API turns.** Reset, `POST /live/start` -> 200 with `session_ref`; post `audio/demo/bank/t01..t05.wav` with the speakers from `scenarios/demo/bank.json`, each -> 200 with non-empty `text`. SSE: segments 1-5 `source: asr` with those speakers, one `decision` ALERT-OTP-01, no `session finished`. `POST /demo/end-call`: order `running -> sms ALERT-OTP-01 -> sms FU-OTP-01 -> finished`; outbox gains exactly those two.
-- **Buttons.** Open the console, click `Start live conversation`, wait for `session running`; click `Caller` (`You` is disabled), let the fake mic play for 5 s, click `Caller - tap to stop`. SSE: a caller `asr` segment containing "code", then ALERT-OTP-01. Console: `Live mic` tag, the line in `Live transcript`, Why headline `Caller asked for a code`, `You` enabled again. Click `End call`: markers `* Alert message sent to user` then `* Follow-up message sent to user`; no `Caller` button.
+- **Buttons.** Open the console, click `Start live conversation`, wait for `session running`; click `Caller` (`You` is disabled), let the fake mic play for 5 s, click `Caller - tap to stop`. SSE: a caller `asr` segment containing "code", then ALERT-OTP-01. Console: `Live mic` tag, the line in `Live transcript`, Why headline `Caller asked for a code`, `You` enabled again. Click `End call`: markers `→ Alert text sent` then `→ Follow-up text sent`; no `Caller` button.
 - **Proof.** `artifacts/live.api-turns--live-segments.json`, `artifacts/live.api-turns--event-order.json`, `artifacts/live.mic-ui--mic-segment.json`, `screenshots/live.mic-ui--alert-mid-call.png`, `screenshots/live.mic-ui--ended.png`.
 
 ## Gotchas

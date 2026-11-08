@@ -1,5 +1,5 @@
 import type { Snapshot } from "./api";
-import type { ConsentState, Decision, Event, RiskEvent, Segment, SessionPayload, SmsMode, SmsPayload } from "./types";
+import type { ConsentState, Decision, Event, RiskEvent, Segment, SessionPayload, SmsMode, SmsPayload, TurnPayload } from "./types";
 
 // One phone-frame bubble: a text we sent (afterSeq: last transcript line when it arrived), or a keyword the phone sent back.
 export type Bubble = { kind: "out"; sms: SmsPayload; afterSeq: number } | { kind: "in"; keyword: string; id: string };
@@ -12,7 +12,10 @@ export interface State {
   risks: RiskEvent[];
   decisions: Decision[];
   bubbles: Bubble[];
+  turns: TurnPayload[];
   consent: ConsentState | null;
+  wrongCount: number | null; // all-time WRONG replies (GET /state, then reply events)
+  alertSkipped: boolean; // an alert was decided while monitoring was off, so no text went out
 }
 
 export const initial: State = {
@@ -23,8 +26,13 @@ export const initial: State = {
   risks: [],
   decisions: [],
   bubbles: [],
+  turns: [],
   consent: null,
+  wrongCount: null,
+  alertSkipped: false,
 };
+
+const cleared = { segments: [], risks: [], decisions: [], bubbles: [], turns: [], alertSkipped: false };
 
 export type Action = Event | { type: "sms_mode"; mode: SmsMode } | { type: "hydrate"; snapshot: Snapshot; after: Event[] };
 
@@ -33,17 +41,21 @@ export function reduce(s: State, a: Action): State {
     case "session": {
       const p = a.payload;
       if (p.state === "running") {
-        return { ...s, session: p, sessionRef: a.session_ref, smsMode: p.sms_mode ?? s.smsMode, segments: [], risks: [], decisions: [], bubbles: [] };
+        return { ...s, session: p, sessionRef: a.session_ref, smsMode: p.sms_mode ?? s.smsMode, ...cleared };
       }
-      if (p.state === "reset") return { ...s, session: p, segments: [], risks: [], decisions: [], bubbles: [] };
-      return { ...s, session: { ...p, sms_mode: p.sms_mode ?? s.session?.sms_mode ?? null } };
+      if (p.state === "reset") return { ...s, session: p, sessionRef: null, ...cleared };
+      return { ...s, session: { ...p, sms_mode: p.sms_mode ?? s.session?.sms_mode ?? null }, sessionRef: a.session_ref };
     }
     case "segment":
       return { ...s, segments: [...s.segments.filter((x) => x.seq !== a.payload.seq), a.payload].sort((x, y) => x.seq - y.seq) };
     case "risk_event":
       return { ...s, risks: [...s.risks, a.payload] };
     case "decision":
-      return { ...s, decisions: [...s.decisions, a.payload] };
+      return {
+        ...s,
+        decisions: [...s.decisions, a.payload],
+        alertSkipped: s.alertSkipped || (a.payload.level === "action_warning" && s.consent !== null && s.consent !== "active"),
+      };
     case "sms": {
       const sms = a.payload;
       const i = sms.message_id ? s.bubbles.findIndex((b) => b.kind === "out" && b.sms.message_id === sms.message_id) : -1;
@@ -53,7 +65,9 @@ export function reduce(s: State, a: Action): State {
       return { ...s, bubbles };
     }
     case "reply":
-      return { ...s, bubbles: [...s.bubbles, { kind: "in", keyword: a.payload.keyword, id: a.event_id }] };
+      return { ...s, wrongCount: a.payload.wrong_count, bubbles: [...s.bubbles, { kind: "in", keyword: a.payload.keyword, id: a.event_id }] };
+    case "turn":
+      return { ...s, turns: [...s.turns, a.payload] };
     case "consent":
       return { ...s, consent: a.payload.state };
     case "sms_mode":
@@ -62,8 +76,8 @@ export function reduce(s: State, a: Action): State {
       // Rebuild from GET /state, then apply live events that arrived after it, minus duplicates.
       const { snapshot: snap, after } = a;
       const seen = new Set(snap.events.map((e) => e.event_id));
-      const replayed = snap.events.reduce(reduce, initial);
-      const current = { ...replayed, smsMode: snap.sms_mode, consent: snap.consent }; // snapshot values are newer than its events
+      const replayed = snap.events.reduce(reduce, { ...initial, consent: snap.consent }); // best guess for alertSkipped
+      const current = { ...replayed, smsMode: snap.sms_mode, consent: snap.consent, wrongCount: snap.wrong_count }; // snapshot values are newer than its events
       return after.filter((e) => !seen.has(e.event_id)).reduce(reduce, current);
     }
   }

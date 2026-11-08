@@ -35,14 +35,14 @@ UI_HANDLES = [
     "Start live conversation", "Caller", "tap to stop", "Live mic", "Transcribing...",
     "Caller said", "Why it matters", "Whoever has the code can get into your account", "We texted", "Speed",
     "fixture replay", "call ended", "call running", "No texts yet.",
-    "Opt in to call monitoring?", "Alert message sent to user", "Follow-up message sent to user",
+    "Opt in to call monitoring?", "Not now", "Monitoring on", "real SMS", "Alert text", "Follow-up text",
     "Monitoring opt-in: No. No text sent", "Call monitoring is off.",
 ]
 # Routes the harness calls; lint checks each is still declared in backend/app.
 API_ROUTES = ["/login", "/health", "/events/stream", "/demo/run/{scenario_id}", "/demo/end-call", "/demo/reset",
               "/demo/sms-mode", "/results/latest", "/aggregates", "/sms/simulate-inbound", "/sms/outbox",
               "/sms/invite", "/sms/inbound", "/sms/status", "/sms/templates/{template_id}", "/sms/consent",
-              "/live/start", "/live/utterance"]
+              "/live/start", "/live/utterance", "/voice/incoming", "/voice/stream"]
 
 
 @dataclass
@@ -112,8 +112,10 @@ def open_console(ctx: Context):
         ctx.action("log in through the console form")
         login.fill(ctx.env["OPERATOR_PASSWORD"])
         page.get_by_role("button", name="Log in").click()
-        # Every login asks; keep the consent the check set up (No turns invited into stopped).
-        answer_opt_in(ctx, page, "Yes" if ctx.consent_db() == "active" else "No")
+        # A login asks only while the demo phone isn't opted in; "Not now" keeps the consent the check set up
+        # (invited becomes stopped).
+        if ctx.consent_db() != "active":
+            answer_opt_in(ctx, page, "Not now")
     page.get_by_role("button", name="Run bank").wait_for()
     banner = page.get_by_role("banner")
     for _ in range(20):
@@ -148,6 +150,11 @@ def click(ctx: Context, page, name: str, scope=None):
 
 def transcript_lines(ctx: Context, scenario: str) -> list[dict]:
     return json.loads((ctx.sandbox / "scenarios/demo" / scenario / "transcript.json").read_text())
+
+
+def replay_end_s(ctx: Context, scenario: str) -> float:
+    """When a cached replay's last line ends: replays with turn audio are paced by it (not by WORD_MS)."""
+    return max(line["t_end_ms"] for line in transcript_lines(ctx, scenario)) / 1000
 
 
 def events_for(ctx: Context, since: int, ref: str, type_: str | None = None) -> list[dict]:
@@ -216,8 +223,12 @@ def login_ui_success(ctx: Context):
     page.get_by_placeholder("Operator password").fill(ctx.env["OPERATOR_PASSWORD"])
     page.get_by_role("button", name="Log in").click()
     ui_assert(ctx, "operator console rendered (Run bank button)", lambda: pw_expect()(page.get_by_role("button", name="Run bank")).to_be_visible())
-    ui_assert(ctx, "opt-in prompt shown after login", lambda: pw_expect()(opt_in_dialog(page)).to_be_visible())
-    answer_opt_in(ctx, page, "Yes" if ctx.consent_db() == "active" else "No")  # keep consent as the run had it
+    if ctx.consent_db() == "active":
+        ui_assert(ctx, "opted in: header shows 'Monitoring on'", lambda: pw_expect()(page.get_by_text("Monitoring on")).to_be_visible())
+        ui_assert(ctx, "opted in: no opt-in prompt", lambda: pw_expect()(opt_in_dialog(page)).to_have_count(0))
+    else:
+        ui_assert(ctx, "not opted in: opt-in prompt shown after login", lambda: pw_expect()(opt_in_dialog(page)).to_be_visible())
+        answer_opt_in(ctx, page, "Not now")  # keep consent as the run had it
     cookies = {c["name"]: c for c in page.context.cookies()}
     c = cookies.get("safesignal_session")
     ctx.expect(c and c["httpOnly"] and c["sameSite"] == "Strict", "session cookie is HttpOnly + SameSite=Strict", c)
@@ -228,30 +239,40 @@ def login_ui_success(ctx: Context):
 
 @check("login.opt-in-every-login", "operator-login", ui=True)
 def login_opt_in(ctx: Context):
-    ctx.ensure_opted_in()  # start active so both answers below are observable transitions
+    ctx.action("precondition: opt out via POST /sms/consent {opt_in: false} so the next login asks")
+    ctx.expect(ctx.api.post("/sms/consent", json={"opt_in": False}).status_code == 200, "opt out -> 200")
+    ctx.expect(ctx.consent_db() == "stopped", "consent stopped in SQLite before the logins", ctx.consent_db())
     page = ctx.browser_page(fresh_context=True)
+
+    def log_in(why: str) -> None:
+        page.context.clear_cookies()
+        page.goto(ctx.inst["console"] + "/")
+        ctx.action(f"log in through the console form ({why})")
+        page.get_by_placeholder("Operator password").fill(ctx.env["OPERATOR_PASSWORD"])
+        page.get_by_role("button", name="Log in").click()
+
     try:
-        for choice, state in (("No", "stopped"), ("Yes", "active")):
-            page.context.clear_cookies()
-            page.goto(ctx.inst["console"] + "/")
-            ctx.action(f"log in through the console form (then choose {choice})")
-            page.get_by_placeholder("Operator password").fill(ctx.env["OPERATOR_PASSWORD"])
-            page.get_by_role("button", name="Log in").click()
-            ui_assert(ctx, f"opt-in prompt shown on this login ({choice} run)", lambda: pw_expect()(opt_in_dialog(page)).to_be_visible())
-            shot = ctx.ev / "screenshots" / f"{ctx.rec['id']}--prompt-{choice.lower()}.png"
+        for choice, state in (("Not now", "stopped"), ("Yes", "active")):
+            log_in(f"then choose {choice}")
+            ui_assert(ctx, f"opt-in prompt shown while not opted in ({choice} run)", lambda: pw_expect()(opt_in_dialog(page)).to_be_visible())
+            shot = ctx.ev / "screenshots" / f"{ctx.rec['id']}--prompt-{choice.split()[0].lower()}.png"
             shot.parent.mkdir(parents=True, exist_ok=True)
             page.screenshot(path=str(shot))
             ctx.artifact(shot)
             out0, mark = len(ctx.outbox()), ctx.tap.mark()
             answer_opt_in(ctx, page, choice)
-            ctx.wait_event(lambda e: e["type"] == "consent" and e["payload"]["state"] == state, mark, 10,
-                           f"consent {state} event after {choice}")
-            ctx.expect(ctx.consent_db() == state, f"{choice} stores consent {state} (SQLite)", ctx.consent_db())
+            if state == "active":
+                ctx.wait_event(lambda e: e["type"] == "consent" and e["payload"]["state"] == state, mark, 10,
+                               f"consent {state} event after {choice}")
+            ctx.expect(ctx.consent_db() == state, f"{choice} leaves consent {state} (SQLite)", ctx.consent_db())
             ctx.expect(len(ctx.outbox()) == out0, f"{choice} sends no text", ctx.outbox()[out0:])
+        log_in("now opted in")
+        ui_assert(ctx, "opted in: header shows 'Monitoring on'", lambda: pw_expect()(page.get_by_text("Monitoring on")).to_be_visible())
+        ui_assert(ctx, "opted in: no prompt on the next login", lambda: pw_expect()(opt_in_dialog(page)).to_have_count(0))
         ctx.action("reload the page (same login)")
         page.reload()
         page.get_by_role("button", name="Run bank").wait_for()
-        ui_assert(ctx, "no prompt on a reload within the same login", lambda: pw_expect()(opt_in_dialog(page)).to_have_count(0))
+        ui_assert(ctx, "no prompt on a reload", lambda: pw_expect()(opt_in_dialog(page)).to_have_count(0))
     finally:
         page.context.close()
 
@@ -336,10 +357,12 @@ def replay_clinic(ctx: Context):
     ctx.expect(not events_for(ctx, mark, ref, "sms"), "no SMS event for the clinic call", events_for(ctx, mark, ref, "sms"))
     ctx.expect(len(ctx.outbox()) == out0, "simulated outbox unchanged (phone stays silent)", len(ctx.outbox()) - out0)
     tr = card(page, "^Live transcript")
+    # The console types the last line over its turn's audio (6.5 s) and shows 'call ended' only after it.
+    ui_assert(ctx, "status shows 'call ended'",
+              lambda: pw_expect()(page.get_by_role("banner")).to_contain_text("call ended", timeout=15_000))
     for x in expected:
         ui_assert(ctx, f"transcript shows turn {x['seq']}", lambda: pw_expect()(tr).to_contain_text(x["text"]))
     ui_assert(ctx, "transcript labelled 'cached transcript'", lambda: pw_expect()(tr.get_by_text("cached transcript")).to_be_visible())
-    ui_assert(ctx, "status shows 'call ended'", lambda: pw_expect()(page.get_by_role("banner")).to_contain_text("call ended"))
     ui_assert(ctx, "Why panel: 'No alert detected'",
               lambda: pw_expect()(card(page, "^Why this alert")).to_contain_text("No alert detected"))
     ui_assert(ctx, "phone frame shows no texts", lambda: pw_expect()(card(page, "^Phone")).to_contain_text("No texts yet."))
@@ -426,14 +449,14 @@ def replay_bank(ctx: Context):
     told = re.sub(r"^CallSafe:\s*(\w)", lambda m: m.group(1).upper(), ctx.templates["ALERT-OTP-01"])
     ui_assert(ctx, "Why panel 'We texted' = the ALERT-OTP-01 template text",
               lambda: pw_expect()(dd(why, "We texted")).to_have_text(told))
-    ui_assert(ctx, "Why panel 'Speed' shows the measured ms",
-              lambda: pw_expect()(dd(why, "Speed")).to_have_text(re.compile(r"^Alert went out \d+ ms after the line came in$")))
+    ui_assert(ctx, "Why panel 'Speed' shows the measured seconds",
+              lambda: pw_expect()(dd(why, "Speed")).to_have_text(re.compile(r"^Text sent \d+\.\d\d s after the line came in$")))
     for tid in ("ALERT-OTP-01", "FU-OTP-01"):
         ui_assert(ctx, f"phone frame shows {tid} text", lambda: pw_expect()(phone).to_contain_text(ctx.templates[tid]))
-    ui_assert(ctx, "transcript marker '* Alert message sent to user' right after the flagged line",
-              lambda: pw_expect()(tr.locator("p.line.flagged + p.marker")).to_have_text("* Alert message sent to user"))
-    ui_assert(ctx, "exactly two markers: alert, then '* Follow-up message sent to user'",
-              lambda: pw_expect()(tr.locator("p.marker")).to_have_text(["* Alert message sent to user", "* Follow-up message sent to user"]))
+    ui_assert(ctx, "transcript marker '→ Alert text sent' right after the flagged line",
+              lambda: pw_expect()(tr.locator("p.line.flagged + p.marker")).to_have_text("→ Alert text sent"))
+    ui_assert(ctx, "exactly two markers: alert, then '→ Follow-up text sent'",
+              lambda: pw_expect()(tr.locator("p.marker")).to_have_text(["→ Alert text sent", "→ Follow-up text sent"]))
     ui_assert(ctx, "status shows 'call ended'", lambda: pw_expect()(page.get_by_role("banner")).to_contain_text("call ended"))
     ctx.rec["timing"] = {"replay_wall_s": round(time.monotonic() - t0, 1)}
     ctx.shot("bank-finished")
@@ -557,8 +580,9 @@ def controls_end_call(ctx: Context):
     click(ctx, page, "End call")
     fin = ctx.wait_event(lambda e: e["session_ref"] == ref and e["type"] == "session" and e["payload"]["state"] == "finished",
                          mark, 10, "session finished after End call")
-    ctx.action("wait past the replay's natural end (≈8 s) for late events")
-    time.sleep(max(0.0, 10 - (time.monotonic() - t0)))
+    end_s = replay_end_s(ctx, "bank")
+    ctx.action(f"wait past the replay's natural end (≈{end_s:.0f} s, paced by its audio) for late events")
+    time.sleep(max(0.0, end_s + 2 - (time.monotonic() - t0)))
     evs = events_for(ctx, mark, ref)
     after = evs[evs.index(fin) + 1:]
     ctx.expect(not after, "no events for the call after it finished", after)
@@ -586,8 +610,9 @@ def controls_reset(ctx: Context):
     rst = ctx.wait_event(lambda e: e["type"] == "session" and e["payload"]["state"] == "reset", mark, 10, "reset event")
     ui_assert(ctx, "status 'reset'", lambda: pw_expect()(page.get_by_role("banner")).to_contain_text("reset"))
     ui_assert(ctx, "transcript cleared", lambda: pw_expect()(card(page, "^Live transcript")).to_contain_text("No call yet."))
-    ctx.action("wait past where the alert would have fired (seq 4 ≈5.3 s) and the replay end (≈8 s)")
-    time.sleep(max(0.0, 10 - (time.monotonic() - t0)))
+    end_s = replay_end_s(ctx, "bank")
+    ctx.action(f"wait past where the alert would have fired (seq 4) and the replay end (≈{end_s:.0f} s, paced by its audio)")
+    time.sleep(max(0.0, end_s + 2 - (time.monotonic() - t0)))
     tail = ctx.tap.since(mark)
     late = [e for e in tail[tail.index(rst) + 1:] if e.get("session_ref") == ref]
     ctx.expect(not late, "no late events from the reset call (generation invariant)", late)
@@ -617,7 +642,8 @@ def controls_mode(ctx: Context):
         with page.expect_response(lambda r: r.url.endswith("/demo/sms-mode")) as resp:
             click(ctx, page, "real")
         ctx.expect(resp.value.status == 200, "POST /demo/sms-mode real -> 200", resp.value.status)
-        ui_assert(ctx, "phone frame hidden in real mode", lambda: pw_expect()(card(page, "^Phone")).to_have_count(0))
+        ui_assert(ctx, "phone frame stays in real mode, tagged 'real SMS'",
+                  lambda: pw_expect()(card(page, "^Phone").get_by_text("real SMS", exact=True)).to_be_visible())
         ui_assert(ctx, "'real' toggle highlighted", lambda: pw_expect()(real).to_have_class(re.compile(r"\bon\b")))
         # Safe: clinic never alerts, the run is reset at once, and the sandbox has no Twilio account.
         ctx.expect(_run_clinic_mode(ctx, page, "real") == "real", "backend starts the next call in real mode (SSE)")
@@ -728,6 +754,110 @@ def webhooks_status(ctx: Context):
     r = post_twilio(ctx, "/sms/status", {"MessageSid": "SMunknown" + uuid.uuid4().hex[:8], "MessageStatus": "delivered"})
     time.sleep(1)
     ctx.expect(r.status_code == 204 and not ctx.tap.since(mark), "unknown MessageSid -> 204, no event", [r.status_code, ctx.tap.since(mark)])
+
+
+# --- live-call (Twilio voice webhook + Media Stream socket) -----------------------------------
+
+def stream_url(ctx: Context) -> str:
+    return "ws" + ctx.env["PUBLIC_BASE_URL"].removeprefix("http") + "/voice/stream"
+
+
+def ws_connect(ctx: Context, signature: str | None):
+    """Open /voice/stream the way Twilio does: the handshake carries x-twilio-signature over the
+    stream URL with no params."""
+    from websockets.sync.client import connect
+    headers = {} if signature is None else {"x-twilio-signature": signature}
+    return connect(ctx.inst["backend"].replace("http", "ws", 1) + "/voice/stream", additional_headers=headers)
+
+
+def ulaw_frames(wav_path: Path) -> list[bytes]:
+    """20 ms frames of 8 kHz mu-law, encoded by the stdlib (independent of the app's decoder)."""
+    import audioop  # deprecated, still in 3.11
+    import wave
+    with wave.open(str(wav_path)) as w:
+        assert (w.getframerate(), w.getsampwidth(), w.getnchannels()) == (8000, 2, 1), wav_path
+        u = audioop.lin2ulaw(w.readframes(w.getnframes()), 2)
+    return [u[i:i + 160] for i in range(0, len(u), 160)]
+
+
+@check("voice.signature-required", "live-call")
+def voice_sig(ctx: Context):
+    from websockets.exceptions import InvalidStatus
+    mark = ctx.tap.mark()
+    params = {"CallSid": "CAverify" + uuid.uuid4().hex[:24], "From": "+10000000000"}
+    for label, kw in (("unsigned", {"sign": False}), ("bad signature", {"bad": True})):
+        r = post_twilio(ctx, "/voice/incoming", params, **kw)
+        ctx.expect(r.status_code == 403, f"{label} POST /voice/incoming -> 403", r.status_code)
+    good = twilio_signature(ctx.env["TWILIO_AUTH_TOKEN"], stream_url(ctx), {})
+    for label, sig in (("unsigned", None), ("bad signature", ("B" if good[0] == "A" else "A") + good[1:])):
+        try:
+            ws_connect(ctx, sig).close()
+            status = "accepted"
+        except InvalidStatus as e:
+            status = e.response.status_code
+        ctx.expect(status == 403, f"{label} /voice/stream handshake -> 403", status)
+    time.sleep(1)
+    ctx.expect(not [e for e in ctx.tap.since(mark) if e["type"] == "session"], "no call session started", ctx.tap.since(mark))
+
+
+@check("voice.incoming-twiml", "live-call")
+def voice_twiml(ctx: Context):
+    import xml.etree.ElementTree as ET
+    r = post_twilio(ctx, "/voice/incoming", {"CallSid": "CAverify" + uuid.uuid4().hex[:24], "From": "+10000000000"})
+    ctx.expect(r.status_code == 200 and r.headers["content-type"].startswith("text/xml"),
+               "signed POST /voice/incoming -> 200 TwiML", [r.status_code, r.headers.get("content-type"), r.text])
+    root = ET.fromstring(r.text)
+    stream, dial = root.find("Start/Stream"), root.find("Dial")
+    ctx.expect(stream is not None and stream.get("url") == stream_url(ctx) and stream.get("track") == "both_tracks",
+               "TwiML starts a both-track stream to PUBLIC_BASE_URL/voice/stream", r.text)
+    ctx.expect([c.tag for c in root] == ["Start", "Dial"] and dial.text == ctx.env["DEMO_PHONE"],
+               "then dials DEMO_PHONE (stream first, so the bridge runs after it)", r.text)
+
+
+@check("voice.bank-live-stream", "live-call", profile="asr", ui=True)
+def voice_bank(ctx: Context):
+    ctx.api_reset()
+    ctx.ensure_opted_in()
+    page = open_console(ctx)
+    turns = json.loads((ctx.sandbox / "scenarios/demo/bank.json").read_text())["turns"]
+    quiet = b"\xff" * 160
+    ctx.action(f"stream the bank call's {len(turns)} turns over a signed /voice/stream in real time "
+               "(caller -> inbound track, subscriber -> outbound, 0.8 s pause between turns)")
+    mark, t = ctx.tap.mark(), 0
+    sig = twilio_signature(ctx.env["TWILIO_AUTH_TOKEN"], stream_url(ctx), {})
+    t0 = time.monotonic()
+    with ws_connect(ctx, sig) as ws:
+        ws.send(json.dumps({"event": "connected"}))
+        ws.send(json.dumps({"event": "start", "start": {"tracks": ["inbound", "outbound"]}}))
+        for turn in turns:
+            track = "inbound" if turn["speaker"] == "caller" else "outbound"
+            frames = ulaw_frames(ctx.sandbox / "audio/demo" / turn["audio"])
+            for f in frames + [quiet] * 40:
+                for tr, payload in ((track, f), ("outbound" if track == "inbound" else "inbound", quiet)):
+                    ws.send(json.dumps({"event": "media", "media": {"track": tr, "timestamp": str(t),
+                                                                   "payload": base64.b64encode(payload).decode()}}))
+                t += 20
+                time.sleep(max(0.0, t0 + t / 1000 - time.monotonic()))
+        ws.send(json.dumps({"event": "stop"}))
+    start = ctx.wait_event(lambda e: e["type"] == "session" and e["payload"]["state"] == "running", mark, 5, "session running")
+    ref = start["session_ref"]
+    ctx.wait_event(lambda e: e["session_ref"] == ref and e["type"] == "session" and e["payload"]["state"] == "finished",
+                   mark, 60, "session finished")
+    segs = [e["payload"] for e in events_for(ctx, mark, ref, "segment")]
+    ctx.save_json("live-segments", segs)
+    ctx.expect(segs and all(s["source"] == "asr" for s in segs), "every segment came from whisper (source asr)",
+               [s["source"] for s in segs])
+    ctx.expect({s["speaker"] for s in segs} == {"caller", "subscriber"},
+               "both tracks transcribed and labelled (inbound caller, outbound subscriber)", [s["speaker"] for s in segs])
+    ctx.expect([s["seq"] for s in segs] == list(range(1, len(segs) + 1)), "seq increases without gaps", [s["seq"] for s in segs])
+    decs = events_for(ctx, mark, ref, "decision")
+    ctx.expect([d["payload"]["template_id"] for d in decs] == ["ALERT-OTP-01"], "rules fire ALERT-OTP-01 on the live stream",
+               [d["payload"] for d in decs])
+    tr = card(page, "^Live transcript")
+    ui_assert(ctx, "console shows the live transcript", lambda: pw_expect()(tr).to_contain_text(segs[0]["text"]))
+    ui_assert(ctx, "transcript not labelled cached", lambda: pw_expect()(tr.get_by_text("cached transcript")).to_have_count(0))
+    ctx.rec["timing"] = {"stream_wall_s": round(time.monotonic() - t0, 1)}
+    ctx.shot("live-finished")
 
 
 # --- enrollment-invite ------------------------------------------------------------------------
@@ -863,7 +993,7 @@ def live_mic_ui(ctx: Context):
     click(ctx, page, "End call")
     ctx.wait_event(is_session(ref, "finished"), mark, 15, "session finished")
     ui_assert(ctx, "follow-up marker after End call",
-              lambda: pw_expect()(tr.locator("p.marker")).to_have_text(["* Alert message sent to user", "* Follow-up message sent to user"]))
+              lambda: pw_expect()(tr.locator("p.marker")).to_have_text(["→ Alert text sent", "→ Follow-up text sent"]))
     ui_assert(ctx, "speaker buttons are gone once the call ended", lambda: pw_expect()(page.get_by_role("button", name="Caller", exact=True)).to_have_count(0))
     ctx.shot("ended")
 
@@ -921,3 +1051,99 @@ def negative_control(ctx: Context):
                    and e["payload"]["state"] == "finished", mark, 40, "finished")
     dec = [e["payload"]["template_id"] for e in events_for(ctx, mark, ev["session_ref"], "decision")]
     ctx.expect(dec == ["ALERT-OTP-01"], "NEGATIVE CONTROL (deliberately false): the clinic call alerts", dec)
+
+
+# --- console-design ---------------------------------------------------------------------------
+
+# DESIGN.md "one accent, one meaning": magenta only on the request CallSafe acted on, the alert, the WRONG key and
+# the single primary action. Elements under these may be magenta; anything else is a violation.
+MAGENTA_ALLOWED = (".line.flagged, .line .rel, .verdict .headline.alerted, .primary-row, .why .request, .why mark, "
+                   ".bubble.in, .pill.wrong, .ttag.alert, .primary, .field")
+MAGENTA_AUDIT = """allowed => {
+  const MAG = ["rgb(226, 0, 116)", "rgb(200, 0, 106)"];
+  const name = el => el.tagName.toLowerCase() + (el.className && typeof el.className === "string" ? "." + el.className.trim().split(/\\s+/).join(".") : "");
+  const out = {stray: [], small: []};
+  for (const el of document.querySelectorAll("body *")) {
+    const r = el.getBoundingClientRect();
+    if (!r.width || !r.height) continue;
+    const cs = getComputedStyle(el);
+    if (cs.visibility === "hidden") continue;
+    const ownText = [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim());
+    const hits = [ownText && cs.color, cs.backgroundColor, cs.borderTopWidth !== "0px" && cs.borderTopColor].filter(c => MAG.includes(c));
+    if (!hits.length) continue;
+    if (!el.closest(allowed)) out.stray.push(name(el) + ": " + (el.textContent || "").trim().slice(0, 40));
+    if (ownText && cs.color === MAG[0] && parseFloat(cs.fontSize) < 24) out.small.push(name(el) + " " + cs.fontSize);
+  }
+  return out;
+}"""
+
+
+def run_bank_to_end(ctx: Context):
+    ctx.api_reset()
+    ctx.ensure_opted_in()
+    page = open_console(ctx)
+    mark = ctx.tap.mark()
+    ref, _ = start_replay_ui(ctx, page, "Run bank", mark)
+    ctx.wait_event(lambda e: e["session_ref"] == ref and e["type"] == "session" and e["payload"]["state"] == "finished",
+                   mark, 40, "session finished")
+    # The console types each line over its audio; 'call ended' shows once the last line is done.
+    ui_assert(ctx, "status shows 'call ended'",
+              lambda: pw_expect()(page.get_by_role("banner")).to_contain_text("call ended", timeout=15_000))
+    return page, ref, mark
+
+
+@check("design.fit-and-accent", "console-design", ui=True)
+def design_fit(ctx: Context):
+    page, _, _ = run_bank_to_end(ctx)
+    for w, h in ((1440, 900), (1920, 1080)):
+        page.set_viewport_size({"width": w, "height": h})
+        page.wait_for_timeout(300)
+        fit = page.evaluate("() => [document.documentElement.scrollHeight, innerHeight, document.documentElement.scrollWidth, innerWidth]")
+        ctx.expect(fit[0] <= fit[1] and fit[2] <= fit[3], f"{w}x{h}: no page scroll after a bank alert", fit)
+        cols = [page.locator(f".col.{c}").count() for c in ("left", "centre", "right")]
+        ctx.expect(cols == [1, 1, 1], f"{w}x{h}: three columns (controls, transcript, why + phone)", cols)
+        audit = page.evaluate(MAGENTA_AUDIT, MAGENTA_ALLOWED)
+        ctx.save_json(f"magenta-{w}", audit)
+        ctx.expect(not audit["stray"], f"{w}x{h}: magenta only on the request, alert, WRONG key and primary action",
+                   audit["stray"])
+        ctx.expect(not audit["small"], f"{w}x{h}: magenta text under 24px uses --magenta-text", audit["small"])
+        bubble = page.locator(".phone .bubble").first
+        screen = page.locator(".phone .screen")
+        b, s = bubble.bounding_box(), screen.bounding_box()
+        ctx.expect(b and s and b["y"] >= s["y"] - 1 and b["y"] + b["height"] <= s["y"] + s["height"] + 1,
+                   f"{w}x{h}: the alert bubble is fully visible on the phone", [b, s])
+        ctx.shot(f"bank-alert-{w}")
+    page.set_viewport_size({"width": 1440, "height": 900})
+    results = ctx.api.get("/results/latest").json()
+    band = card(page, "^Results")
+    ui_assert(ctx, "results band labels the dev batch as the tuning set",
+              lambda: pw_expect()(band).to_contain_text("scripted calls the rules were tuned on"))
+    for arm, c in results["arms"].items():
+        want = f"{c['hard_benign_fp']} of {c['hard_benign_n']}"
+        ui_assert(ctx, f"results band shows arm {arm}'s false alerts from results/latest.json ({want})",
+                  lambda: pw_expect()(band).to_contain_text(want))
+
+
+@check("ticker.turns", "console-design", ui=True)
+def ticker_turns(ctx: Context):
+    page, ref, mark = run_bank_to_end(ctx)
+    turns = [e["payload"] for e in events_for(ctx, mark, ref, "turn")]
+    sms = [e["payload"] for e in events_for(ctx, mark, ref, "sms")]
+    segs = events_for(ctx, mark, ref, "segment")
+    ctx.expect(len(turns) == len(segs), "one turn event per transcript line (SSE)", [len(turns), len(segs)])
+    items = page.locator(".ticker-list:not([aria-hidden]) > li")
+    ui_assert(ctx, "ticker: one entry per turn plus one per text",
+              lambda: pw_expect()(items).to_have_count(len(turns) + len(sms)))
+    texts = items.all_inner_texts()
+    ctx.save_json("ticker", texts)
+    turn_items = [t for t in texts if "decided in" in t]
+    ctx.expect(len(turn_items) == len(turns) and all(re.search(r"(Caller|You) · .* · decided in \d+ ms", t) for t in turn_items),
+               "each turn entry names the speaker, the AI verdict and the decision time", turn_items)
+    ctx.expect(any("ALERT" in t.upper() and "Alert text" in t for t in texts), "the alert text has its own ALERT entry", texts)
+    track = page.locator(".ticker-track")
+    ctx.expect(track.evaluate("el => getComputedStyle(el).animationName") != "none", "ticker scrolls by default")
+    page.emulate_media(reduced_motion="reduce")
+    ctx.expect(track.evaluate("el => getComputedStyle(el).animationName") == "none",
+               "prefers-reduced-motion stops the ticker")
+    page.emulate_media(reduced_motion="no-preference")
+    ctx.shot("ticker")

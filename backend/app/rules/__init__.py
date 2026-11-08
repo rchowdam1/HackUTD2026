@@ -195,7 +195,7 @@ def _intent(p: _Policy, segments: list[Segment], i: int, rule_events: list[RiskE
     (distinct rule id, low confidence). No answer (model off or call failed) = arm B."""
     if all(c.name in accepted for c in p.categories):
         return rule_events
-    window = segments[max(0, i - p.cfg["context_turns"]):i + 1]
+    window = _window(p, segments[:i + 1])
     ans = intent.answers(window)
     if ans is None:
         return rule_events
@@ -212,6 +212,21 @@ def _intent(p: _Policy, segments: list[Segment], i: int, rule_events: list[RiskE
                               "medium" if judgment == "confirm" else "low", policy_version,
                               intent.request_score(ans, cat.name)))
     return out
+
+
+def _window(p: _Policy, segments: list[Segment]) -> list[Segment]:
+    """What arm C sends for the last turn: it and the context_turns before it."""
+    return segments[max(0, len(segments) - 1 - p.cfg["context_turns"]):]
+
+
+def ai_view(segments: list[Segment], policy_version: str) -> tuple[str, float | None, str | None]:
+    """The intent model's verdict on the last turn (a caller turn), from the answers arm C already
+    fetched for it: ("request" | "no_request" | "unavailable", top score, its category)."""
+    ans = intent.answers(_window(load_policy(policy_version), segments))
+    if ans is None:
+        return "unavailable", None, None
+    found, score, category = intent.verdict(ans)
+    return ("request" if found else "no_request"), score, category
 
 
 def detect(segments: list[Segment], arm: Arm, policy_version: str) -> list[RiskEvent]:

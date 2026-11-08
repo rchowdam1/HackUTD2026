@@ -16,7 +16,7 @@ def live(monkeypatch, published):
     monkeypatch.setenv("DEMO_PHONE", "+12145551234")
     monkeypatch.setenv("CONSENT_SALT", "test-salt")
     monkeypatch.setattr(asr, "load_model", lambda: None)
-    monkeypatch.setattr(asr, "transcribe", lambda clip: ([(0.0, 1.0, t)] if (t := clip.read().decode()) else [], 1.0))
+    monkeypatch.setattr(asr, "transcribe", lambda clip, beam_size=5: ([(0.0, 1.0, t)] if (t := clip.read().decode()) else [], 1.0))
     with TestClient(create_app()) as c:  # one event loop for the whole test, so queued sends run
         assert c.post("/login", json={"password": "op-pass"}).status_code == 200
         assert c.post("/sms/consent", json={"opt_in": True}).status_code == 200
@@ -34,6 +34,8 @@ def test_alert_keeps_the_call_running_and_end_call_sends_the_follow_up(live, pub
     say(live, "subscriber", "Um, okay, hold on.")
     segs = [p for t, p, r in published if t == "segment" and r == ref]
     assert [(s.seq, s.speaker, s.source) for s in segs] == [(1, "caller", "asr"), (2, "caller", "asr"), (3, "subscriber", "asr")]
+    assert all(s.ended_at for s in segs)  # alert latency is timed from the tap that ended the turn
+    assert {p.source for t, p, r in published if t == "session" and r == ref} == {"mic"}
     assert [p.template_id for t, p, _ in published if t == "decision"] == ["ALERT-OTP-01"]
     assert not pipeline.current().finished  # the alert didn't end the call
 

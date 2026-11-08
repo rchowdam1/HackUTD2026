@@ -16,7 +16,7 @@ This directory is the maintained source for verifying what CallSafe's users can 
 - Prefer roles and accessible names: buttons by exact name (`Run bank`, `WRONG`), cards (`.card` `<section>`s) by their H2 (`Live transcript`, `Why this alert`, `Phone`). The password input has no label; use its placeholder `Operator password`.
 - Every UI string a check depends on is listed in `UI_HANDLES` in `../scripts/checks.py`; `verify.py lint` fails when one disappears from `console/src`.
 - Wait on events, never on sleeps: the harness's own SSE subscriber (`events-<profile>.jsonl`) is the clock. The only fixed waits are "wait past the replay's natural end" to prove that nothing late arrives.
-- Replays are paced for the console's word-by-word typing: clinic ≈5.5 s, bank ≈8 s, grandson ≈11 s.
+- Cached replays are paced by their turn audio (each line is due at its `t_start_ms`): clinic ≈15 s, bank ≈22 s, grandson ≈29 s.
 
 ## Proof and skip reporting
 
@@ -43,8 +43,10 @@ Each feature file starts with an H1 title and one paragraph describing the user-
 - [Call controls](./call-controls.md) covers End call and Reset mid-replay and the real / simulated SMS-mode toggle.
 - [Results card](./results-card.md) covers `GET /results/latest` (pending, and `python -m eval.run` output served byte-for-byte); the console no longer shows results.
 - [Twilio webhooks](./twilio-webhooks.md) covers `X-Twilio-Signature` on `/sms/inbound` and `/sms/status`, sender binding, MessageSid dedupe and status callbacks.
+- [Live call](./live-call.md) covers the Twilio voice webhook TwiML, signature checks on `/voice/incoming` and the `/voice/stream` socket, and a signed synthetic Media Stream of the bank call transcribed live.
 - [Enrollment invite](./enrollment-invite.md) covers `POST /sms/invite` for the demo and spare phones and hashed-only storage.
 - [Fixture replay](./fixture-replay.md) covers the console's backend-free `?fixtures` mode.
 - [Live mic](./live-mic.md) covers the console's browser-mic conversation: Start, Caller / You turns, alert mid-call, follow-up on End call.
+- [Console design](./console-design.md) covers the DESIGN.md layout at 1440x900 and 1920x1080 (no page scroll, magenta only where allowed, the results band from `results/latest.json`) and the per-turn ticker, including reduced motion.
 - [ASR replay](./asr-replay.md) covers whisper transcription of the demo audio when `REPLAY_SOURCE=asr`.
 - [Preflight](./preflight.md) covers the offline parts of `scripts/preflight`.

@@ -3,9 +3,10 @@
 
 Named tunnel when CLOUDFLARED_TUNNEL is set (PUBLIC_BASE_URL must already be its stable https URL);
 otherwise a quick tunnel, whose random trycloudflare.com URL is written to .env as PUBLIC_BASE_URL.
-The app only answers /sms/inbound, /sms/status and /health through the tunnel (app.main), so the
-operator console and API stay local. Once /health answers, the TWILIO_FROM number's "A message comes in"
-webhook is pointed at PUBLIC_BASE_URL/sms/inbound, so inbound texts (STOP) are not dropped at startup
+The app only answers Twilio's webhooks, the voice stream and /health through the tunnel (app.main,
+app.api.voice), so the operator console and API stay local. Once /health answers, the TWILIO_FROM
+number's "A message comes in" webhook is pointed at PUBLIC_BASE_URL/sms/inbound, so inbound texts (STOP)
+are not dropped at startup, and "A call comes in" at PUBLIC_BASE_URL/voice/incoming (live calls, #94)
 (skipped when Twilio vars are unset: simulated SMS only).
 Ctrl-C stops both. Never prints numbers or secrets.
 """
@@ -88,8 +89,9 @@ def point_webhook(base: str) -> None:
     number = twilio_number(dict(os.environ))
     if number is None:
         sys.exit("TWILIO_FROM is not a phone number on this Twilio account")
-    number.update(sms_url=f"{base}/sms/inbound", sms_method="POST")
-    print(f"demo_up: Twilio SMS webhook = POST {base}/sms/inbound", flush=True)
+    number.update(sms_url=f"{base}/sms/inbound", sms_method="POST",
+                  voice_url=f"{base}/voice/incoming", voice_method="POST")
+    print(f"demo_up: Twilio SMS webhook = POST {base}/sms/inbound, voice = POST {base}/voice/incoming", flush=True)
 
 
 def main() -> int:
@@ -99,7 +101,7 @@ def main() -> int:
         tunnel, base = start_tunnel()
         procs.append(tunnel)
         os.environ["PUBLIC_BASE_URL"] = base  # beats .env: uvicorn's --env-file never overrides set vars
-        print(f"demo_up: tunnel {base} -> 127.0.0.1:{PORT} (only /sms/inbound, /sms/status, /health)", flush=True)
+        print(f"demo_up: tunnel {base} -> 127.0.0.1:{PORT} (only Twilio webhooks, /voice/stream, /health)", flush=True)
         app = subprocess.Popen(["uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", str(PORT),
                                 *(["--env-file", str(ENV_FILE)] if ENV_FILE.exists() else [])])
         procs.append(app)

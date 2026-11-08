@@ -105,7 +105,11 @@ def _ours(pid: int, marker: str) -> bool:
     try:
         return marker in Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace")
     except (FileNotFoundError, ProcessLookupError, PermissionError):
+        pass
+    if Path("/proc/self").exists():  # Linux: no /proc/<pid> means the process is gone
         return False
+    # macOS has no /proc; ps prints nothing for a dead pid
+    return marker in subprocess.run(["ps", "-p", str(pid), "-o", "command="], capture_output=True, text=True).stdout
 
 
 def live_state() -> dict | None:

@@ -192,3 +192,13 @@ def test_state_replays_events_since_the_latest_session_start(operator, monkeypat
     assert body["sms_mode"] == "real" and body["wrong_count"] == 1
     assert [(e["type"], e["payload"].get("state") or e["payload"].get("status")) for e in body["events"]] == [
         ("session", "running"), ("sms", "failed"), ("session", "finished")]
+
+
+def test_replay_audio_served_to_the_operator_only(client, operator):
+    r = operator.get("/demo/audio/bank/t01.wav")
+    assert r.status_code == 200 and r.headers["content-type"] == "audio/wav" and r.content[:4] == b"RIFF"
+    for bad in ["/demo/audio/bank/t99.wav", "/demo/audio/nope/t01.wav", "/demo/audio/bank/..%2Fbank.json",
+                "/demo/audio/bank/transcript.json"]:
+        assert operator.get(bad).status_code == 404
+    operator.post("/logout")
+    assert client.get("/demo/audio/bank/t01.wav").status_code == 401

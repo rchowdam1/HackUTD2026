@@ -51,6 +51,10 @@ class Segment(BaseModel):
     t_end_ms: int = 0
     text: str
     source: Literal["asr", "cached", "script"]
+    # Wall-clock time (epoch s) the turn's speech ended; live audio sets it, else the pipeline uses arrival.
+    # Latency (turn end -> alert sent) is measured from it.
+    ended_at: float | None = None
+    audio: str | None = None  # replay only: the turn's WAV under audio/demo/, played in sync by the console
 
 
 class RiskEvent(BaseModel):
@@ -81,19 +85,35 @@ class Decision(BaseModel):
 
 # --- SSE event envelope + payloads -------------------------------------------
 
-EventType = Literal["session", "segment", "risk_event", "decision", "sms", "reply", "consent"]
+EventType = Literal["session", "segment", "risk_event", "decision", "sms", "reply", "consent", "turn"]
 
 
 class SessionPayload(BaseModel):
     state: Literal["running", "finished", "reset"]
     arm: Arm | None = None
     sms_mode: SmsMode | None = None
+    source: str | None = None  # what the call is: "replay:<scenario>", "phone" (Twilio) or "mic"
 
 
 class SmsPayload(BaseModel):
     message_id: str
     template_id: str
     status: Literal["queued", "sent", "delivered", "failed"]
+    latency_ms: int | None = None  # alerts: end of the flagged turn -> gateway accepted the text
+    error_code: str | None = None  # Twilio's ErrorCode on a failed/undelivered status callback
+
+
+class TurnPayload(BaseModel):
+    """The pipeline's verdict on one transcript turn, once judged (the console ticker).
+    ai: the intent model's view of a caller turn: "request" / "no_request", "unavailable" (the call failed,
+    rules only for this turn) or "off" (arm B, or a subscriber turn)."""
+    seq: int
+    speaker: Speaker
+    ai: Literal["request", "no_request", "unavailable", "off"]
+    score: float | None = None  # the model's top request probability on this turn
+    category: Category | None = None  # its category
+    flagged_by: Literal["rule", "intent"] | None = None  # this turn raised a risk event
+    decided_ms: int  # end of the turn's speech -> verdict published
 
 
 class ReplyPayload(BaseModel):
@@ -114,6 +134,7 @@ PAYLOAD_MODELS: dict[str, type[BaseModel]] = {
     "sms": SmsPayload,
     "reply": ReplyPayload,
     "consent": ConsentPayload,
+    "turn": TurnPayload,
 }
 
 

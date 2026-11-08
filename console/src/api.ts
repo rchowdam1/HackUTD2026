@@ -1,4 +1,4 @@
-import type { ConsentState, Event, SmsMode, Speaker } from "./types";
+import type { ConsentState, Event, Results, SmsMode, Speaker } from "./types";
 
 // What GET /state returns: current values plus every event since the latest session running/reset.
 export interface Snapshot {
@@ -66,6 +66,7 @@ async function read<T>(path: string): Promise<T | null> {
   return r?.ok ? r.json() : null;
 }
 export const snapshot = () => read<Snapshot>("/state");
+export const results = () => read<Results | { status: "pending" }>("/results/latest");
 
 const textCache = new Map<string, Promise<string | null>>();
 export function templateText(id: string): Promise<string | null> {

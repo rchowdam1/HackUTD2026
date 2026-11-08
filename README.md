@@ -24,7 +24,10 @@ The demo runs arm C (rules + Perplexity Decider) when `INTENT_MODEL=on` and `OPE
 make install                      # uv sync
 make run                          # backend on :8000 (needs OPERATOR_PASSWORD, SESSION_SECRET, CONSENT_SALT set)
 cd console && npm ci && npm run dev   # operator console; proxies the API to :8000
-make demo-up                      # demo laptop: tunnel (Twilio webhooks only) + app on 127.0.0.1 (docs/twilio-live.md)
+make demo                         # demo laptop, one command: backend + console + tunnel + Twilio webhooks + preflight;
+                                  # ports DEMO_PORT (8000, else 8010+) and CONSOLE_PORT (5173, else 5180+)
+make demo ARGS="--no-twilio"      # mic + replay only (no tunnel, simulated SMS); ARGS="--tailnet" also serves the console on the tailnet
+make demo-up                      # tunnel (Twilio webhooks only) + app on 127.0.0.1 (docs/twilio-live.md)
 scripts/preflight                 # go/no-go before judging
 python -m eval.run --arms K,B --batch dev   # writes results/latest.json and .md
 ```

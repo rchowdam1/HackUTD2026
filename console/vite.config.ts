@@ -3,7 +3,7 @@ import { defineConfig } from "vite";
 
 // Same-origin proxy to the FastAPI backend so the session cookie and SSE just work.
 const backend = process.env.BACKEND_URL ?? "http://localhost:8000";
-const proxied = ["/login", "/events", "/demo", "/results", "/aggregates", "/sms", "/health", "/state", "/logout", "/live"];
+const proxied = ["/login", "/events", "/demo", "/results", "/aggregates", "/sms", "/health", "/state", "/logout", "/live", "/voice"];
 
 export default defineConfig({
   plugins: [react()],
