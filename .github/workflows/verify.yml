@@ -1,0 +1,69 @@
+# Targeted live verification (.agents/skills/verify-app). Runs only when app or verification
+# paths change, and only the features those changes touch. Docs/deck-only PRs never start it.
+name: verify
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - "console/**"
+      - "policy/**"
+      - "scenarios/demo/**"
+      - "scenarios/dev/**"
+      - "eval/**"
+      - "scripts/**"
+      - "audio/demo/**"
+      - "tests/fixtures/events/**"
+      - ".agents/skills/verify-app/**"
+      - "Makefile"
+      - "pyproject.toml"
+      - "uv.lock"
+  workflow_dispatch:
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      BASE: origin/${{ github.base_ref || 'main' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: console/package-lock.json
+      - name: Drift lint
+        run: make verify-lint
+      - name: Affected features
+        id: affected
+        run: |
+          uv run python .agents/skills/verify-app/scripts/verify.py affected --base "$BASE" --json > affected.json
+          cat affected.json
+          echo "needs_ui=$(python3 -c 'import json;print(str(json.load(open("affected.json"))["needs_ui"]).lower())')" >> "$GITHUB_OUTPUT"
+      - name: Chromium (only when a UI feature is affected)
+        if: steps.affected.outputs.needs_ui == 'true'
+        run: uv run --with playwright==1.64.1 playwright install --with-deps chromium
+      - name: Verify affected features
+        # FAIL fails the job. BLOCKED (e.g. no whisper model on runners) is reported in the summary, not passed.
+        run: make verify-changed BASE="$BASE" ARGS="--allow-blocked"
+      - name: Summary
+        if: always()
+        run: |
+          r=.verify/runs/latest/report.md
+          if [ -f "$r" ]; then cat "$r" >> "$GITHUB_STEP_SUMMARY"; else echo "no verification report (nothing affected or run did not start)" >> "$GITHUB_STEP_SUMMARY"; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verify-evidence
+          path: .verify/runs/
+          retention-days: 7
+          if-no-files-found: ignore

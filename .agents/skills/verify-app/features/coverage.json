@@ -1,0 +1,190 @@
+{
+  "schema": "verify-app/coverage@1",
+  "features": {
+    "operator-login": {
+      "doc": "operator-login.md",
+      "paths": [
+        "backend/app/api/auth.py",
+        "console/src/App.tsx",
+        "console/src/api.ts"
+      ],
+      "synced_commit": null
+    },
+    "call-replay": {
+      "doc": "call-replay.md",
+      "paths": [
+        "backend/app/pipeline.py",
+        "backend/app/ingest/**",
+        "backend/app/rules/**",
+        "backend/app/intent/**",
+        "backend/app/asr/**",
+        "backend/app/api/demo.py",
+        "backend/app/api/stream.py",
+        "policy/**",
+        "scenarios/demo/**",
+        "console/src/App.tsx",
+        "console/src/state.ts",
+        "console/src/types.ts"
+      ],
+      "synced_commit": null
+    },
+    "sms-replies": {
+      "doc": "sms-replies.md",
+      "paths": [
+        "backend/app/sms/__init__.py",
+        "backend/app/sms/operator.py",
+        "backend/app/consent/**",
+        "backend/app/storage/**",
+        "backend/app/policy/**",
+        "policy/**",
+        "console/src/App.tsx",
+        "console/src/state.ts"
+      ],
+      "synced_commit": null
+    },
+    "call-controls": {
+      "doc": "call-controls.md",
+      "paths": [
+        "backend/app/api/demo.py",
+        "backend/app/pipeline.py",
+        "backend/app/sms/__init__.py",
+        "console/src/App.tsx",
+        "console/src/api.ts",
+        "console/src/state.ts"
+      ],
+      "synced_commit": null
+    },
+    "results-card": {
+      "doc": "results-card.md",
+      "paths": [
+        "backend/app/api/results.py",
+        "eval/**",
+        "scenarios/dev/**",
+        "console/src/App.tsx",
+        "console/src/types.ts"
+      ],
+      "synced_commit": null
+    },
+    "twilio-webhooks": {
+      "doc": "twilio-webhooks.md",
+      "paths": [
+        "backend/app/sms/webhooks.py",
+        "backend/app/sms/__init__.py"
+      ],
+      "synced_commit": null
+    },
+    "enrollment-invite": {
+      "doc": "enrollment-invite.md",
+      "paths": [
+        "backend/app/sms/operator.py",
+        "backend/app/sms/__init__.py",
+        "backend/app/consent/**",
+        "backend/app/storage/**"
+      ],
+      "synced_commit": null
+    },
+    "fixture-replay": {
+      "doc": "fixture-replay.md",
+      "paths": [
+        "tests/fixtures/events/**",
+        "console/src/api.ts",
+        "console/src/App.tsx",
+        "console/src/state.ts"
+      ],
+      "synced_commit": null
+    },
+    "asr-replay": {
+      "doc": "asr-replay.md",
+      "paths": [
+        "backend/app/asr/**",
+        "backend/app/ingest/**",
+        "audio/demo/**",
+        "scenarios/demo/*.json"
+      ],
+      "synced_commit": null
+    },
+    "preflight": {
+      "doc": "preflight.md",
+      "paths": [
+        "scripts/preflight",
+        "scripts/preflight_checks.py"
+      ],
+      "synced_commit": null
+    }
+  },
+  "global_paths": [
+    "backend/app/main.py",
+    "backend/app/models.py",
+    "backend/app/events.py",
+    "backend/app/__init__.py",
+    "backend/app/api/__init__.py",
+    "backend/app/api/health.py",
+    "pyproject.toml",
+    "uv.lock",
+    ".python-version",
+    "console/package.json",
+    "console/package-lock.json",
+    "console/vite.config.ts",
+    "console/tsconfig.json",
+    "console/index.html",
+    "console/src/main.tsx",
+    "console/src/styles.css",
+    "Makefile"
+  ],
+  "ignored_paths": [
+    "PRD.md",
+    "README.md",
+    "AGENTS.md",
+    "deck/**",
+    "docs/**",
+    "voice/**",
+    "tests/**",
+    "scripts/smoke_replay.py",
+    "scenarios/H1/**",
+    "scenarios/H1.sha256",
+    ".gitignore",
+    ".env.example",
+    ".github/**",
+    ".claude/**",
+    ".agents/skills/maintain-verification/**",
+    ".agents/skills/verify-pipeline-formal/**",
+    "scripts/demo_up",
+    "scripts/demo_up.py",
+    "scripts/sms_kill_check.py",
+    "results/**"
+  ],
+  "external": [
+    {
+      "item": "Real SMS through TwilioGateway to an enrolled phone",
+      "reason": "needs the Twilio account, sender and a real opted-in phone; automated verification never texts a real number. Human check: scripts/preflight (sms) on the demo laptop."
+    },
+    {
+      "item": "Twilio-originated webhooks through the cloudflared tunnel",
+      "reason": "needs the tunnel and the Twilio number's webhook config; locally the signature path is verified by signing requests with Twilio's documented scheme."
+    },
+    {
+      "item": "Live demo bring-up and SMS kill check (scripts/demo_up, scripts/sms_kill_check.py)",
+      "reason": "start a cloudflared tunnel, rewrite the Twilio webhook and text real phones; operator-run on the demo laptop (docs/twilio-live.md)."
+    },
+    {
+      "item": "Twilio carrier-level STOP handling and its own auto-reply",
+      "reason": "happens inside Twilio, outside this app."
+    },
+    {
+      "item": "Arm C (intent model) in a live call",
+      "reason": "no user path selects arm C: the console and /demo/run always replay arm B. Unit-tested in tests/intent."
+    },
+    {
+      "item": "Held-out H1 scoring (eval.run --batch H1)",
+      "reason": "Track A agents must not read scenarios/H1 (PRD 19.10); the snapshot excludes it. The results card is verified with --batch dev."
+    },
+    {
+      "item": "Demo audio generation (voice/generate.py, Qwen3-TTS)",
+      "reason": "offline asset generation with its own requirements, not part of the running app."
+    },
+    {
+      "item": "Physical demo setup (power, sleep, hotspot) from PRD 19.7",
+      "reason": "not observable by software."
+    }
+  ]
+}
