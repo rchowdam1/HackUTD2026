@@ -105,11 +105,6 @@ QUESTIONS: dict[str, dict] = {
     "pay_details": _noul(
         "In `caller_turn`, does the caller ask the listener for card or bank account details, or to pay a fee, "
         "fine or bill over the phone?"),
-    "pay_to_caller": _noul(
-        "In `caller_turn`, does the caller want the listener's money to go to the caller, or to an account, card, "
-        "person or place that the caller names?",
-        "The caller tells the listener where to send or hand over money, or asks to take the payment themselves.",
-        "The listener pays a business or person they chose themselves, or no money is asked for."),
     # Device access.
     "remote": {
         "type": "noul",
@@ -177,8 +172,7 @@ CATEGORIES: tuple[Category, ...] = ("otp", "payment", "remote")
 _SAY = ("warning", "reported")
 GROUPS: dict[Category, tuple[tuple[tuple[str, ...], tuple[str, ...]], ...]] = {
     "otp": ((("otp", "otp_code", "otp_secret", "otp_hear"), _SAY),),
-    "payment": ((("payment", "pay_cards", "pay_send", "pay_details", "pay_to_caller"),
-                 _SAY + ("done", "known_payee")),),
+    "payment": ((("payment", "pay_cards", "pay_send", "pay_details"), _SAY + ("done", "known_payee")),),
     "remote": ((("rem_control", "rem_access"), _SAY),
                (("remote", "rem_install"), _SAY + ("done", "self_service"))),
 }
