@@ -1,0 +1,8 @@
+# config	expected outcome (pass | violation:<Invariant> | deadlock)
+arm-b	pass
+arm-c	pass
+prd-no-stale-send	violation:NoStaleSend
+broken-finish-guard	violation:AtMostOneFollowup
+broken-emit-guard	violation:NoStaleEvent
+broken-thread-recheck	violation:SendStartsLive
+broken-finish-lock	pass

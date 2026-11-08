@@ -1,6 +1,6 @@
 UV := env -u PYTHONPATH -u PYTHONHOME -u VIRTUAL_ENV uv
 
-.PHONY: install smoke test run preflight demo-up
+.PHONY: install smoke test run preflight verify verify-changed verify-lint verify-formal demo-up
 
 install:
 	$(UV) sync
@@ -20,3 +20,19 @@ preflight: install
 
 demo-up: install
 	scripts/demo_up
+
+# Verification skill (.agents/skills/verify-app): real app, isolated sandbox, evidence in .verify/runs/
+VERIFY := $(UV) run --with playwright==1.64.1 python .agents/skills/verify-app/scripts/verify.py
+BASE ?= origin/main
+
+verify: install
+	$(VERIFY) run $(ARGS)
+
+verify-changed: install
+	$(VERIFY) run --changed $(BASE) $(ARGS)
+
+verify-lint:
+	$(VERIFY) lint
+
+verify-formal:
+	.agents/skills/verify-pipeline-formal/scripts/check.sh $(ARGS)

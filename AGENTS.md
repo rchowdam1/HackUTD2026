@@ -121,6 +121,23 @@ Up to 100 agents may be working at once.
 - Keep PRs small and limited to one task.
 - Never commit secrets such as API keys or `.env` files.
 
+## 7. Verification
+
+Prove a feature works by driving the real app, not by reading code. Project-local skills live in `.agents/skills/` (also reachable as `.claude/skills/`):
+
+- `verify-app`: launches the backend + console in an isolated sandbox (`.verify/`, never your `.env` or `data/`), drives user journeys with Playwright, the API, signed Twilio webhooks and the CLIs, and writes PASS / FAIL / BLOCKED with evidence to `.verify/runs/<id>/report.{json,md}`. Read `.agents/skills/verify-app/SKILL.md`.
+- `maintain-verification`: maps git changes to features, detects stale recipes, re-drives affected features, and fixes the verification without hiding app bugs.
+- `verify-pipeline-formal`: TLA+ model check of `pipeline.py` ordering guarantees.
+
+```bash
+make verify-changed            # features touched since origin/main (run before opening a PR)
+make verify                    # everything, ~4 min
+make verify-lint               # verification drift, seconds
+make verify-formal             # TLA+ pipeline check, seconds
+```
+
+BLOCKED is never a pass. Report a FAIL in an area you don't own to its owner; don't edit their code or the check to make it green.
+
 ## Project Context
 
 Fill this in once the stack is chosen.
