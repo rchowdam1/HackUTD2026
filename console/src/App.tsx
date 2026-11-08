@@ -27,6 +27,8 @@ const STATUS_WORDS: Record<SmsPayload["status"], string> = { queued: "Queued", s
 // 30034: carriers block texts from a number not yet registered for US A2P 10DLC (our number today).
 const CARRIER_BLOCKED = "30034";
 function statusWords(sms: SmsPayload): string {
+  // The simulated gateway's texts ("SIM…" ids) land in this frame at once but are never status-updated past queued.
+  if (sms.status === "queued" && sms.message_id.startsWith("SIM")) return "Sent (simulated)";
   if (sms.status !== "failed" || !sms.error_code) return STATUS_WORDS[sms.status];
   if (sms.error_code === CARRIER_BLOCKED) return "Not delivered: carrier blocked (Twilio 30034, number not registered yet)";
   return `Not delivered (Twilio ${sms.error_code})`;
