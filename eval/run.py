@@ -143,7 +143,7 @@ def report(batch: str, policy_version: str, scenarios, results: Results, fired, 
         fp = [s.id for s in scenarios if s.label == "benign" and fired[arm][s.id]]
         lines.append(f"- {arm}: missed scams: {', '.join(fn) or 'none'}; false alerts: {', '.join(fp) or 'none'}")
     if c_failures is not None:
-        lines += ["", f"C: {c_failures} TypeSafe calls failed and fell back to arm B."]
+        lines += ["", f"C: {c_failures} intent model calls failed and fell back to arm B."]
     lines += ["", "Percentages: estimates and lower bounds rounded down, upper bounds rounded up. "
               "Sample is small; this is not a production accuracy claim."]
     return "\n".join(lines) + "\n"
@@ -155,7 +155,7 @@ def run(arms: list[str], batch: str, policy_version: str, decide,
         raise SystemExit(f"bad arms {','.join(arms)}: give each of K, B, C at most once")
     if "C" in arms and not intent.enabled():
         raise SystemExit("refusing to score arm C: the intent model is off (set INTENT_MODEL=on and "
-                         "TYPESAFE_API_KEY); without it C would just repeat B")
+                         "OPENROUTER_API_KEY); without it C would just repeat B")
     scenarios = load_batch(batch, scenarios_dir)
     fired, c_failures = {}, None
     for arm in arms:

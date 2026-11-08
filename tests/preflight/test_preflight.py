@@ -14,7 +14,7 @@ pf = load_script("preflight_checks")
 SID, TOKEN = "AC" + "0123456789abcdef" * 2, "tok-secret-123"
 ENV = {"TWILIO_ACCOUNT_SID": SID, "TWILIO_AUTH_TOKEN": TOKEN, "TWILIO_FROM": "+15550001111",
        "PUBLIC_BASE_URL": "https://demo.example.com", "DEMO_PHONE": "+12145551234", "SPARE_PHONE": "+12145559876",
-       "OPERATOR_PASSWORD": "op-secret-pw", "TYPESAFE_API_KEY": "ts-key-456"}
+       "OPERATOR_PASSWORD": "op-secret-pw", "OPENROUTER_API_KEY": "or-key-456"}
 
 
 class FakeTwilio:
@@ -51,9 +51,9 @@ def number(url, method="POST"):
 # --- masking and env --------------------------------------------------------------------------
 
 def test_scrub_masks_secrets_sids_and_phones():
-    text = f"sid {SID} token {TOKEN} key ts-key-456 /Accounts/{SID}/Messages to +12145551234"
+    text = f"sid {SID} token {TOKEN} key or-key-456 /Accounts/{SID}/Messages to +12145551234"
     out = pf.scrub(text, ENV)
-    assert SID not in out and TOKEN not in out and "ts-key-456" not in out and "+12145551234" not in out
+    assert SID not in out and TOKEN not in out and "or-key-456" not in out and "+12145551234" not in out
     assert "+1******1234" in out
 
 

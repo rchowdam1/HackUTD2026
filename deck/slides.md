@@ -17,12 +17,12 @@ Headline numbers come from the blind set H4 (6228 scripted calls, kept outside t
 **Title:** Keywords alert on 64% of harmless calls. CallSafe alerts on 0.9%.
 - False alerts on harmless calls: keyword baseline (K) 2001 of 3111 (64.4%, 95% CI 62.6% to 66.0%) vs CallSafe rules (B, the demo) 27 of 3111 (0.9%, 95% CI 0.5% to 1.3%)
 - Scams caught: K 2629 of 3117 (84.3%, 95% CI 83.0% to 85.6%), B 2056 of 3117 (65.9%, 95% CI 64.2% to 67.7%)
-- Arm C (opt-in, sends call text to TypeSafe's API): 3094 of 3117 caught (99.2%, 95% CI 98.8% to 99.6%), 9 of 3111 false alerts (0.3%, 95% CI 0.1% to 0.6%), measured on the pre-merge branch. Currently unavailable: the API is out of credit.
+- Arm C (opt-in, sends call text to OpenRouter): 3094 of 3117 caught (99.2%, 95% CI 98.8% to 99.6%), 9 of 3111 false alerts (0.3%, 95% CI 0.1% to 0.6%), measured on the pre-merge branch, measured with TypeSafe Jev 1.14, the previous arm C model; not yet re-measured with Decider V1.2.
 - Small print: "6228 scripted calls (3117 scam, 3111 harmless) written blind by 25 isolated AI agents with no repo access, sealed by hash before scoring. Scripted transcripts, not ASR, not real calls. No production claim."
 - Side card, "Where we fail": B misses 1061 of 3117 blind scams, about a third. Arm C catches most of those, but it sends call text off the machine and is unavailable today. On the 40-call dev set the rules were tuned on, B catches 20 of 20 with 0 false alerts. On H1 (60 calls; H1 reused: read while diagnosing, so not fully blind) B catches 18 of 30 with 0 of 22 hard-benign false alerts, K 27 of 30 with 13 of 22; no win called.
 
 ## 4. Stack and next steps
-**Stack:** replayed call audio -> faster-whisper small.en (CPU) -> rules + policy (pure Python, versioned YAML) -> SMS via Twilio (simulated in the demo) -> operator console (React). FastAPI, SQLite: counts and HMAC-hashed numbers only, no audio or transcripts stored. Optional arm C adds TypeSafe's API (sends call text out; off in the demo).
+**Stack:** replayed call audio -> faster-whisper small.en (CPU) -> rules + policy (pure Python, versioned YAML) -> SMS via Twilio (simulated in the demo) -> operator console (React). FastAPI, SQLite: counts and HMAC-hashed numbers only, no audio or transcripts stored. Optional arm C adds Perplexity Decider V1.2 through OpenRouter (sends call text out; off in the demo).
 
 **Next:**
 - Carrier routing on the Live Translation (*87) path, so it works on any phone

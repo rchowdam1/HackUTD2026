@@ -45,6 +45,6 @@ After `STOP`, Twilio blocks further sends and sends its own confirmation, so the
 
 ## 6. Data that leaves the laptop
 - Alert and reply texts go to Twilio (template text only, never call content).
-- Arm C (`INTENT_MODEL=on` + `TYPESAFE_API_KEY`) sends each caller turn plus up to 3 turns before it to
-  api.typesafe.ai, and the app logs a line saying so at startup. Leave it off for any real call. The API
-  currently returns 402 (out of credit), so every turn falls back to arm B.
+- Arm C (`INTENT_MODEL=on` + `OPENROUTER_API_KEY`) sends each caller turn plus up to 3 turns before it to
+  OpenRouter, which forwards it to a host of Perplexity Decider V1.2. The app logs a line saying so at startup.
+  Leave it off for any real call.

@@ -1,6 +1,7 @@
-"""Intent evidence for arm C (PRD §4.3, §19.4) from TypeSafe's Jev (System One API).
+"""Intent evidence for arm C (PRD §4.3, §19.4) from Perplexity's Decider V1.2, a decision model
+called through OpenRouter's Decisions API (OpenRouter forwards each request to a host of the model).
 
-Jev makes atomic judgments; code decides. For each caller turn we send one request
+The model makes atomic judgments; code decides. For each caller turn we send one request
 whose state is the current caller turn plus the few turns before it (speaker-labelled).
 It bundles, answered in parallel:
 - request Nouls, several per alert category (one per way of handing over a code, money or
@@ -13,7 +14,7 @@ It bundles, answered in parallel:
 lexicon saw the category in the window, else model-only "solo"), a "veto" of the rules'
 request on that turn, or nothing. All question wording and thresholds live in this module.
 
-Only on when env INTENT_MODEL=on and TYPESAFE_API_KEY is set. A failed call is an
+Only on when env INTENT_MODEL=on and OPENROUTER_API_KEY is set. A failed call is an
 error, never a "no": it is logged and arm C falls back to arm B for that turn.
 The window leaves the machine only when arm C is on; it is never stored.
 """
@@ -30,8 +31,8 @@ import httpx
 
 from app.models import Category, Segment
 
-URL = "https://api.typesafe.ai/v1/systemone"
-MODEL = "jev-1.14.0"  # pinned: thresholds below were tuned on this version
+URL = "https://openrouter.ai/api/alpha/decisions"
+MODEL = "perplexity/pplx-decider-v1.2-20261016"  # pinned snapshot: thresholds below depend on it
 TIMEOUT_S = 1.5  # per caller turn, retry included (PRD 19.7 latency budget)
 CONNECT_S = 0.5  # a TLS handshake slower than this is abandoned and retried once ...
 RETRY_MIN_S = 0.3  # ... if at least this much of the turn's budget is left
@@ -184,8 +185,8 @@ SURE: dict[Category, tuple[str, ...]] = {"otp": REQUESTS["otp"], "payment": REQU
                                          "remote": ("rem_control", "rem_access")}
 PRESSABLE = ("reported", "done", "known_payee")  # situational guards that scam pressure overrules
 
-# Thresholds, chosen by leave-one-writer-set-out validation (Claude / GPT+Cursor / mixed sets;
-# report on issue #67).
+# Thresholds, chosen on TypeSafe Jev 1.14 (the previous model) by leave-one-writer-set-out validation
+# (Claude / GPT+Cursor / mixed sets; report on issue #67). Not re-tuned for Decider V1.2.
 CERTAIN = 0.95  # a SURE request this sure is evidence unless the caller is warning about it
 LIKELY = 0.7  # a request this sure is evidence when none of its group's guards is raised
 GUARD_MAX = 0.4  # a guard at or above this is raised ...
@@ -193,8 +194,8 @@ GUARD_BAR = {"reported": 0.5, "self_service": 0.8}  # ... except these, which al
 WARNED = 0.7  # a warning this sure blocks even a near-certain request and vetoes a rules hit
 PRESSED_REQUEST = 0.85  # a request this sure
 PRESSURE = 0.7  # ... from a caller pressing this hard overrules the PRESSABLE guards
-NO_REQUEST = 0.3  # a rules hit Jev scores below this as a request ...
-DIY = 0.8  # ... is vetoed when Jev is this sure the caller says "do it yourself"
+NO_REQUEST = 0.3  # a rules hit the model scores below this as a request ...
+DIY = 0.8  # ... is vetoed when the model is this sure the caller says "do it yourself"
 
 Judgment = Literal["confirm", "solo", "veto"]
 
@@ -206,8 +207,8 @@ _http: httpx.Client | None = None
 
 
 def enabled() -> bool:
-    """INTENT_MODEL=on and TYPESAFE_API_KEY is set."""
-    return _flag_on() and bool(os.environ.get("TYPESAFE_API_KEY", "").strip())
+    """INTENT_MODEL=on and OPENROUTER_API_KEY is set."""
+    return _flag_on() and bool(os.environ.get("OPENROUTER_API_KEY", "").strip())
 
 
 def _flag_on() -> bool:
@@ -217,9 +218,10 @@ def _flag_on() -> bool:
 def preload() -> None:
     """Nothing to load for a hosted model; log whether arm C can call it."""
     if enabled():
-        log.info("arm C on: each caller turn and the turns before it (rules.yaml context_turns) are sent to %s", URL)
+        log.info("arm C on: each caller turn and the turns before it (rules.yaml context_turns) are sent to %s "
+                 "(OpenRouter, model %s)", URL, MODEL)
     elif _flag_on():
-        log.warning("INTENT_MODEL=on but TYPESAFE_API_KEY is not set; arm C will equal arm B")
+        log.warning("INTENT_MODEL=on but OPENROUTER_API_KEY is not set; arm C will equal arm B")
 
 
 def state(window: list[Segment]) -> dict:
@@ -246,18 +248,18 @@ def _client() -> httpx.Client:
 
 
 def _post(body: dict) -> dict:
-    """POST one System One request within TIMEOUT_S in total. A connection that fails to open, or a
+    """POST one Decisions request within TIMEOUT_S in total. A connection that fails to open, or a
     kept-alive one the server already closed, is retried once if time is left (the request is
     idempotent). Raises on any other transport or HTTP error."""
     deadline = time.monotonic() + TIMEOUT_S
-    headers = {"Authorization": f"Bearer {os.environ['TYPESAFE_API_KEY'].strip()}"}
+    headers = {"Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY'].strip()}"}
     try:
         r = _client().post(URL, json=body, headers=headers, timeout=httpx.Timeout(TIMEOUT_S, connect=CONNECT_S))
     except _RETRYABLE as e:
         left = deadline - time.monotonic()
         if left < RETRY_MIN_S:
             raise
-        log.warning("TypeSafe connection failed (%s); retrying once", type(e).__name__)
+        log.warning("OpenRouter connection failed (%s); retrying once", type(e).__name__)
         r = _client().post(URL, json=body, headers=headers, timeout=left)
     r.raise_for_status()
     return r.json()
@@ -273,7 +275,7 @@ def answers(window: list[Segment]) -> dict[str, float] | None:
     with _lock:
         if key in _cache:
             return _cache[key]
-    log.debug("typesafe request: %d earlier turns, %d questions", len(body["state"]["earlier_turns"]),
+    log.debug("intent request: %d earlier turns, %d questions", len(body["state"]["earlier_turns"]),
               len(body["questions"]))  # never the call text
     try:
         resp = _post(body)
@@ -282,7 +284,7 @@ def answers(window: list[Segment]) -> dict[str, float] | None:
         global failures
         with _lock:
             failures += 1
-        log.error("TypeSafe call failed (%s: %s); arm C falls back to arm B for this turn", type(e).__name__, e)
+        log.error("Intent model call failed (%s: %s); arm C falls back to arm B for this turn", type(e).__name__, e)
         result = None
     with _lock:
         _cache[key] = result
@@ -294,7 +296,7 @@ def _bar(guard: str) -> float:
 
 
 def _evidence(ans: dict[str, float], category: Category) -> bool:
-    """Does Jev, on its own, find a request in this category on this turn?"""
+    """Does the model, on its own, find a request in this category on this turn?"""
     if ans["warning"] >= WARNED:
         return False
     if max(ans[q] for q in SURE[category]) >= CERTAIN:
@@ -320,8 +322,8 @@ def judge(ans: dict[str, float], category: Category, lexicon_seen: bool,
       (guard >= its bar), or request >= PRESSED_REQUEST under pressure >= PRESSURE with only
       PRESSABLE guards raised.
     Evidence confirms the category when the lexicon saw it in the window, else it is model-only (solo).
-    The rules fired on this turn (rule_fired) and Jev finds no evidence: "veto" when a warning, a guard
-    of the category is raised, or Jev scores the request < NO_REQUEST and do-it-yourself >= DIY.
+    The rules fired on this turn (rule_fired) and the model finds no evidence: "veto" when a warning, a guard
+    of the category is raised, or the model scores the request < NO_REQUEST and do-it-yourself >= DIY.
     Anything else: no judgment (a rules request stands; no model evidence).
     """
     evidence = _evidence(ans, category)
