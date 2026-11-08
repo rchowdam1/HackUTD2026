@@ -50,6 +50,7 @@ export const endCall = () => call("End call", "/demo/end-call");
 export const reset = () => call("Reset", "/demo/reset");
 export const setSmsMode = (mode: SmsMode) => call("SMS mode change", "/demo/sms-mode", { mode });
 export const simulateReply = (body: string) => call(`Simulated ${body} reply`, "/sms/simulate-inbound", { body });
+export const setOptIn = (opt_in: boolean) => call("Opt-in choice", "/sms/consent", { opt_in });
 
 // Background read: null on any failure, without an error banner (401 still returns to login).
 async function read<T>(path: string): Promise<T | null> {

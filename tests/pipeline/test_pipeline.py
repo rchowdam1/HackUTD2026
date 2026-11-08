@@ -118,8 +118,9 @@ def test_no_followup_without_alert_or_consent(gw, monkeypatch):
         await pipeline.process(seg(ref, 1, "Read me the code."))
         await pipeline.finish(ref)
 
-    run(opted_out)
-    assert gw.sent == ["ALERT-OTP-01"]  # no follow-up; the fake gateway doesn't check consent itself
+    _, events = run(opted_out)
+    assert gw.sent == []  # opted out: skipped before the gateway, not a failed send
+    assert [e.type for e in events] == ["session", "segment", "risk_event", "decision", "session"]
 
 
 def test_start_while_active_finishes_old_session(gw):

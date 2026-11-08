@@ -1,8 +1,8 @@
 import type { Snapshot } from "./api";
 import type { ConsentState, Decision, Event, RiskEvent, Segment, SessionPayload, SmsMode, SmsPayload } from "./types";
 
-// One phone-frame bubble: a text we sent, or a keyword the phone sent back.
-export type Bubble = { kind: "out"; sms: SmsPayload } | { kind: "in"; keyword: string; id: string };
+// One phone-frame bubble: a text we sent (afterSeq: last transcript line when it arrived), or a keyword the phone sent back.
+export type Bubble = { kind: "out"; sms: SmsPayload; afterSeq: number } | { kind: "in"; keyword: string; id: string };
 
 export interface State {
   session: SessionPayload | null;
@@ -47,9 +47,9 @@ export function reduce(s: State, a: Action): State {
     case "sms": {
       const sms = a.payload;
       const i = sms.message_id ? s.bubbles.findIndex((b) => b.kind === "out" && b.sms.message_id === sms.message_id) : -1;
-      if (i < 0) return { ...s, bubbles: [...s.bubbles, { kind: "out", sms }] };
+      if (i < 0) return { ...s, bubbles: [...s.bubbles, { kind: "out", sms, afterSeq: s.segments[s.segments.length - 1]?.seq ?? 0 }] };
       const bubbles = s.bubbles.slice();
-      bubbles[i] = { kind: "out", sms };
+      bubbles[i] = { ...(bubbles[i] as Extract<Bubble, { kind: "out" }>), sms }; // status update keeps its place
       return { ...s, bubbles };
     }
     case "reply":

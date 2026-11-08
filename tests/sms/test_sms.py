@@ -306,6 +306,16 @@ def test_tunnel_reaches_only_twilio_webhooks_and_health(client, published):
 
 # --- operator routes -----------------------------------------------------------
 
+def test_login_opt_in_choice_sets_consent_without_texting(client, published):
+    client.post("/login", json={"password": "op"})
+    assert client.post("/sms/consent", json={"opt_in": True}).json() == {"consent": "active"}
+    assert consent.get_state() == "active"
+    assert client.post("/sms/consent", json={"opt_in": False}).json() == {"consent": "stopped"}
+    assert consent.get_state() == "stopped"
+    assert client.get("/sms/outbox").json() == []  # no R-YES / R-STOP text for the prompt choice
+    assert [(t, p.state) for t, p, _ in published] == [("consent", "active"), ("consent", "stopped")]
+
+
 def test_operator_routes(client, published):
     client.post("/login", json={"password": "op"})
     assert client.get("/sms/templates/R-HELP").json() == {"template_id": "R-HELP", "text": templates.get("R-HELP")}

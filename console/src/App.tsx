@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useReducer, useRef, useState } from "react";
 import * as api from "./api";
+import OptInPrompt from "./OptInPrompt";
 import { initial, reduce, type Action, type Bubble, type State } from "./state";
 import type { ArmCounts, Event, Results, RiskEvent, Segment, SmsPayload } from "./types";
 
@@ -21,6 +22,10 @@ const DISPATCH_WORDS: Record<SmsPayload["status"], string> = {
   failed: "Warning detected but the alert text was NOT sent (failed)",
 };
 const ARM_NAMES: Record<string, string> = { K: "Keyword only (K)", B: "CallSafe rules (B)", C: "Rules + intent model (C)" };
+const MARKER_WORDS: [string, string][] = [
+  ["ALERT-", "Alert message sent to user"],
+  ["FU-", "Follow-up message sent to user"],
+];
 const CONFIDENCE_WORDS: Record<RiskEvent["confidence_class"], string> = {
   high: "High confidence",
   medium: "Medium confidence",
@@ -30,6 +35,7 @@ const CONFIDENCE_WORDS: Record<RiskEvent["confidence_class"], string> = {
 export default function App() {
   const [authed, setAuthed] = useState<boolean | null>(FIXTURES ? true : null);
   const [note, setNote] = useState<string | null>(null);
+  const [askOptIn, setAskOptIn] = useState(false); // set on every login, never stored
   useEffect(() => {
     if (!FIXTURES) api.loggedIn().then(setAuthed, () => setAuthed(false));
   }, []);
@@ -38,7 +44,23 @@ export default function App() {
     setAuthed(false);
   }, []);
   if (authed === null) return null;
-  return authed ? <Console onLoggedOut={loggedOut} /> : <Login note={note} onLogin={() => setAuthed(true)} />;
+  if (!authed) {
+    return (
+      <Login
+        note={note}
+        onLogin={() => {
+          setAskOptIn(true);
+          setAuthed(true);
+        }}
+      />
+    );
+  }
+  return (
+    <>
+      <Console onLoggedOut={loggedOut} />
+      {askOptIn && <OptInPrompt onDone={() => setAskOptIn(false)} />}
+    </>
+  );
 }
 
 function Login({ note, onLogin }: { note: string | null; onLogin: () => void }) {
@@ -161,7 +183,7 @@ function Console({ onLoggedOut }: { onLoggedOut: (why: string | null) => void })
             <h2>WRONG replies</h2>
             <div className="big">{state.wrongCount}</div>
           </div>
-          <Phone bubbles={state.bubbles} simulated={state.smsMode === "simulated"} />
+          <Phone bubbles={state.bubbles} simulated={state.smsMode === "simulated"} off={monitoringOff(state)} />
         </aside>
       </main>
       <footer>
@@ -207,6 +229,11 @@ function Controls({ state, dispatch }: { state: State; dispatch: (a: Action) => 
 function Transcript({ state, live }: { state: State; live: Set<string> }) {
   const flagged = new Set(state.risks.flatMap((r) => r.span_seq));
   const cached = state.segments.some((s) => s.source === "cached");
+  // A marker for each alert / follow-up text, right after the line that was last when it was sent.
+  const markers = state.bubbles.flatMap((b) => {
+    const words = b.kind === "out" && b.sms.status !== "failed" && MARKER_WORDS.find(([p]) => b.sms.template_id.startsWith(p));
+    return b.kind === "out" && words ? [{ afterSeq: b.afterSeq, id: b.sms.message_id, text: words[1] }] : [];
+  });
   return (
     <section className="card transcript">
       <h2>
@@ -214,10 +241,19 @@ function Transcript({ state, live }: { state: State; live: Set<string> }) {
       </h2>
       {state.segments.length === 0 && <p className="muted">No call yet.</p>}
       {state.segments.map((s) => (
-        <p key={segKey(s)} className={`line ${s.speaker} ${flagged.has(s.seq) ? "flagged" : ""}`}>
-          <span className="who">{s.speaker === "caller" ? "Caller" : "You"}</span>
-          <TypedText text={s.text} animate={live.has(segKey(s))} />
-        </p>
+        <Fragment key={segKey(s)}>
+          <p className={`line ${s.speaker} ${flagged.has(s.seq) ? "flagged" : ""}`}>
+            <span className="who">{s.speaker === "caller" ? "Caller" : "You"}</span>
+            <TypedText text={s.text} animate={live.has(segKey(s))} />
+          </p>
+          {markers
+            .filter((m) => m.afterSeq === s.seq)
+            .map((m) => (
+              <p key={m.id} className="line marker">
+                * {m.text}
+              </p>
+            ))}
+        </Fragment>
       ))}
     </section>
   );
@@ -252,6 +288,7 @@ function WhyPanel({ state }: { state: State }) {
   const risk = state.risks.find((r) => r.rule_id && alert.basis.includes(r.rule_id));
   const sms = state.bubbles.find((b) => b.kind === "out" && b.sms.template_id === alert.template_id);
   const status = sms?.kind === "out" ? sms.sms.status : null;
+  const optedOut = !sms && monitoringOff(state);
   return (
     <section className="card why alert">
       <h2>Why this alert</h2>
@@ -266,20 +303,25 @@ function WhyPanel({ state }: { state: State }) {
         <dt>Policy</dt>
         <dd>{alert.policy_version}</dd>
       </dl>
-      <p className={`dispatch ${status ?? ""}`}>{status ? DISPATCH_WORDS[status] : "Alert text not dispatched yet"}</p>
+      <p className={`dispatch ${status ?? ""}`}>
+        {optedOut ? "Monitoring opt-in: No. No text sent" : status ? DISPATCH_WORDS[status] : "Alert text not dispatched yet"}
+      </p>
     </section>
   );
 }
 
+// Consent known and not active: alerts are skipped, not failed. null = not loaded yet (or fixture replay).
+const monitoringOff = (s: State) => s.consent !== null && s.consent !== "active";
+
 // Simulated mode: the phone frame with reply keys. Real mode: a compact list of outgoing texts and replies.
-function Phone({ bubbles, simulated }: { bubbles: Bubble[]; simulated: boolean }) {
+function Phone({ bubbles, simulated, off }: { bubbles: Bubble[]; simulated: boolean; off: boolean }) {
   return (
     <section className={`card phone ${simulated ? "" : "compact"}`}>
       <h2>
         {simulated ? "Phone" : "Outgoing texts"} <span className="tag">{simulated ? "simulated SMS" : "real SMS"}</span>
       </h2>
       <div className="thread">
-        {bubbles.length === 0 && <p className="muted">No texts yet.</p>}
+        {off ? <p className="muted">Call monitoring is off.</p> : bubbles.length === 0 && <p className="muted">No texts yet.</p>}
         {bubbles.map((b) =>
           b.kind === "out" ? <OutBubble key={b.sms.message_id || b.sms.template_id} b={b} /> : <div key={b.id} className="bubble in">{b.keyword}</div>,
         )}

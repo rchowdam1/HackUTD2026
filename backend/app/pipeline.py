@@ -119,9 +119,13 @@ def _queue_send(s: _Session, template_id: str) -> asyncio.Task:
 
 
 async def _send(s: _Session, template_id: str) -> None:
-    """Send one template in a worker thread (Twilio blocks). Stale generations never send."""
+    """Send one template in a worker thread (Twilio blocks). Stale generations never send.
+    Opted out (consent not active) is a clean skip: no gateway call, no sms event."""
     def send_if_live() -> str | None:
         if not _live(s.generation):
+            return None
+        if not consent.is_active():
+            log.info("sms skipped, consent not active template=%s session=%s", template_id, s.ref)
             return None
         return sms.get_gateway().send(template_id, s.ref)
 

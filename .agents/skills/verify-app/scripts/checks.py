@@ -34,11 +34,13 @@ UI_HANDLES = [
     "Why this alert", "No alert - not a safety verdict", "Caller asked for a code", "Keyword-only would have fired",
     "WRONG replies", "Held-out results", "Results pending", "Where we fail", "Scam calls caught:",
     "fixture replay", "call ended", "call running", "No texts yet.",
+    "Opt in to call monitoring?", "Alert message sent to user", "Follow-up message sent to user",
+    "Monitoring opt-in: No. No text sent", "Call monitoring is off.",
 ]
 # Routes the harness calls; lint checks each is still declared in backend/app.
 API_ROUTES = ["/login", "/health", "/events/stream", "/demo/run/{scenario_id}", "/demo/end-call", "/demo/reset",
               "/demo/sms-mode", "/results/latest", "/aggregates", "/sms/simulate-inbound", "/sms/outbox",
-              "/sms/invite", "/sms/inbound", "/sms/status", "/sms/templates/{template_id}"]
+              "/sms/invite", "/sms/inbound", "/sms/status", "/sms/templates/{template_id}", "/sms/consent"]
 
 
 @dataclass
@@ -108,6 +110,8 @@ def open_console(ctx: Context):
         ctx.action("log in through the console form")
         login.fill(ctx.env["OPERATOR_PASSWORD"])
         page.get_by_role("button", name="Log in").click()
+        # Every login asks; keep the consent the check set up (No turns invited into stopped).
+        answer_opt_in(ctx, page, "Yes" if ctx.consent_db() == "active" else "No")
     page.get_by_role("button", name="Run bank").wait_for()
     banner = page.get_by_role("banner")
     for _ in range(20):
@@ -118,6 +122,21 @@ def open_console(ctx: Context):
         except Exception:
             continue
     raise Fail("console never received a live SSE event (reset not reflected within 10 s)", "ui-stream")
+
+
+def opt_in_dialog(page):
+    return page.get_by_role("dialog", name="Opt in to call monitoring?")
+
+
+def answer_opt_in(ctx: Context, page, choice: str) -> None:
+    """Click Yes/No in the after-login prompt and wait for POST /sms/consent and the dialog to close."""
+    dialog = opt_in_dialog(page)
+    dialog.wait_for()
+    ctx.action(f"answer the opt-in prompt: {choice}")
+    with page.expect_response(lambda r: r.url.endswith("/sms/consent")) as resp:
+        dialog.get_by_role("button", name=choice, exact=True).click()
+    ctx.expect(resp.value.status == 200, f"opt-in {choice}: POST /sms/consent -> 200", resp.value.status)
+    dialog.wait_for(state="hidden")
 
 
 def click(ctx: Context, page, name: str, scope=None):
@@ -146,7 +165,7 @@ def start_replay_ui(ctx: Context, page, button: str, since: int) -> tuple[str, f
 PROTECTED = [("GET", "/aggregates"), ("GET", "/results/latest"), ("GET", "/sms/outbox"), ("GET", "/events/stream"),
              ("POST", "/demo/run/bank"), ("POST", "/demo/end-call"), ("POST", "/demo/reset"),
              ("POST", "/demo/sms-mode"), ("POST", "/sms/simulate-inbound"), ("POST", "/sms/invite"),
-             ("GET", "/sms/templates/R-HELP")]
+             ("GET", "/sms/templates/R-HELP"), ("POST", "/sms/consent")]
 
 
 @check("login.api-guard", "operator-login")
@@ -195,12 +214,44 @@ def login_ui_success(ctx: Context):
     page.get_by_placeholder("Operator password").fill(ctx.env["OPERATOR_PASSWORD"])
     page.get_by_role("button", name="Log in").click()
     ui_assert(ctx, "operator console rendered (Run bank button)", lambda: pw_expect()(page.get_by_role("button", name="Run bank")).to_be_visible())
+    ui_assert(ctx, "opt-in prompt shown after login", lambda: pw_expect()(opt_in_dialog(page)).to_be_visible())
+    answer_opt_in(ctx, page, "Yes" if ctx.consent_db() == "active" else "No")  # keep consent as the run had it
     cookies = {c["name"]: c for c in page.context.cookies()}
     c = cookies.get("safesignal_session")
     ctx.expect(c and c["httpOnly"] and c["sameSite"] == "Strict", "session cookie is HttpOnly + SameSite=Strict", c)
     r = page.request.get(ctx.inst["console"] + "/aggregates")
     ctx.expect(r.status == 200, "browser cookie authenticates /aggregates through the console proxy", r.status)
     ctx.shot("logged-in")
+
+
+@check("login.opt-in-every-login", "operator-login", ui=True)
+def login_opt_in(ctx: Context):
+    ctx.ensure_opted_in()  # start active so both answers below are observable transitions
+    page = ctx.browser_page(fresh_context=True)
+    try:
+        for choice, state in (("No", "stopped"), ("Yes", "active")):
+            page.context.clear_cookies()
+            page.goto(ctx.inst["console"] + "/")
+            ctx.action(f"log in through the console form (then choose {choice})")
+            page.get_by_placeholder("Operator password").fill(ctx.env["OPERATOR_PASSWORD"])
+            page.get_by_role("button", name="Log in").click()
+            ui_assert(ctx, f"opt-in prompt shown on this login ({choice} run)", lambda: pw_expect()(opt_in_dialog(page)).to_be_visible())
+            shot = ctx.ev / "screenshots" / f"{ctx.rec['id']}--prompt-{choice.lower()}.png"
+            shot.parent.mkdir(parents=True, exist_ok=True)
+            page.screenshot(path=str(shot))
+            ctx.artifact(shot)
+            out0, mark = len(ctx.outbox()), ctx.tap.mark()
+            answer_opt_in(ctx, page, choice)
+            ctx.wait_event(lambda e: e["type"] == "consent" and e["payload"]["state"] == state, mark, 10,
+                           f"consent {state} event after {choice}")
+            ctx.expect(ctx.consent_db() == state, f"{choice} stores consent {state} (SQLite)", ctx.consent_db())
+            ctx.expect(len(ctx.outbox()) == out0, f"{choice} sends no text", ctx.outbox()[out0:])
+        ctx.action("reload the page (same login)")
+        page.reload()
+        page.get_by_role("button", name="Run bank").wait_for()
+        ui_assert(ctx, "no prompt on a reload within the same login", lambda: pw_expect()(opt_in_dialog(page)).to_have_count(0))
+    finally:
+        page.context.close()
 
 
 # --- fixture-replay ---------------------------------------------------------------------------
@@ -286,6 +337,7 @@ def results_eval(ctx: Context):
 @check("replay.clinic-silent", "call-replay", ui=True)
 def replay_clinic(ctx: Context):
     ctx.api_reset()
+    ctx.ensure_opted_in()  # opted in, so "No texts yet." proves silence rather than monitoring off
     page = open_console(ctx)
     expected = transcript_lines(ctx, "clinic")
     out0, mark = len(ctx.outbox()), ctx.tap.mark()
@@ -309,6 +361,7 @@ def replay_clinic(ctx: Context):
     ui_assert(ctx, "Why panel: 'No alert - not a safety verdict'",
               lambda: pw_expect()(card(page, "^Why this alert")).to_contain_text("No alert - not a safety verdict"))
     ui_assert(ctx, "phone frame shows no texts", lambda: pw_expect()(card(page, "^Phone")).to_contain_text("No texts yet."))
+    ui_assert(ctx, "no SMS marker in the transcript", lambda: pw_expect()(tr.locator("p.marker")).to_have_count(0))
     ctx.shot("clinic-finished")
 
 
@@ -359,6 +412,10 @@ def replay_bank(ctx: Context):
     ui_assert(ctx, "Why panel Policy = v1.0", lambda: pw_expect()(dd(why, "Policy")).to_have_text(dec["policy_version"]))
     for tid in ("ALERT-OTP-01", "FU-OTP-01"):
         ui_assert(ctx, f"phone frame shows {tid} text", lambda: pw_expect()(phone).to_contain_text(ctx.templates[tid]))
+    ui_assert(ctx, "transcript marker '* Alert message sent to user' right after the flagged line",
+              lambda: pw_expect()(tr.locator("p.line.flagged + p.marker")).to_have_text("* Alert message sent to user"))
+    ui_assert(ctx, "exactly two markers: alert, then '* Follow-up message sent to user'",
+              lambda: pw_expect()(tr.locator("p.marker")).to_have_text(["* Alert message sent to user", "* Follow-up message sent to user"]))
     ui_assert(ctx, "status shows 'call ended'", lambda: pw_expect()(page.get_by_role("banner")).to_contain_text("call ended"))
     ctx.rec["timing"] = {"replay_wall_s": round(time.monotonic() - t0, 1)}
     ctx.shot("bank-finished")
@@ -453,11 +510,17 @@ def replies_stop(ctx: Context):
         ctx.expect([e["payload"]["template_id"] for e in evs if e["type"] == "decision"] == ["ALERT-OTP-01"],
                    "rules still decide ALERT-OTP-01", evs)
         sms = [e["payload"] for e in evs if e["type"] == "sms"]
-        ctx.expect(sms == [{"message_id": "", "template_id": "ALERT-OTP-01", "status": "failed"}],
-                   "gateway refused: one failed ALERT sms event, no follow-up", sms)
+        ctx.expect(sms == [], "opted out: alert skipped, no sms event (not 'failed'), no follow-up", sms)
         ctx.expect(len(ctx.outbox()) == out0, "nothing reached the simulated phone", ctx.outbox()[out0:])
-        ui_assert(ctx, "phone frame shows the alert as failed", lambda: pw_expect()(phone.locator(".bubble.out.failed")).to_have_count(1))
-        ctx.shot("stopped-alert-refused")
+        why = card(page, "^Why this alert")
+        ui_assert(ctx, "Why panel still explains the alert", lambda: pw_expect()(why).to_contain_text("Caller asked for a code"))
+        ui_assert(ctx, "Why panel says 'Monitoring opt-in: No. No text sent'",
+                  lambda: pw_expect()(why).to_contain_text("Monitoring opt-in: No. No text sent"))
+        ui_assert(ctx, "nothing reads as failed", lambda: pw_expect()(page.locator("main")).not_to_contain_text("failed"))
+        ui_assert(ctx, "phone says 'Call monitoring is off.'", lambda: pw_expect()(phone).to_contain_text("Call monitoring is off."))
+        ui_assert(ctx, "no SMS marker in the transcript",
+                  lambda: pw_expect()(card(page, "^Live transcript").locator("p.marker")).to_have_count(0))
+        ctx.shot("stopped-alert-skipped")
     finally:
         ctx.action("restore consent: reply YES")
         click(ctx, page, "YES", phone)
