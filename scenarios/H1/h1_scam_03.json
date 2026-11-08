@@ -1,0 +1,1 @@
+{"id": "h1_scam_03", "set": "H1", "label": "scam", "hard_benign": false, "category": "otp", "turns": [{"speaker": "subscriber", "text": "Hang on, my phone just buzzed with some verification message. That's weird.", "audio": null}, {"speaker": "caller", "text": "Right, that's the one I triggered from here. Read me the numbers and I'll close out your ticket.", "audio": null}]}

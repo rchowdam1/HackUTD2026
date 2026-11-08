@@ -1,0 +1,1 @@
+{"id": "h1_benign_13", "set": "H1", "label": "benign", "hard_benign": true, "category": "none", "turns": [{"speaker": "caller", "text": "Hey, heads up, IT says they'll never remote into our machines without a ticket.", "audio": null}, {"speaker": "caller", "text": "So if you see a pop-up asking to let someone in, just ignore it and close it.", "audio": null}]}
