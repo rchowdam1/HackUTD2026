@@ -35,7 +35,7 @@ UI_HANDLES = [
     "Start live conversation", "Caller", "tap to stop", "Live mic", "Transcribing...",
     "Caller said", "Why it matters", "Whoever has the code can get into your account", "We texted", "Speed",
     "fixture replay", "call ended", "call running", "No texts yet.",
-    "Opt in to call monitoring?", "Alert message sent to user", "Follow-up message sent to user",
+    "Opt in to call monitoring?", "Not now", "Monitoring on", "real SMS", "Alert message sent to user", "Follow-up message sent to user",
     "Monitoring opt-in: No. No text sent", "Call monitoring is off.",
 ]
 # Routes the harness calls; lint checks each is still declared in backend/app.
@@ -112,8 +112,10 @@ def open_console(ctx: Context):
         ctx.action("log in through the console form")
         login.fill(ctx.env["OPERATOR_PASSWORD"])
         page.get_by_role("button", name="Log in").click()
-        # Every login asks; keep the consent the check set up (No turns invited into stopped).
-        answer_opt_in(ctx, page, "Yes" if ctx.consent_db() == "active" else "No")
+        # A login asks only while the demo phone isn't opted in; "Not now" keeps the consent the check set up
+        # (invited becomes stopped).
+        if ctx.consent_db() != "active":
+            answer_opt_in(ctx, page, "Not now")
     page.get_by_role("button", name="Run bank").wait_for()
     banner = page.get_by_role("banner")
     for _ in range(20):
@@ -216,8 +218,12 @@ def login_ui_success(ctx: Context):
     page.get_by_placeholder("Operator password").fill(ctx.env["OPERATOR_PASSWORD"])
     page.get_by_role("button", name="Log in").click()
     ui_assert(ctx, "operator console rendered (Run bank button)", lambda: pw_expect()(page.get_by_role("button", name="Run bank")).to_be_visible())
-    ui_assert(ctx, "opt-in prompt shown after login", lambda: pw_expect()(opt_in_dialog(page)).to_be_visible())
-    answer_opt_in(ctx, page, "Yes" if ctx.consent_db() == "active" else "No")  # keep consent as the run had it
+    if ctx.consent_db() == "active":
+        ui_assert(ctx, "opted in: header shows 'Monitoring on'", lambda: pw_expect()(page.get_by_text("Monitoring on")).to_be_visible())
+        ui_assert(ctx, "opted in: no opt-in prompt", lambda: pw_expect()(opt_in_dialog(page)).to_have_count(0))
+    else:
+        ui_assert(ctx, "not opted in: opt-in prompt shown after login", lambda: pw_expect()(opt_in_dialog(page)).to_be_visible())
+        answer_opt_in(ctx, page, "Not now")  # keep consent as the run had it
     cookies = {c["name"]: c for c in page.context.cookies()}
     c = cookies.get("safesignal_session")
     ctx.expect(c and c["httpOnly"] and c["sameSite"] == "Strict", "session cookie is HttpOnly + SameSite=Strict", c)
@@ -228,30 +234,40 @@ def login_ui_success(ctx: Context):
 
 @check("login.opt-in-every-login", "operator-login", ui=True)
 def login_opt_in(ctx: Context):
-    ctx.ensure_opted_in()  # start active so both answers below are observable transitions
+    ctx.action("precondition: opt out via POST /sms/consent {opt_in: false} so the next login asks")
+    ctx.expect(ctx.api.post("/sms/consent", json={"opt_in": False}).status_code == 200, "opt out -> 200")
+    ctx.expect(ctx.consent_db() == "stopped", "consent stopped in SQLite before the logins", ctx.consent_db())
     page = ctx.browser_page(fresh_context=True)
+
+    def log_in(why: str) -> None:
+        page.context.clear_cookies()
+        page.goto(ctx.inst["console"] + "/")
+        ctx.action(f"log in through the console form ({why})")
+        page.get_by_placeholder("Operator password").fill(ctx.env["OPERATOR_PASSWORD"])
+        page.get_by_role("button", name="Log in").click()
+
     try:
-        for choice, state in (("No", "stopped"), ("Yes", "active")):
-            page.context.clear_cookies()
-            page.goto(ctx.inst["console"] + "/")
-            ctx.action(f"log in through the console form (then choose {choice})")
-            page.get_by_placeholder("Operator password").fill(ctx.env["OPERATOR_PASSWORD"])
-            page.get_by_role("button", name="Log in").click()
-            ui_assert(ctx, f"opt-in prompt shown on this login ({choice} run)", lambda: pw_expect()(opt_in_dialog(page)).to_be_visible())
-            shot = ctx.ev / "screenshots" / f"{ctx.rec['id']}--prompt-{choice.lower()}.png"
+        for choice, state in (("Not now", "stopped"), ("Yes", "active")):
+            log_in(f"then choose {choice}")
+            ui_assert(ctx, f"opt-in prompt shown while not opted in ({choice} run)", lambda: pw_expect()(opt_in_dialog(page)).to_be_visible())
+            shot = ctx.ev / "screenshots" / f"{ctx.rec['id']}--prompt-{choice.split()[0].lower()}.png"
             shot.parent.mkdir(parents=True, exist_ok=True)
             page.screenshot(path=str(shot))
             ctx.artifact(shot)
             out0, mark = len(ctx.outbox()), ctx.tap.mark()
             answer_opt_in(ctx, page, choice)
-            ctx.wait_event(lambda e: e["type"] == "consent" and e["payload"]["state"] == state, mark, 10,
-                           f"consent {state} event after {choice}")
-            ctx.expect(ctx.consent_db() == state, f"{choice} stores consent {state} (SQLite)", ctx.consent_db())
+            if state == "active":
+                ctx.wait_event(lambda e: e["type"] == "consent" and e["payload"]["state"] == state, mark, 10,
+                               f"consent {state} event after {choice}")
+            ctx.expect(ctx.consent_db() == state, f"{choice} leaves consent {state} (SQLite)", ctx.consent_db())
             ctx.expect(len(ctx.outbox()) == out0, f"{choice} sends no text", ctx.outbox()[out0:])
+        log_in("now opted in")
+        ui_assert(ctx, "opted in: header shows 'Monitoring on'", lambda: pw_expect()(page.get_by_text("Monitoring on")).to_be_visible())
+        ui_assert(ctx, "opted in: no prompt on the next login", lambda: pw_expect()(opt_in_dialog(page)).to_have_count(0))
         ctx.action("reload the page (same login)")
         page.reload()
         page.get_by_role("button", name="Run bank").wait_for()
-        ui_assert(ctx, "no prompt on a reload within the same login", lambda: pw_expect()(opt_in_dialog(page)).to_have_count(0))
+        ui_assert(ctx, "no prompt on a reload", lambda: pw_expect()(opt_in_dialog(page)).to_have_count(0))
     finally:
         page.context.close()
 
@@ -617,7 +633,8 @@ def controls_mode(ctx: Context):
         with page.expect_response(lambda r: r.url.endswith("/demo/sms-mode")) as resp:
             click(ctx, page, "real")
         ctx.expect(resp.value.status == 200, "POST /demo/sms-mode real -> 200", resp.value.status)
-        ui_assert(ctx, "phone frame hidden in real mode", lambda: pw_expect()(card(page, "^Phone")).to_have_count(0))
+        ui_assert(ctx, "phone frame stays in real mode, tagged 'real SMS'",
+                  lambda: pw_expect()(card(page, "^Phone").get_by_text("real SMS", exact=True)).to_be_visible())
         ui_assert(ctx, "'real' toggle highlighted", lambda: pw_expect()(real).to_have_class(re.compile(r"\bon\b")))
         # Safe: clinic never alerts, the run is reset at once, and the sandbox has no Twilio account.
         ctx.expect(_run_clinic_mode(ctx, page, "real") == "real", "backend starts the next call in real mode (SSE)")

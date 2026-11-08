@@ -12,7 +12,7 @@ The subscriber answers texts with keywords. In simulated mode the console's phon
 
 ## How to get to it (user POV)
 
-- Phone frame buttons `YES`, `WRONG`, `SHARED`, `STOP` (visible only in simulated SMS mode).
+- Phone frame buttons `YES`, `WRONG`, `SHARED`, `STOP` (both SMS modes; in real mode the reply text goes out through Twilio).
 - `POST /sms/simulate-inbound {"body": "..."}` (cookie required), the endpoint the buttons call.
 - A real phone texting the Twilio number (see `twilio-webhooks.md`; real phone is external).
 

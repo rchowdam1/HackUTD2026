@@ -20,12 +20,14 @@ const DANGER_WORDS: Record<RiskEvent["category"], string> = {
   payment: "Money sent this way is almost never recovered. Real organisations let you hang up and call back.",
   remote: "Remote access lets a stranger control your device, including your banking apps.",
 };
-const DISPATCH_WORDS: Record<SmsPayload["status"], string> = {
-  queued: "Alert text queued",
-  sent: "Alert text sent",
-  delivered: "Alert text delivered",
-  failed: "Warning detected but the alert text was NOT sent (failed)",
-};
+const STATUS_WORDS: Record<SmsPayload["status"], string> = { queued: "Queued", sent: "Sent", delivered: "Delivered", failed: "Not sent" };
+// 30034: carriers block texts from a number not yet registered for US A2P 10DLC (our number today).
+const CARRIER_BLOCKED = "30034";
+function statusWords(sms: SmsPayload): string {
+  if (sms.status !== "failed" || !sms.error_code) return STATUS_WORDS[sms.status];
+  if (sms.error_code === CARRIER_BLOCKED) return "Not delivered: carrier blocked (Twilio 30034, number not registered yet)";
+  return `Not delivered (Twilio ${sms.error_code})`;
+}
 const MARKER_WORDS: [string, string][] = [
   ["ALERT-", "Alert message sent to user"],
   ["FU-", "Follow-up message sent to user"],
@@ -57,12 +59,7 @@ export default function App() {
       />
     );
   }
-  return (
-    <>
-      <Console onLoggedOut={loggedOut} />
-      {askOptIn && <OptInPrompt onDone={() => setAskOptIn(false)} />}
-    </>
-  );
+  return <Console onLoggedOut={loggedOut} askOptIn={askOptIn} onOptInDone={() => setAskOptIn(false)} />;
 }
 
 function Login({ note, onLogin }: { note: string | null; onLogin: () => void }) {
@@ -85,7 +82,7 @@ function Login({ note, onLogin }: { note: string | null; onLogin: () => void }) 
   );
 }
 
-function Console({ onLoggedOut }: { onLoggedOut: (why: string | null) => void }) {
+function Console({ onLoggedOut, askOptIn, onOptInDone }: { onLoggedOut: (why: string | null) => void; askOptIn: boolean; onOptInDone: () => void }) {
   const [state, dispatch] = useReducer(reduce, initial);
   const [stream, setStream] = useState<"connecting" | "live" | "stale">(FIXTURES ? "live" : "connecting");
   const [error, setError] = useState<string | null>(null);
@@ -118,6 +115,12 @@ function Console({ onLoggedOut }: { onLoggedOut: (why: string | null) => void })
     if (r) setLiveRef((await r.json()).session_ref);
     else stopMic();
   };
+
+  // Ask once per login, and only when the snapshot says the demo phone isn't opted in yet.
+  const hydrated = stream === "live";
+  useEffect(() => {
+    if (askOptIn && hydrated && state.consent === "active") onOptInDone();
+  }, [askOptIn, hydrated, state.consent, onOptInDone]);
 
   useEffect(() => {
     if (!error) return;
@@ -194,6 +197,7 @@ function Console({ onLoggedOut }: { onLoggedOut: (why: string | null) => void })
         {stream === "connecting" && <span className="tag">connecting…</span>}
         {stream === "stale" && <span className="tag stale">disconnected / reconnecting — view may be stale</span>}
         <span className="status">{sessionLabel(state)}</span>
+        {!FIXTURES && <Monitoring consent={state.consent} />}
         {!FIXTURES && (
           <button onClick={async () => (await api.logout()) && onLoggedOut(null)}>Log out</button>
         )}
@@ -213,7 +217,19 @@ function Console({ onLoggedOut }: { onLoggedOut: (why: string | null) => void })
           <Phone bubbles={state.bubbles} simulated={state.smsMode === "simulated"} off={monitoringOff(state)} />
         </aside>
       </main>
+      {askOptIn && hydrated && state.consent !== "active" && <OptInPrompt onDone={onOptInDone} />}
     </div>
+  );
+}
+
+// Always visible, so monitoring can be switched on in one click whatever was answered at login.
+function Monitoring({ consent }: { consent: State["consent"] }) {
+  if (consent === null) return null;
+  if (consent === "active") return <span className="monitoring on">Monitoring on</span>;
+  return (
+    <span className="monitoring">
+      Monitoring off · <button onClick={() => api.setOptIn(true)}>Turn on</button>
+    </span>
   );
 }
 
@@ -365,7 +381,7 @@ function WhyPanel({ state, arrived }: { state: State; arrived: Map<string, numbe
   }
   const risk = state.risks.find((r) => r.rule_id && alert.basis.includes(r.rule_id));
   const status = sms?.kind === "out" ? sms.sms.status : null;
-  const optedOut = !sms && monitoringOff(state);
+  const optedOut = !sms && state.alertSkipped;
   const line = risk && state.segments.find((s) => s.seq === risk.span_seq[risk.span_seq.length - 1]);
   const lineAt = line && arrived.get(segKey(line));
   const smsAt = sms?.kind === "out" ? arrived.get(sms.sms.message_id) : undefined;
@@ -404,7 +420,7 @@ function WhyPanel({ state, arrived }: { state: State; arrived: Map<string, numbe
         <dd>{risk ? caughtBy(risk) : "-"}</dd>
       </dl>
       <p className={`dispatch ${status ?? ""}`}>
-        {optedOut ? "Monitoring opt-in: No. No text sent" : status ? DISPATCH_WORDS[status] : "Alert text not dispatched yet"}
+        {optedOut ? "Monitoring opt-in: No. No text sent" : sms?.kind === "out" ? `Alert text: ${statusWords(sms.sms)}` : "Alert text not dispatched yet"}
       </p>
     </section>
   );
@@ -432,28 +448,28 @@ function caughtBy(r: RiskEvent): string {
 // Consent known and not active: alerts are skipped, not failed. null = not loaded yet (or fixture replay).
 const monitoringOff = (s: State) => s.consent !== null && s.consent !== "active";
 
-// Simulated mode: the phone frame with reply keys. Real mode: a compact list of outgoing texts and replies.
+// The phone frame in both modes: simulated shows the demo phone; real mirrors every text Twilio was asked to send.
 function Phone({ bubbles, simulated, off }: { bubbles: Bubble[]; simulated: boolean; off: boolean }) {
+  const blocked = bubbles.some((b) => b.kind === "out" && b.sms.error_code === CARRIER_BLOCKED);
   return (
-    <section className={`card phone ${simulated ? "" : "compact"}`}>
+    <section className="card phone">
       <h2>
-        {simulated ? "Phone" : "Outgoing texts"} <span className="tag">{simulated ? "simulated SMS" : "real SMS"}</span>
+        Phone <span className="tag">{simulated ? "simulated SMS" : "real SMS"}</span>
       </h2>
+      {blocked && <p className="note">Real texts are blocked by carriers until our number's registration clears; this frame shows what was sent.</p>}
       <div className="thread">
         {off ? <p className="muted">Call monitoring is off.</p> : bubbles.length === 0 && <p className="muted">No texts yet.</p>}
         {bubbles.map((b) =>
           b.kind === "out" ? <OutBubble key={b.sms.message_id || b.sms.template_id} b={b} /> : <div key={b.id} className="bubble in">{b.keyword}</div>,
         )}
       </div>
-      {simulated && (
-        <div className="keys">
-          {["YES", "WRONG", "SHARED", "STOP"].map((k) => (
-            <button key={k} disabled={FIXTURES} onClick={() => api.simulateReply(k)}>
-              {k}
-            </button>
-          ))}
-        </div>
-      )}
+      <div className="keys">
+        {["YES", "WRONG", "SHARED", "STOP"].map((k) => (
+          <button key={k} disabled={FIXTURES} onClick={() => api.simulateReply(k)}>
+            {k}
+          </button>
+        ))}
+      </div>
     </section>
   );
 }
@@ -471,7 +487,7 @@ function OutBubble({ b }: { b: Extract<Bubble, { kind: "out" }> }) {
   return (
     <div className={`bubble out ${b.sms.status}`}>
       {text ?? b.sms.template_id}
-      <small>{b.sms.status}</small>
+      <small>{statusWords(b.sms)}</small>
     </div>
   );
 }
