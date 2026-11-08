@@ -22,7 +22,7 @@ Preconditions:
 
 - Profile `cached` with the console. `replies.wrong-counter` and `replies.shared` require `replay.bank-alert` to PASS earlier in the same run (the harness adds it automatically); without an alerted session, replies are not counted.
 
-- **YES.** Reply STOP via the API (so a transition is observable), open the console, click `YES` in the `Phone` card. SSE `reply` keyword YES and `consent` state active; SQLite row for `sha256(CONSENT_SALT + DEMO_PHONE)` is `active`; outbox last is R-YES; phone shows the R-YES text.
+- **YES.** Reply STOP via the API (so a transition is observable), open the console, click `YES` in the `Phone` card. SSE `reply` keyword YES and `consent` state active; SQLite row for `HMAC-SHA256(CONSENT_SALT, "consent-phone:" + DEMO_PHONE)` is `active`; outbox last is R-YES; phone shows the R-YES text.
 - **WRONG.** Read the stored WRONG total n from SQLite; the `WRONG replies` counter shows n. Click `WRONG`. SSE `reply` = `{keyword: WRONG, counted: true, wrong_count: n+1}`; counter shows n+1; SQLite total n+1 with a row for template ALERT-OTP-01; `GET /aggregates` agrees; outbox last is R-WRONG; after `page.reload()` the counter still shows n+1.
 - **SHARED.** Click `SHARED`. Reply SHARED counted; outbox last R-SHARED-OTP; phone shows its text.
 - **Normalisation.** `POST /sms/simulate-inbound` with each body above; response keyword and outbox template match; the STOP variant writes `stopped`, the final YES writes `active` (SQLite).

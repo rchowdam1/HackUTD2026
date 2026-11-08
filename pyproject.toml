@@ -27,7 +27,7 @@ testpaths = ["tests"]
 addopts = "-q"
 
 [tool.ruff]
-extend-exclude = ["console", "hackutd", "voice"]
+extend-exclude = ["console", "voice"]
 
 [tool.ruff.lint]
 select = ["F", "E9"]   # undefined names, unused imports, syntax errors

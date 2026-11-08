@@ -378,7 +378,7 @@ def replies_yes(ctx: Context):
     ctx.expect(rep["keyword"] == "YES", "reply keyword YES", rep)
     con = ctx.wait_event(lambda e: e["type"] == "consent", mark, 10, "consent event")["payload"]
     ctx.expect(con["state"] == "active", "consent event active", con)
-    ctx.expect(ctx.consent_db() == "active", "SQLite consent row (salted hash of DEMO_PHONE) is active", ctx.consent_db())
+    ctx.expect(ctx.consent_db() == "active", "SQLite consent row (HMAC of DEMO_PHONE) is active", ctx.consent_db())
     last = ctx.outbox()[-1]
     ctx.expect(last["template_id"] == "R-YES", "outbox last message is R-YES", last)
     ui_assert(ctx, "phone frame shows R-YES text", lambda: pw_expect()(card(page, "^Phone")).to_contain_text(ctx.templates["R-YES"]))
@@ -666,7 +666,7 @@ def invite(ctx: Context):
         ctx.expect(ev["payload"]["template_id"] == "ENROLL" and ev["payload"]["status"] == "queued", "ENROLL queued", ev["payload"])
         last = ctx.outbox()[-1]
         ctx.expect(last["message_id"] == mid and last["text"] == ctx.templates["ENROLL"], "outbox has the ENROLL text", last)
-        ctx.expect(ctx.consent_db(phone) == "invited", f"SQLite consent for the {which} phone's salted hash is invited",
+        ctx.expect(ctx.consent_db(phone) == "invited", f"SQLite consent for the {which} phone's HMAC is invited",
                    ctx.consent_db(phone))
     r = ctx.api.post("/sms/invite", json={"phone": "other"})
     ctx.expect(r.status_code == 422, "an unknown phone name is rejected (no raw numbers cross the API)", r.status_code)

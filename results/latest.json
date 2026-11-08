@@ -3,32 +3,24 @@
   "source": "script",
   "arms": {
     "K": {
-      "TP": 9,
-      "FP": 6,
-      "FN": 21,
-      "TN": 24,
-      "hard_benign_fp": 6,
+      "TP": 27,
+      "FP": 13,
+      "FN": 3,
+      "TN": 17,
+      "hard_benign_fp": 13,
       "hard_benign_n": 22
     },
     "B": {
-      "TP": 5,
+      "TP": 18,
       "FP": 0,
-      "FN": 25,
+      "FN": 12,
       "TN": 30,
       "hard_benign_fp": 0,
-      "hard_benign_n": 22
-    },
-    "C": {
-      "TP": 5,
-      "FP": 1,
-      "FN": 25,
-      "TN": 29,
-      "hard_benign_fp": 1,
       "hard_benign_n": 22
     }
   },
   "discordant": {
-    "K_only": 4,
-    "B_only": 6
+    "K_only": 9,
+    "B_only": 13
   }
 }

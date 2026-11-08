@@ -6,9 +6,9 @@ app --messages.create (status_callback = PUBLIC_BASE_URL/sms/status)--> Twilio -
 ```
 
 ## 1. Twilio account (human)
-- Upgrade the account: a trial has no number of its own and only sends Twilio's canned bodies, not our
-  templates (issue #1 LEARN). US SMS also needs 10DLC or toll-free registration, which takes days.
-  Without it, demo on the simulated phone and say "SMS simulated" in the pitch.
+- Upgrade the account: a trial has no number of its own and can't send our template bodies. US SMS also
+  needs 10DLC or toll-free registration, which takes days. Our account is still a trial, so the demo runs
+  on the simulated phone; say "SMS simulated" in the pitch.
 - Buy an SMS-capable US number. Fill `.env`: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM`,
   `DEMO_PHONE`, `SPARE_PHONE` (E.164), `CONSENT_SALT`, `OPERATOR_PASSWORD`, `SESSION_SECRET`.
 - Install `cloudflared` (`~/.local/bin` is fine).
@@ -45,5 +45,6 @@ After `STOP`, Twilio blocks further sends and sends its own confirmation, so the
 
 ## 6. Data that leaves the laptop
 - Alert and reply texts go to Twilio (template text only, never call content).
-- Arm C (`INTENT_MODEL=on` + `TYPESAFE_API_KEY`) sends each caller turn plus the 3 turns before it to
-  api.typesafe.ai. Leave it off for any real call; the enrollment card says so when it is on.
+- Arm C (`INTENT_MODEL=on` + `TYPESAFE_API_KEY`) sends each caller turn plus up to 3 turns before it to
+  api.typesafe.ai, and the app logs a line saying so at startup. Leave it off for any real call. The API
+  currently returns 402 (out of credit), so every turn falls back to arm B.
