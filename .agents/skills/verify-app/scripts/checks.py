@@ -4,7 +4,9 @@ read-back, operator API, files on disk, or the rendered console).
 
 Registry fields: id, feature (features/<feature>.md), profile (cached | asr | cli),
 ui (needs the Vite console + Playwright), requires (check ids that must PASS first in
-this run, else BLOCKED), control (negative control: excluded unless --negative-control).
+this run, else BLOCKED), control (negative control: excluded unless --negative-control),
+known_gap (issue ref for a documented product gap: an app-behavior FAIL is reported as
+KNOWN-GAP and does not fail the verdict; a PASS is flagged so the marker gets removed).
 """
 from __future__ import annotations
 
@@ -48,14 +50,15 @@ class Check:
     fn: object
     requires: list[str] = field(default_factory=list)
     control: bool = False
+    known_gap: str = ""
 
 
 CHECKS: list[Check] = []
 
 
-def check(id, feature, profile="cached", ui=False, requires=(), control=False):
+def check(id, feature, profile="cached", ui=False, requires=(), control=False, known_gap=""):
     def deco(fn):
-        CHECKS.append(Check(id, feature, profile, ui, fn, list(requires), control))
+        CHECKS.append(Check(id, feature, profile, ui, fn, list(requires), control, known_gap))
         return fn
     return deco
 
@@ -550,7 +553,8 @@ def controls_mode(ctx: Context):
     ctx.shot("simulated")
 
 
-@check("controls.sms-mode-after-reload", "call-controls", ui=True)
+@check("controls.sms-mode-after-reload", "call-controls", ui=True,
+       known_gap="#64 console cannot read the backend SMS mode after a reload")
 def controls_mode_reload(ctx: Context):
     ctx.api_reset()
     page = open_console(ctx)

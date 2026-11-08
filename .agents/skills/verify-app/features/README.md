@@ -23,7 +23,7 @@ This directory is the maintained source for verifying what Safe Signal's users c
 - Every UI assertion is paired with an independent read: the SSE event stream, SQLite (`data/safesignal.db` opened read-only), `GET /sms/outbox`, `GET /aggregates`, or a file on disk.
 - Consent rows are found by recomputing `sha256(CONSENT_SALT + E.164)`, not by asking the app.
 - Each check records its actions, assertions (expected / observed), timestamps, and artifacts (screenshot + ARIA snapshot, JSON dumps, CLI transcripts) in `.verify/runs/<run_id>/`.
-- Outcomes are PASS, FAIL, or BLOCKED with a reason and category. A check with zero executed assertions is BLOCKED. A missing dependency is BLOCKED. Neither is ever a pass.
+- Outcomes are PASS, FAIL, or BLOCKED with a reason and category, plus KNOWN-GAP for an app-behavior FAIL of a check marked `known_gap` (a documented, issue-tracked product bug; it does not fail the run). A check with zero executed assertions is BLOCKED. A missing dependency is BLOCKED. Neither is ever a pass.
 - Items listed under `external` in `coverage.json` are reported as unverified in every report; do not claim them from a local run.
 
 ## Feature entry contract

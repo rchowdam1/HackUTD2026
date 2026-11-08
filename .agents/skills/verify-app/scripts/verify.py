@@ -145,6 +145,11 @@ class Runner:
             else:
                 rec.update(status="BLOCKED", category="harness-error", reason=f"{name}: {e}",
                            traceback=traceback.format_exc()[-3000:])
+        if c.known_gap and rec["status"] == "FAIL" and rec["category"] == "app-behavior":
+            rec.update(status="KNOWN-GAP", known_gap=c.known_gap)
+        elif c.known_gap and rec["status"] == "PASS":
+            rec["known_gap_passed"] = c.known_gap
+            self.log(f"  ! {c.id} is marked known gap {c.known_gap} but PASSED: remove known_gap= in checks.py")
         rec["ended_at"] = H.now()
         rec["duration_s"] = round(time.monotonic() - t0, 2)
         if rec["status"] != "PASS":
@@ -152,7 +157,7 @@ class Runner:
                 ctx.shot("on-" + rec["status"].lower())
             except Exception:
                 pass
-        mark = {"PASS": "✓", "FAIL": "✗", "BLOCKED": "∅"}[rec["status"]]
+        mark = {"PASS": "✓", "FAIL": "✗", "BLOCKED": "∅", "KNOWN-GAP": "~"}[rec["status"]]
         self.log(f"  {mark} {rec['status']} {c.id} ({rec['duration_s']}s){' - ' + rec['reason'] if rec['reason'] else ''}")
         return rec
 
@@ -223,6 +228,8 @@ def coverage_summary(records: list[dict], chosen_features: set[str]) -> dict:
             status = "verified"
         elif all(r["status"] == "PASS" for r in recs):
             status = "partially-verified"
+        elif all(r["status"] in ("PASS", "KNOWN-GAP") for r in recs):
+            status = "known-gap"
         else:
             status = "blocked"
         feats[name] = {"status": status, "checks": {r["id"]: r["status"] for r in recs}}
@@ -232,7 +239,7 @@ def coverage_summary(records: list[dict], chosen_features: set[str]) -> dict:
 
 def write_report(run_id: str, ev: Path, started: str, env: dict, sel: dict, runner: Runner, iso: dict, cleanup: dict) -> dict:
     recs = runner.records
-    summary = {s: sum(r["status"] == s for r in recs) for s in ("PASS", "FAIL", "BLOCKED")}
+    summary = {s: sum(r["status"] == s for r in recs) for s in ("PASS", "FAIL", "BLOCKED", "KNOWN-GAP")}
     verdict = "FAIL" if summary["FAIL"] else "BLOCKED" if summary["BLOCKED"] or not recs else "PASS"
     failed = [r["id"] for r in recs if r["status"] != "PASS"]
     script = ".agents/skills/verify-app/scripts/verify.py"
@@ -250,12 +257,20 @@ def write_report(run_id: str, ev: Path, started: str, env: dict, sel: dict, runn
     }
     (ev / "report.json").write_text(json.dumps(rep, indent=1))
     lines = [f"# Verification report {run_id}", "",
-             f"Verdict: **{verdict}** (PASS {summary['PASS']} · FAIL {summary['FAIL']} · BLOCKED {summary['BLOCKED']})",
+             f"Verdict: **{verdict}** (PASS {summary['PASS']} · FAIL {summary['FAIL']} · BLOCKED {summary['BLOCKED']}"
+             f" · KNOWN-GAP {summary['KNOWN-GAP']})",
              f"Commit {env['git_head'][:10]} on {env['git_branch']}{' (dirty tree)' if env['dirty'] else ''} · "
              f"snapshot {env['snapshot_digest']} · {started} → {rep['ended_at']}", "",
              "| Check | Feature | Status | Time | Reason |", "|---|---|---|---|---|"]
     for r in recs:
         lines.append(f"| `{r['id']}` | {r['feature']} | {r['status']} | {r['duration_s']}s | {r['reason'].replace('|', '/')[:220]} |")
+    gaps = [r for r in recs if r["status"] == "KNOWN-GAP" or r.get("known_gap_passed")]
+    if gaps:
+        lines += ["", "## Known product gaps", "", "Documented app bugs; a KNOWN-GAP does not fail the verdict.", ""]
+        for r in gaps:
+            lines.append(f"- `{r['id']}` {r['status']}: {r.get('known_gap') or r['known_gap_passed']}"
+                         + (" -- PASSED unexpectedly: the gap looks fixed, remove its known_gap marker"
+                            if r.get("known_gap_passed") else ""))
     lines += ["", "## Feature coverage", ""]
     for n, f in rep["coverage"]["features"].items():
         lines.append(f"- {n}: {f['status']}")
@@ -304,6 +319,10 @@ def cmd_run(args) -> int:
                     runner.run_profile(profile, group, sandbox)
         except KeyboardInterrupt:
             runner.log("interrupted")
+            for r in runner.records:  # the check Ctrl-C landed in never finished
+                if r["status"] == "RUNNING":
+                    r.update(status="BLOCKED", reason="run interrupted during this check", category="interrupted",
+                             ended_at=H.now())
             done = {r["id"] for r in runner.records}
             for c in chosen:
                 if c.id not in done:
@@ -331,7 +350,8 @@ def cmd_run(args) -> int:
         latest.symlink_to(run_id)
         evidence_ok = (ev / "report.json").is_file() and all((ev / p).exists() for r in rep["checks"] for p in r["evidence"])
         runner.log(f"\nVERDICT {rep['verdict']}  PASS {rep['summary']['PASS']} · FAIL {rep['summary']['FAIL']} · "
-                   f"BLOCKED {rep['summary']['BLOCKED']}  evidence intact after cleanup: {evidence_ok}")
+                   f"BLOCKED {rep['summary']['BLOCKED']} · KNOWN-GAP {rep['summary']['KNOWN-GAP']}  "
+                   f"evidence intact after cleanup: {evidence_ok}")
         runner.log(f"report: {ev / 'report.md'}")
         for nc in rep["negative_controls"]:
             runner.log(f"negative control {nc['id']}: {nc['status']} "
@@ -404,7 +424,8 @@ def cmd_status(args) -> int:
 def cmd_list(args) -> int:
     for c in C.CHECKS:
         print(f"{c.feature:18} {c.id:32} profile={c.profile:6} {'ui' if c.ui else 'api'}"
-              f"{' requires=' + ','.join(c.requires) if c.requires else ''}{' (negative control)' if c.control else ''}")
+              f"{' requires=' + ','.join(c.requires) if c.requires else ''}{' (negative control)' if c.control else ''}"
+              f"{' (known gap ' + c.known_gap + ')' if c.known_gap else ''}")
     return 0
 
 

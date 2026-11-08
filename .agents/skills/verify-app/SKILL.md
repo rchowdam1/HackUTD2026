@@ -21,7 +21,7 @@ env -u PYTHONPATH -u PYTHONHOME -u VIRTUAL_ENV uv run --with playwright==1.64.1 
     python .agents/skills/verify-app/scripts/verify.py run [flags]
 ```
 
-Exit codes: `0` every selected check PASS; `1` any FAIL (or isolation breach); `2` nothing failed but something was BLOCKED or nothing ran. `--allow-blocked` turns 2 into 0 (CI only; the report still says BLOCKED).
+Exit codes: `0` every selected check PASS; `1` any FAIL (or isolation breach); `2` nothing failed but something was BLOCKED or nothing ran. `--allow-blocked` turns 2 into 0 (CI only; the report still says BLOCKED). A check registered with `known_gap="#<issue> ..."` (a documented product bug owned elsewhere) whose assertion fails is reported as KNOWN-GAP and does not affect the exit code; any other failure category stays FAIL, and a PASS is called out under "Known product gaps" in `report.md` so the marker gets removed.
 
 ## Launch
 

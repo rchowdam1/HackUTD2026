@@ -213,20 +213,24 @@ def launch(run_id: str, sandbox: Path, evidence: Path, profile: str, ui: bool, l
             "backend": f"http://127.0.0.1:{port}", "port": port, "console": None, "env": env,
             "procs": [{"name": "backend", "pid": backend.pid}], "started_at": now()}
     _write_state(inst)
-    _wait_http(inst["backend"] + "/health", backend, blog, timeout=180 if profile == "asr" else 60)
-    if ui:
-        ensure_console_deps(sandbox, log)
-        cport = free_port()
-        venv = dict(env, BACKEND_URL=inst["backend"])
-        vlog = evidence / f"vite-{profile}.log"
-        vcmd = ["node", str(sandbox / "console/node_modules/vite/bin/vite.js"), "--host", "127.0.0.1",
-                "--port", str(cport), "--strictPort"]
-        log("$ " + " ".join(vcmd) + "  (cwd sandbox/console, BACKEND_URL=backend)")
-        vite = _spawn(vcmd, sandbox / "console", venv, vlog)
-        inst["procs"].append({"name": "vite", "pid": vite.pid})
-        inst["console"] = f"http://127.0.0.1:{cport}"
-        _write_state(inst)
-        _wait_http(inst["console"] + "/", vite, vlog, 60, ok=lambda r: r.status_code == 200 and "Safe Signal" in r.text)
+    try:
+        _wait_http(inst["backend"] + "/health", backend, blog, timeout=180 if profile == "asr" else 60)
+        if ui:
+            ensure_console_deps(sandbox, log)
+            cport = free_port()
+            venv = dict(env, BACKEND_URL=inst["backend"])
+            vlog = evidence / f"vite-{profile}.log"
+            vcmd = ["node", str(sandbox / "console/node_modules/vite/bin/vite.js"), "--host", "127.0.0.1",
+                    "--port", str(cport), "--strictPort"]
+            log("$ " + " ".join(vcmd) + "  (cwd sandbox/console, BACKEND_URL=backend)")
+            vite = _spawn(vcmd, sandbox / "console", venv, vlog)
+            inst["procs"].append({"name": "vite", "pid": vite.pid})
+            inst["console"] = f"http://127.0.0.1:{cport}"
+            _write_state(inst)
+            _wait_http(inst["console"] + "/", vite, vlog, 60, ok=lambda r: r.status_code == 200 and "Safe Signal" in r.text)
+    except BaseException:  # partial launch: stop what we started before the caller moves on
+        stop(inst, log)
+        raise
     return inst
 
 

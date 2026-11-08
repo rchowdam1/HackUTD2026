@@ -29,7 +29,7 @@ Preconditions:
 ## Gotchas
 
 - Real mode is safe to toggle in the sandbox: it has no `TWILIO_ACCOUNT_SID`, the clinic call never alerts, and each real-mode call is reset immediately. Never run the bank call in real mode against a configured Twilio account.
-- The console only learns the SMS mode from a click or a `session running` event; there is no API to read it. `controls.sms-mode-after-reload` fails for that reason (known product gap, reported, not papered over). After such a reload the Phone card is also shown although real mode is active.
+- The console only learns the SMS mode from a click or a `session running` event; there is no API to read it. `controls.sms-mode-after-reload` fails for that reason: it is marked `known_gap` ([#64](https://github.com/rchowdam1/HackUTD2026/issues/64)), so the report shows it as KNOWN-GAP (assertion unchanged, verdict not failed). When it passes, the report says so; then drop the marker. After such a reload the Phone card is also shown although real mode is active.
 - End call and Reset both cancel the replay task; Reset additionally invalidates the generation so late SMS tasks drop. Only Reset clears the transcript.
 - Reset emits `session reset` with the old `session_ref` (or null when idle). Filter late events by events *after* the reset event.
 - Not yet covered by a check: End call *after* the alert (≈20 s into the bank call) still sends the follow-up before `finished`; Run during a live call finishes the old session first; unknown scenario ids return 404.

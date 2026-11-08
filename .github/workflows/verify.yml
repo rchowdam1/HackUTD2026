@@ -53,7 +53,8 @@ jobs:
         if: steps.affected.outputs.needs_ui == 'true'
         run: uv run --with playwright==1.64.1 playwright install --with-deps chromium
       - name: Verify affected features
-        # FAIL fails the job. BLOCKED (e.g. no whisper model on runners) is reported in the summary, not passed.
+        # FAIL fails the job. BLOCKED (e.g. no whisper model on runners) and KNOWN-GAP (issue-tracked product
+        # bug, see checks.py known_gap) are reported in the summary, not passed.
         run: make verify-changed BASE="$BASE" ARGS="--allow-blocked"
       - name: Summary
         if: always()
