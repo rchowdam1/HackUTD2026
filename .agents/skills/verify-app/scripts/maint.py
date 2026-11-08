@@ -131,7 +131,8 @@ def lint(checks, ui_handles, api_routes) -> dict:
                 errors.append(f"feature {name}: path {g} matches no file (renamed or deleted?)")
     console_src = "\n".join(p.read_text() for p in (REPO / "console/src").glob("*.tsx"))
     for h in ui_handles:
-        if h not in console_src:
+        # whole-phrase match: "Run bank" must not be satisfied by "Run bank call" (locators use exact names)
+        if not re.search(r"(?<![A-Za-z] )(?<!\w)" + re.escape(h) + r"(?!\w)(?! [A-Za-z])", console_src):
             errors.append(f"UI handle {h!r} not found in console/src (renamed? update checks.py + feature doc)")
     routes = declared_routes()
     for r in api_routes:
