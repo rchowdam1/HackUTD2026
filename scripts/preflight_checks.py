@@ -35,6 +35,10 @@ MODEL_DOWNLOAD = ("env -u PYTHONPATH -u VIRTUAL_ENV uv run python -c \"from fast
 SMS_TIMEOUT_S = 30
 REPLY_TIMEOUT_S = 120
 APP_URL = "http://127.0.0.1:8000"  # `make run`; the reply listener reads the app's event stream directly
+POWER_SUPPLY = Path("/sys/class/power_supply")  # Linux; elsewhere the power check is SKIP (check by hand)
+# §19.7 items the script can't verify; printed on every run.
+MANUAL_CHECKS = ("sleep and screen lock are off (closing the lid must not suspend)",
+                 "laptop is on the phone hotspot, not venue Wi-Fi")
 
 
 @dataclass
@@ -302,6 +306,15 @@ def check_reply(env: dict, sms_ok: bool, timeout_s: float = REPLY_TIMEOUT_S) -> 
                   "else demo in simulated SMS mode")
 
 
+def check_power(root: Path = POWER_SUPPLY) -> Result:
+    mains = [p for p in root.glob("*") if (p / "type").is_file() and (p / "type").read_text().strip() == "Mains"]
+    if not mains:
+        return Result("SKIP", "power", "AC state not readable here; check by hand that the charger is plugged in")
+    if any((p / "online").read_text().strip() == "1" for p in mains):
+        return Result("PASS", "power", "on AC power")
+    return Result("FAIL", "power", "on battery", "plug in the charger")
+
+
 # --- runner -------------------------------------------------------------------------------------
 
 def _safe(name: str, fn, *args) -> Result:
@@ -313,6 +326,7 @@ def _safe(name: str, fn, *args) -> Result:
 
 def run_checks(env: dict, send_sms: bool = True) -> list[Result]:
     results = [
+        _safe("power", check_power),
         _safe("model", check_model),
         _safe("app-offline", check_app),
         _safe("cached-replay", check_replay),
@@ -335,6 +349,8 @@ def report(results: list[Result], env: dict, out=sys.stdout) -> int:
         print(scrub(f"{r.status} {r.name} - {r.detail}", env), file=out)
         if r.status == "FAIL":
             print(scrub(f"  fix: {r.fix}", env), file=out)
+    for item in MANUAL_CHECKS:
+        print(f"MANUAL {item}", file=out)
     failed = sum(r.status == "FAIL" for r in results)
     print(f"PREFLIGHT {'FAIL' if failed else 'PASS'} ({failed} of {len(results)} checks failed)", file=out)
     return 1 if failed else 0

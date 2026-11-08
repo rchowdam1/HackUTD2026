@@ -358,3 +358,36 @@ def test_wait_for_reply_bad_password_raises():
     client = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(401)), base_url="http://app")
     with pytest.raises(httpx.HTTPStatusError):
         pf.wait_for_reply("wrong", 5, lambda: None, client=client)
+
+
+# --- §19.7 power, sleep, hotspot ------------------------------------------------------------------
+
+def supply(root, name, kind, online):
+    d = root / name
+    d.mkdir()
+    (d / "type").write_text(kind + "\n")
+    (d / "online").write_text(f"{online}\n")
+
+
+def test_power_pass_on_ac(tmp_path):
+    supply(tmp_path, "BAT0", "Battery", 1)
+    supply(tmp_path, "ADP0", "Mains", 1)
+    assert pf.check_power(tmp_path).status == "PASS"
+
+
+def test_power_fail_on_battery_names_fix(tmp_path):
+    supply(tmp_path, "ADP0", "Mains", 0)
+    r = pf.check_power(tmp_path)
+    assert r.status == "FAIL" and "charger" in r.fix
+
+
+def test_power_skip_when_unreadable(tmp_path):
+    assert pf.check_power(tmp_path / "missing").status == "SKIP"
+
+
+def test_report_prints_manual_sleep_and_hotspot_items():
+    out = io.StringIO()
+    pf.report([pf.Result("PASS", "a", "ok")], ENV, out)
+    text = out.getvalue()
+    assert "MANUAL" in text and "sleep" in text and "hotspot" in text
+    assert text.endswith("PREFLIGHT PASS (0 of 1 checks failed)\n")
