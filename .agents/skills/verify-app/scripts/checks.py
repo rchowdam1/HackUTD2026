@@ -993,7 +993,7 @@ def live_mic_ui(ctx: Context):
     click(ctx, page, "End call")
     ctx.wait_event(is_session(ref, "finished"), mark, 15, "session finished")
     ui_assert(ctx, "follow-up marker after End call",
-              lambda: pw_expect()(tr.locator("p.marker")).to_have_text(["* Alert message sent to user", "* Follow-up message sent to user"]))
+              lambda: pw_expect()(tr.locator("p.marker")).to_have_text(["→ Alert text sent", "→ Follow-up text sent"]))
     ui_assert(ctx, "speaker buttons are gone once the call ended", lambda: pw_expect()(page.get_by_role("button", name="Caller", exact=True)).to_have_count(0))
     ctx.shot("ended")
 
@@ -1051,3 +1051,99 @@ def negative_control(ctx: Context):
                    and e["payload"]["state"] == "finished", mark, 40, "finished")
     dec = [e["payload"]["template_id"] for e in events_for(ctx, mark, ev["session_ref"], "decision")]
     ctx.expect(dec == ["ALERT-OTP-01"], "NEGATIVE CONTROL (deliberately false): the clinic call alerts", dec)
+
+
+# --- console-design ---------------------------------------------------------------------------
+
+# DESIGN.md "one accent, one meaning": magenta only on the request CallSafe acted on, the alert, the WRONG key and
+# the single primary action. Elements under these may be magenta; anything else is a violation.
+MAGENTA_ALLOWED = (".line.flagged, .line .rel, .verdict .headline.alerted, .primary-row, .why .request, .why mark, "
+                   ".bubble.in, .pill.wrong, .ttag.alert, .primary, .field")
+MAGENTA_AUDIT = """allowed => {
+  const MAG = ["rgb(226, 0, 116)", "rgb(200, 0, 106)"];
+  const name = el => el.tagName.toLowerCase() + (el.className && typeof el.className === "string" ? "." + el.className.trim().split(/\\s+/).join(".") : "");
+  const out = {stray: [], small: []};
+  for (const el of document.querySelectorAll("body *")) {
+    const r = el.getBoundingClientRect();
+    if (!r.width || !r.height) continue;
+    const cs = getComputedStyle(el);
+    if (cs.visibility === "hidden") continue;
+    const ownText = [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim());
+    const hits = [ownText && cs.color, cs.backgroundColor, cs.borderTopWidth !== "0px" && cs.borderTopColor].filter(c => MAG.includes(c));
+    if (!hits.length) continue;
+    if (!el.closest(allowed)) out.stray.push(name(el) + ": " + (el.textContent || "").trim().slice(0, 40));
+    if (ownText && cs.color === MAG[0] && parseFloat(cs.fontSize) < 24) out.small.push(name(el) + " " + cs.fontSize);
+  }
+  return out;
+}"""
+
+
+def run_bank_to_end(ctx: Context):
+    ctx.api_reset()
+    ctx.ensure_opted_in()
+    page = open_console(ctx)
+    mark = ctx.tap.mark()
+    ref, _ = start_replay_ui(ctx, page, "Run bank", mark)
+    ctx.wait_event(lambda e: e["session_ref"] == ref and e["type"] == "session" and e["payload"]["state"] == "finished",
+                   mark, 40, "session finished")
+    # The console types each line over its audio; 'call ended' shows once the last line is done.
+    ui_assert(ctx, "status shows 'call ended'",
+              lambda: pw_expect()(page.get_by_role("banner")).to_contain_text("call ended", timeout=15_000))
+    return page, ref, mark
+
+
+@check("design.fit-and-accent", "console-design", ui=True)
+def design_fit(ctx: Context):
+    page, _, _ = run_bank_to_end(ctx)
+    for w, h in ((1440, 900), (1920, 1080)):
+        page.set_viewport_size({"width": w, "height": h})
+        page.wait_for_timeout(300)
+        fit = page.evaluate("() => [document.documentElement.scrollHeight, innerHeight, document.documentElement.scrollWidth, innerWidth]")
+        ctx.expect(fit[0] <= fit[1] and fit[2] <= fit[3], f"{w}x{h}: no page scroll after a bank alert", fit)
+        cols = [page.locator(f".col.{c}").count() for c in ("left", "centre", "right")]
+        ctx.expect(cols == [1, 1, 1], f"{w}x{h}: three columns (controls, transcript, why + phone)", cols)
+        audit = page.evaluate(MAGENTA_AUDIT, MAGENTA_ALLOWED)
+        ctx.save_json(f"magenta-{w}", audit)
+        ctx.expect(not audit["stray"], f"{w}x{h}: magenta only on the request, alert, WRONG key and primary action",
+                   audit["stray"])
+        ctx.expect(not audit["small"], f"{w}x{h}: magenta text under 24px uses --magenta-text", audit["small"])
+        bubble = page.locator(".phone .bubble").first
+        screen = page.locator(".phone .screen")
+        b, s = bubble.bounding_box(), screen.bounding_box()
+        ctx.expect(b and s and b["y"] >= s["y"] - 1 and b["y"] + b["height"] <= s["y"] + s["height"] + 1,
+                   f"{w}x{h}: the alert bubble is fully visible on the phone", [b, s])
+        ctx.shot(f"bank-alert-{w}")
+    page.set_viewport_size({"width": 1440, "height": 900})
+    results = ctx.api.get("/results/latest").json()
+    band = card(page, "^Results")
+    ui_assert(ctx, "results band labels the dev batch as the tuning set",
+              lambda: pw_expect()(band).to_contain_text("scripted calls the rules were tuned on"))
+    for arm, c in results["arms"].items():
+        want = f"{c['hard_benign_fp']} of {c['hard_benign_n']}"
+        ui_assert(ctx, f"results band shows arm {arm}'s false alerts from results/latest.json ({want})",
+                  lambda: pw_expect()(band).to_contain_text(want))
+
+
+@check("ticker.turns", "console-design", ui=True)
+def ticker_turns(ctx: Context):
+    page, ref, mark = run_bank_to_end(ctx)
+    turns = [e["payload"] for e in events_for(ctx, mark, ref, "turn")]
+    sms = [e["payload"] for e in events_for(ctx, mark, ref, "sms")]
+    segs = events_for(ctx, mark, ref, "segment")
+    ctx.expect(len(turns) == len(segs), "one turn event per transcript line (SSE)", [len(turns), len(segs)])
+    items = page.locator(".ticker-list:not([aria-hidden]) > li")
+    ui_assert(ctx, "ticker: one entry per turn plus one per text",
+              lambda: pw_expect()(items).to_have_count(len(turns) + len(sms)))
+    texts = items.all_inner_texts()
+    ctx.save_json("ticker", texts)
+    turn_items = [t for t in texts if "decided in" in t]
+    ctx.expect(len(turn_items) == len(turns) and all(re.search(r"(Caller|You) · .* · decided in \d+ ms", t) for t in turn_items),
+               "each turn entry names the speaker, the AI verdict and the decision time", turn_items)
+    ctx.expect(any("ALERT" in t.upper() and "Alert text" in t for t in texts), "the alert text has its own ALERT entry", texts)
+    track = page.locator(".ticker-track")
+    ctx.expect(track.evaluate("el => getComputedStyle(el).animationName") != "none", "ticker scrolls by default")
+    page.emulate_media(reduced_motion="reduce")
+    ctx.expect(track.evaluate("el => getComputedStyle(el).animationName") == "none",
+               "prefers-reduced-motion stops the ticker")
+    page.emulate_media(reduced_motion="no-preference")
+    ctx.shot("ticker")

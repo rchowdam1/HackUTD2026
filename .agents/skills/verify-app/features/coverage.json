@@ -134,6 +134,17 @@
         "scripts/preflight_checks.py"
       ],
       "synced_commit": "35ed336647808a5fbe43a9567b383e5663e50c2f"
+    },
+    "console-design": {
+      "doc": "console-design.md",
+      "paths": [
+        "console/src/App.tsx",
+        "console/src/styles.css",
+        "console/src/state.ts",
+        "DESIGN.md",
+        "results/latest.json"
+      ],
+      "synced_commit": "35ed336647808a5fbe43a9567b383e5663e50c2f"
     }
   },
   "global_paths": [
