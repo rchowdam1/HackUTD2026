@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, FastAPI
 
-from app import asr, storage
+from app import asr, intent, storage
 
 ROUTER_PACKAGES = ("app.api", "app.sms")
 
@@ -33,6 +33,7 @@ def discover_routers() -> list[APIRouter]:
 async def lifespan(app: FastAPI):
     storage.init()
     asr.preload()
+    intent.preload()
     yield
 
 
