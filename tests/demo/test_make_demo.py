@@ -180,3 +180,28 @@ def test_webhooks_stay_put_when_the_tunnel_does_not_answer(env, monkeypatch):
     monkeypatch.setattr(demo, "tunnel_answers", lambda b: False)
     monkeypatch.setattr(demo, "point_webhooks", lambda number, base: pytest.fail("pointed at a dead tunnel"))
     demo.expose("https://dead.trycloudflare.com")
+
+
+def test_tunnel_check_resolves_through_public_dns_and_connects_by_ip(monkeypatch):
+    # The laptop's resolver may have cached "not found" for a brand-new quick-tunnel hostname; Twilio uses public DNS.
+    host, seen = "brave-otter.trycloudflare.com", []
+
+    class Client:
+        def __init__(self, **kw):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            pass
+
+        def get(self, url, headers, extensions):
+            seen.append((url, headers, extensions))
+            return type("R", (), {"status_code": 200})()
+    monkeypatch.setattr(demo, "public_ip", lambda h: "104.16.230.132" if h == host else None)
+    monkeypatch.setattr(demo.httpx, "Client", Client)
+    assert demo.tunnel_answers(f"https://{host}")
+    assert seen == [("https://104.16.230.132/health", {"Host": host}, {"sni_hostname": host})]
+    monkeypatch.setattr(demo.time, "sleep", lambda s: None)
+    assert not demo.tunnel_answers("https://gone.trycloudflare.com", timeout_s=0.05)

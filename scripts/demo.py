@@ -19,7 +19,8 @@ import sys
 import time
 
 import demo_up
-from preflight_checks import REPO_ROOT, http_get, load_env, missing, scrub
+import httpx
+from preflight_checks import REPO_ROOT, load_env, missing, scrub
 
 ENV_FILE = REPO_ROOT / ".env"
 KEYS = ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM", "DEMO_PHONE", "SPARE_PHONE", "OPERATOR_PASSWORD",
@@ -105,13 +106,25 @@ def point_webhooks(number: str, base: str) -> None:
     say("Twilio webhooks (read back ok): " + ", ".join(f"{k} POST {v}" for k, v in want.items()))
 
 
+def public_ip(host: str) -> str | None:
+    """The host's A record from public DNS (Cloudflare DoH), which is what Twilio sees."""
+    r = httpx.get("https://cloudflare-dns.com/dns-query", params={"name": host, "type": "A"},
+                  headers={"accept": "application/dns-json"}, timeout=5)
+    return next((a["data"] for a in r.json().get("Answer", []) if a.get("type") == 1), None)
+
+
 def tunnel_answers(base: str, timeout_s: float = 60) -> bool:
-    # A fresh quick tunnel can take a few seconds before its hostname resolves.
+    # A fresh quick tunnel's hostname takes a few seconds to exist. Asking the laptop's resolver too early
+    # caches "not found" (seen with Tailscale's MagicDNS), so resolve through public DNS and connect by IP.
+    host = base.removeprefix("https://").split("/")[0]
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         try:
-            if http_get(base + "/health").status_code == 200:
-                return True
+            if ip := public_ip(host):
+                with httpx.Client(timeout=5) as c:
+                    r = c.get(f"https://{ip}/health", headers={"Host": host}, extensions={"sni_hostname": host})
+                if r.status_code == 200:
+                    return True
         except Exception:
             pass
         time.sleep(2)
