@@ -550,8 +550,7 @@ def controls_mode(ctx: Context):
     ctx.shot("simulated")
 
 
-@check("controls.sms-mode-after-reload", "call-controls", ui=True,
-       known_gap="#64 console cannot read the backend SMS mode after a reload")
+@check("controls.sms-mode-after-reload", "call-controls", ui=True)
 def controls_mode_reload(ctx: Context):
     ctx.api_reset()
     page = open_console(ctx)
@@ -583,9 +582,16 @@ def webhooks_token(ctx: Context):
     for label, token in (("no token", None), ("empty token", ""), ("wrong token", ("B" if good[0] == "A" else "A") + good[1:])):
         r = post_bridge(ctx, body, token)
         ctx.expect(r.status_code == 403, f"{label} POST /sms/inbound -> 403", r.status_code)
+    consent0 = ctx.consent_db()
+    for label, sender in (("no sender", None), ("unenrolled sender", "+10000000000")):
+        r = post_bridge(ctx, {"id": "verify-" + uuid.uuid4().hex, "text": "STOP", "sender": sender}, good)
+        ctx.expect(r.status_code == 204, f"{label} with the token -> 204 (dropped, no retry)", r.status_code)
     time.sleep(1)
-    ctx.expect(not [e for e in ctx.tap.since(mark) if e["type"] in ("reply", "sms")], "no reply/sms events emitted", ctx.tap.since(mark))
+    ctx.expect(not [e for e in ctx.tap.since(mark) if e["type"] in ("reply", "sms", "consent")],
+               "no reply/sms/consent events emitted", ctx.tap.since(mark))
     ctx.expect(ctx.reply_count("WRONG") == n, "SQLite WRONG count unchanged", ctx.reply_count("WRONG"))
+    ctx.expect(ctx.consent_db() == consent0, "demo phone consent unchanged by an unidentified STOP (SQLite)",
+               ctx.consent_db())
 
 
 @check("webhooks.inbound-dedupe", "bridge-inbound")

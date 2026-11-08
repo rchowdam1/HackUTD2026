@@ -25,17 +25,20 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 STOP_WORDS = {"STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT", "STOP PLEASE", "PLEASE STOP"}
 
 _mode: SmsMode = "simulated"
-_last_alert: tuple[str, str] | None = None  # (session_ref, ALERT template_id) of the latest alert sent
-_seen_sids: set[str] = set()
+# Latest alert each recipient was actually sent: recipient (consent._phone) -> (session_ref, ALERT template_id).
+# Recorded only after the gateway accepted the alert, so replies never attach to a failed alert.
+_last_alerts: dict[str | None, tuple[str, str]] = {}
 
 
-def _check_and_track(template_id: str, session_ref: str) -> None:
-    global _last_alert
+def _check(template_id: str) -> None:
     if not consent.is_active():
         raise RuntimeError("consent not active")
     templates.get(template_id)  # unknown id -> KeyError before anything is sent
+
+
+def _track(template_id: str, session_ref: str) -> None:
     if template_id.startswith("ALERT-"):
-        _last_alert = (session_ref, template_id)
+        _last_alerts[consent._phone(None)] = (session_ref, template_id)  # alerts go to DEMO_PHONE
 
 
 class SimulatedGateway:
@@ -45,8 +48,10 @@ class SimulatedGateway:
         self.outbox: list[dict] = []
 
     def send(self, template_id: str, session_ref: str) -> str:
-        _check_and_track(template_id, session_ref)
-        return self.deliver(template_id, session_ref=session_ref)
+        _check(template_id)
+        message_id = self.deliver(template_id, session_ref=session_ref)
+        _track(template_id, session_ref)
+        return message_id
 
     def deliver(self, template_id: str, to: str | None = None, session_ref: str | None = None) -> str:
         message_id = f"SIM{uuid.uuid4().hex[:12]}"
@@ -65,8 +70,10 @@ class PhotonGateway:
                                  headers={"x-bridge-token": os.environ["PHOTON_BRIDGE_TOKEN"]}, timeout=30)
 
     def send(self, template_id: str, session_ref: str) -> str:
-        _check_and_track(template_id, session_ref)
-        return self.deliver(template_id, session_ref=session_ref)
+        _check(template_id)
+        message_id = self.deliver(template_id, session_ref=session_ref)
+        _track(template_id, session_ref)
+        return message_id
 
     def deliver(self, template_id: str, to: str | None = None, session_ref: str | None = None) -> str:
         response = self.http.post("/send", json={"to": to or os.environ["DEMO_PHONE"], "text": templates.get(template_id)})
@@ -113,12 +120,14 @@ async def _reply(template_id: str, to: str | None, session_ref: str | None) -> N
 
 
 async def handle_inbound(message_sid: str, body: str, phone: str | None = None) -> ReplyPayload | None:
-    """One inbound text (Photon webhook or simulated button). Duplicate message ids are ignored."""
-    if message_sid in _seen_sids:
+    """One inbound text from an enrolled phone (bridge webhook) or the simulated buttons (phone=None:
+    DEMO_PHONE). Duplicate message ids are ignored. The id is recorded only after consent and counts
+    are stored, so a text whose processing failed (raised) is processed again when the bridge retries.
+    Everything up to the record runs without awaiting, so a concurrent duplicate can't interleave."""
+    if storage.inbound_seen(message_sid):
         return None
-    _seen_sids.add(message_sid)
     word = normalise(body)
-    alert = _last_alert
+    alert = _last_alerts.get(consent._phone(phone))
     session_ref = alert[0] if alert else None
 
     if word in STOP_WORDS:
@@ -137,6 +146,7 @@ async def handle_inbound(message_sid: str, body: str, phone: str | None = None) 
     counted = alert is not None
     if counted:
         storage.incr_reply(keyword, alert[1])
+    storage.mark_inbound_seen(message_sid)
     wrong_count = sum(r["count"] for r in storage.aggregates()["replies"] if r["keyword"] == "WRONG")
     payload = ReplyPayload(keyword=keyword, counted=counted, wrong_count=wrong_count)
     log.info("sms reply keyword=%s counted=%s", keyword, counted)

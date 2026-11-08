@@ -132,13 +132,13 @@ FAIL fails the job. BLOCKED and KNOWN-GAP show in the job summary, and the evide
 
 - **Proved within those bounds on the real code:** at most one follow-up per call, one "finished" per call, no events after a call goes stale, the follow-up goes out after the alert, no alert after "finished", and a send reaches the gateway only if its call was live when the thread checked.
 - **Shown to be able to fail:** each property breaks on a variant with one guard removed (`broken-*` configs).
-- **Finding:** PRD §19.10 says stale sessions "never send SMS". The code can't guarantee that. If Reset lands after the worker thread's `_live()` check, that alert still goes out (the window covers the consent read plus the Twilio request). See the formal skill for the counterexample.
+- **Finding:** PRD §19.10 says stale sessions "never send SMS". The code can't guarantee that. If Reset lands after the worker thread's `_live()` check, that alert still goes out (the window covers the consent read plus the bridge request). See the formal skill for the counterexample.
 
 ## Current status
 
 - **Status at merge** (main `2b92a74`, 2026-11-07 CST, run `20261108T023128Z-1b38`): 23 PASS, 0 FAIL, 0 BLOCKED, 1 KNOWN-GAP. With `--negative-control`, `control.invalid-assertion` FAILed as designed. The checkout's data was untouched and no processes were left behind. `make verify-formal`: FORMAL OK (all 7 configs as expected). Reproduce with `make verify ARGS="--negative-control"` and `make verify-formal`.
-- **Known product gaps** ([#64](https://github.com/rchowdam1/HackUTD2026/issues/64), Track B):
-  - After a page reload the console shows `simulated` while the backend is in `real` (`controls.sms-mode-after-reload`, KNOWN-GAP).
+- **Known product gaps:**
+  - (fixed on `arnavprabhu/security-review`) [#64](https://github.com/rchowdam1/HackUTD2026/issues/64): after a reload the console showed `simulated` while the backend was `real`; it now reads the mode from `GET /state`.
   - (fixed by #69) `/sms/inbound` used to fail open with an empty Twilio token; it now fails closed when `PHOTON_BRIDGE_TOKEN` is unset.
 - **Pipeline finding:** reset versus an in-flight send, as described above (Track A to decide: change the PRD wording or the design).
 

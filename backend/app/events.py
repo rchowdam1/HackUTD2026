@@ -19,6 +19,14 @@ class Hub:
     def __init__(self, maxsize: int = 1000) -> None:
         self._subscribers: set[asyncio.Queue[Event]] = set()
         self._maxsize = maxsize
+        # Every event since the latest session start/reset, so a console that missed some can rebuild (GET /state).
+        self.history: list[Event] = []
+
+    def _record(self, event: Event) -> None:
+        if event.type == "session" and event.payload.get("state") in ("running", "reset"):
+            self.history = [event]
+        elif len(self.history) < self._maxsize * 10:
+            self.history.append(event)
 
     @asynccontextmanager
     async def subscribe(self) -> AsyncIterator[asyncio.Queue[Event]]:
@@ -30,6 +38,7 @@ class Hub:
             self._subscribers.discard(q)
 
     def publish(self, event: Event) -> None:
+        self._record(event)
         for q in list(self._subscribers):
             try:
                 q.put_nowait(event)

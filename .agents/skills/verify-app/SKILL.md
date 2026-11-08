@@ -57,7 +57,7 @@ Checks live in `scripts/checks.py` (`verify.py list` prints them). Each one acts
 - **Console readiness:** `open_console()` navigates, logs in through the form if needed, then posts `/demo/reset` until the banner shows `reset`. The Vite proxy holds SSE headers until the first event, so a "response" or `onopen` never signals readiness.
 - **Observer:** the harness keeps its own SSE subscription on the backend (`EventTap`), independent of the browser. Waits are `ctx.wait_event(predicate, since=mark, timeout)`, never fixed sleeps, except to prove nothing arrives late.
 - **API:** `httpx` with the operator cookie (`ctx.api`) or without (`ctx.anon`). Bridge inbound posts are built by `post_bridge()` with the same JSON and `x-bridge-token` header the Bun bridge sends.
-- **State:** SQLite opened read-only (`ctx.db_rows`), consent found by recomputing `sha256(CONSENT_SALT + E.164)`; `GET /sms/outbox` for what the simulated phone received; files in the sandbox for CLI output.
+- **State:** SQLite opened read-only (`ctx.db_rows`), consent found by recomputing `HMAC-SHA256(CONSENT_SALT, "consent-phone:" + E.164)`; `GET /sms/outbox` for what the simulated phone received; files in the sandbox for CLI output.
 - **CLIs:** `python -m eval.run --arms K,B --batch dev` and `python scripts/preflight_checks.py --no-sms` with cwd = sandbox and the sandbox env.
 
 To add a check: write a `@check(id, feature, profile=..., ui=..., requires=[...])` function, document its ID under the feature's `Sub-features`, add any new UI string to `UI_HANDLES` and route to `API_ROUTES`, run `make verify-lint`, then run the check and the negative control.

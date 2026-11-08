@@ -1,7 +1,7 @@
-import { useEffect, useReducer, useState } from "react";
+import { useCallback, useEffect, useReducer, useState } from "react";
 import * as api from "./api";
 import { initial, reduce, type Bubble, type State } from "./state";
-import type { ArmCounts, Results, RiskEvent } from "./types";
+import type { ArmCounts, Event, Results, RiskEvent, SmsPayload } from "./types";
 
 const FIXTURES = new URLSearchParams(location.search).has("fixtures");
 
@@ -9,6 +9,12 @@ const CATEGORY_WORDS: Record<RiskEvent["category"], string> = {
   otp: "Caller asked for a code",
   payment: "Caller asked for money",
   remote: "Caller asked for access to the device",
+};
+const DISPATCH_WORDS: Record<SmsPayload["status"], string> = {
+  queued: "Alert text queued",
+  sent: "Alert text sent",
+  delivered: "Alert text delivered",
+  failed: "Warning detected but the alert text was NOT sent (failed)",
 };
 const CONFIDENCE_WORDS: Record<RiskEvent["confidence_class"], string> = {
   high: "High confidence",
@@ -18,47 +24,91 @@ const CONFIDENCE_WORDS: Record<RiskEvent["confidence_class"], string> = {
 
 export default function App() {
   const [authed, setAuthed] = useState<boolean | null>(FIXTURES ? true : null);
+  const [note, setNote] = useState<string | null>(null);
   useEffect(() => {
-    if (!FIXTURES) api.loggedIn().then(setAuthed);
+    if (!FIXTURES) api.loggedIn().then(setAuthed, () => setAuthed(false));
+  }, []);
+  const loggedOut = useCallback((why: string | null) => {
+    setNote(why);
+    setAuthed(false);
   }, []);
   if (authed === null) return null;
-  return authed ? <Console /> : <Login onLogin={() => setAuthed(true)} />;
+  return authed ? <Console onLoggedOut={loggedOut} /> : <Login note={note} onLogin={() => setAuthed(true)} />;
 }
 
-function Login({ onLogin }: { onLogin: () => void }) {
+function Login({ note, onLogin }: { note: string | null; onLogin: () => void }) {
   const [password, setPassword] = useState("");
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   return (
     <form
       className="login"
       onSubmit={async (e) => {
         e.preventDefault();
-        (await api.login(password)) ? onLogin() : setError(true);
+        const err = await api.login(password);
+        err === null ? onLogin() : setError(err);
       }}
     >
       <h1>CallSafe</h1>
       <input type="password" placeholder="Operator password" value={password} onChange={(e) => setPassword(e.target.value)} autoFocus />
       <button type="submit">Log in</button>
-      {error && <p className="error">Wrong password</p>}
+      {error ? <p className="error">{error}</p> : note && <p className="muted">{note}</p>}
     </form>
   );
 }
 
-function Console() {
+function Console({ onLoggedOut }: { onLoggedOut: (why: string | null) => void }) {
   const [state, dispatch] = useReducer(reduce, initial);
   const [results, setResults] = useState<Results>({ status: "pending" });
+  const [stream, setStream] = useState<"connecting" | "live" | "stale">(FIXTURES ? "live" : "connecting");
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!error) return;
+    const t = setTimeout(() => setError(null), 8000);
+    return () => clearTimeout(t);
+  }, [error]);
 
   useEffect(() => {
     if (FIXTURES) return api.replayFixtures(dispatch);
-    api.wrongCount().then((count) => dispatch({ type: "wrong_count", count }));
+    api.onFailure({ unauthorized: () => onLoggedOut("Session expired, log in again"), error: setError });
     api.results().then(setResults);
     const timer = setInterval(() => api.results().then(setResults), 30_000);
-    const unsubscribe = api.subscribe(dispatch);
+    // On every (re)open: buffer live events, rebuild from GET /state, then replay the buffer (deduped).
+    let buffer: Event[] | null = null;
+    let generation = 0;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    const sync = async (gen: number) => {
+      const snap = await api.snapshot();
+      if (gen !== generation) return;
+      if (!snap) {
+        retry = setTimeout(() => sync(gen), 3000);
+        return;
+      }
+      dispatch({ type: "hydrate", snapshot: snap, after: buffer ?? [] });
+      buffer = null;
+      setStream("live");
+    };
+    const unsubscribe = api.subscribe({
+      event: (e) => (buffer ? buffer.push(e) : dispatch(e)),
+      open: () => {
+        buffer = [];
+        clearTimeout(retry);
+        sync(++generation);
+      },
+      error: (closed) => {
+        generation++;
+        clearTimeout(retry);
+        setStream("stale");
+        if (closed) api.snapshot(); // EventSource gave up on an HTTP error; a 401 here returns to login
+      },
+    });
     return () => {
+      generation++;
+      clearTimeout(retry);
       clearInterval(timer);
       unsubscribe();
     };
-  }, []);
+  }, [onLoggedOut]);
 
   return (
     <div className="console">
@@ -66,8 +116,18 @@ function Console() {
         <h1>CallSafe</h1>
         <span className="tag">replayed call through the live ingestion path</span>
         {FIXTURES && <span className="tag warn">fixture replay</span>}
+        {stream === "connecting" && <span className="tag">connecting…</span>}
+        {stream === "stale" && <span className="tag stale">disconnected / reconnecting — view may be stale</span>}
         <span className="status">{sessionLabel(state)}</span>
+        {!FIXTURES && (
+          <button onClick={async () => (await api.logout()) && onLoggedOut(null)}>Log out</button>
+        )}
       </header>
+      {error && (
+        <p className="action-error" role="alert">
+          {error} <button onClick={() => setError(null)}>Dismiss</button>
+        </p>
+      )}
       <Controls state={state} dispatch={dispatch} />
       <main>
         <Transcript state={state} />
@@ -77,7 +137,7 @@ function Console() {
             <h2>WRONG replies</h2>
             <div className="big">{state.wrongCount}</div>
           </div>
-          {state.smsMode === "simulated" && <Phone bubbles={state.bubbles} />}
+          <Phone bubbles={state.bubbles} simulated={state.smsMode === "simulated"} />
         </aside>
       </main>
       <footer>
@@ -110,7 +170,7 @@ function Controls({ state, dispatch }: { state: State; dispatch: (a: { type: "sm
           disabled={FIXTURES}
           className={mode === m ? "on" : ""}
           onClick={async () => {
-            if ((await api.setSmsMode(m)).ok) dispatch({ type: "sms_mode", mode: m });
+            if (await api.setSmsMode(m)) dispatch({ type: "sms_mode", mode: m });
           }}
         >
           {m}
@@ -150,6 +210,8 @@ function WhyPanel({ state }: { state: State }) {
     );
   }
   const risk = state.risks.find((r) => r.rule_id && alert.basis.includes(r.rule_id)) ?? state.risks[0];
+  const sms = state.bubbles.find((b) => b.kind === "out" && b.sms.template_id === alert.template_id);
+  const status = sms?.kind === "out" ? sms.sms.status : null;
   return (
     <section className="card why alert">
       <h2>Why this alert</h2>
@@ -164,15 +226,17 @@ function WhyPanel({ state }: { state: State }) {
         <dt>Policy</dt>
         <dd>{alert.policy_version}</dd>
       </dl>
+      <p className={`dispatch ${status ?? ""}`}>{status ? DISPATCH_WORDS[status] : "Alert text not dispatched yet"}</p>
     </section>
   );
 }
 
-function Phone({ bubbles }: { bubbles: Bubble[] }) {
+// Simulated mode: the phone frame with reply keys. Real mode: a compact list of outgoing texts and replies.
+function Phone({ bubbles, simulated }: { bubbles: Bubble[]; simulated: boolean }) {
   return (
-    <section className="card phone">
+    <section className={`card phone ${simulated ? "" : "compact"}`}>
       <h2>
-        Phone <span className="tag">simulated SMS</span>
+        {simulated ? "Phone" : "Outgoing texts"} <span className="tag">{simulated ? "simulated SMS" : "real SMS"}</span>
       </h2>
       <div className="thread">
         {bubbles.length === 0 && <p className="muted">No texts yet.</p>}
@@ -180,13 +244,15 @@ function Phone({ bubbles }: { bubbles: Bubble[] }) {
           b.kind === "out" ? <OutBubble key={b.sms.message_id || b.sms.template_id} b={b} /> : <div key={b.id} className="bubble in">{b.keyword}</div>,
         )}
       </div>
-      <div className="keys">
-        {["YES", "WRONG", "SHARED", "STOP"].map((k) => (
-          <button key={k} disabled={FIXTURES} onClick={() => api.simulateReply(k)}>
-            {k}
-          </button>
-        ))}
-      </div>
+      {simulated && (
+        <div className="keys">
+          {["YES", "WRONG", "SHARED", "STOP"].map((k) => (
+            <button key={k} disabled={FIXTURES} onClick={() => api.simulateReply(k)}>
+              {k}
+            </button>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -231,7 +297,7 @@ function ResultsCard({ results }: { results: Results }) {
       <div className="arms">{Object.entries(results.arms).map(([n, c]) => arm(n, c))}</div>
       {results.discordant && (
         <p>
-          Calls only K flagged: {results.discordant.K_only} · only B flagged: {results.discordant.B_only}
+          Correct only under K: {results.discordant.K_only} · correct only under B: {results.discordant.B_only}
         </p>
       )}
       <p className="muted">Scripted transcripts, not ASR.</p>

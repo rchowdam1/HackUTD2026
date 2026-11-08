@@ -2,10 +2,12 @@ import json
 import sys
 from pathlib import Path
 
+import httpx
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # repo root, for `eval`
 
+from app import intent
 from app.models import Decision, Results
 from eval import run as ev
 
@@ -80,3 +82,54 @@ def test_h1_hash_refusal(tmp_path):
         ev.load_batch("H1", tmp_path)  # wrong seal
     (tmp_path / "H1.sha256").write_text(ev.h1_digest(tmp_path) + "\n")
     assert [s.id for s in ev.load_batch("H1", tmp_path)] == ["h"]
+
+
+def test_rejects_duplicate_scenario_ids(scen_dir):
+    (scen_dir / "dev" / "zz_copy.json").write_text((scen_dir / "dev" / "s1.json").read_text())
+    with pytest.raises(SystemExit, match="duplicate scenario id"):
+        ev.load_batch("dev", scen_dir)
+
+
+@pytest.mark.parametrize("arms", [["K", "B", "typo"], ["K", "K"], []])
+def test_rejects_unknown_or_repeated_arms(scen_dir, tmp_path, arms):
+    with pytest.raises(SystemExit, match="arms"):
+        ev.run(arms, "dev", "v1.0", fake_decide, scen_dir, tmp_path / "out")
+    assert not (tmp_path / "out").exists()
+
+
+def test_refuses_arm_c_without_the_intent_model(scen_dir, tmp_path, monkeypatch):
+    monkeypatch.delenv("INTENT_MODEL", raising=False)
+    with pytest.raises(SystemExit, match="arm C"):
+        ev.run(["K", "B", "C"], "dev", "v1.0", fake_decide, scen_dir, tmp_path / "out")
+
+
+def test_intent_cache_cleared_per_scenario_and_c_failures_reported(scen_dir, tmp_path, monkeypatch):
+    monkeypatch.setenv("INTENT_MODEL", "on")
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
+    monkeypatch.setattr(httpx, "post", lambda *a, **k: (_ for _ in ()).throw(httpx.ConnectTimeout("down")))
+    seen = []
+
+    def decide(segments, arm, policy_version):
+        if arm == "C":
+            seen.append(len(intent._cache))  # nothing cached from another scenario
+            intent.answers(segments)  # fails: cached as None for this scenario only
+        return fake_decide(segments, "B" if arm == "C" else arm, policy_version)
+
+    res = ev.run(["K", "B", "C"], "dev", "v1.0", decide, scen_dir, tmp_path / "out")
+    intent.clear_cache()
+    assert seen == [0] * 5 and res.arms["C"] == res.arms["B"]
+    md = (tmp_path / "out" / "latest.md").read_text()
+    assert "C: 5 TypeSafe calls failed and fell back to arm B" in md
+
+
+def test_report_header_states_revision_arms_and_policy(scen_dir, tmp_path, monkeypatch):
+    monkeypatch.setattr(ev, "revision", lambda: "abc1234-dirty")
+    ev.run(["K", "B"], "dev", "v1.0", fake_decide, scen_dir, tmp_path / "out")
+    head = (tmp_path / "out" / "latest.md").read_text().splitlines()[:3]
+    assert any("revision abc1234-dirty" in l and "arms K,B" in l and "policy v1.0" in l for l in head)
+
+
+def test_revision_tolerates_missing_git(monkeypatch):
+    monkeypatch.setattr(ev.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(FileNotFoundError("git")))
+    assert ev.revision() == "unknown"
+    assert ev.revision.__module__ == "eval.run"

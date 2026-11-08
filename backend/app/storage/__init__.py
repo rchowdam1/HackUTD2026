@@ -6,6 +6,7 @@ Reset never touches this data.
 from __future__ import annotations
 
 import sqlite3
+import time
 from contextlib import closing
 from pathlib import Path
 
@@ -32,6 +33,14 @@ CREATE TABLE IF NOT EXISTS policy_history (
     version TEXT NOT NULL,
     note TEXT NOT NULL DEFAULT '',
     at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS inbound_seen (
+    message_id TEXT PRIMARY KEY,
+    at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS operator_sessions (
+    id_hash TEXT PRIMARY KEY,
+    expires_at REAL NOT NULL
 );
 """
 
@@ -69,6 +78,34 @@ def incr(name: str) -> int:
             (name,),
         )
         return conn.execute("SELECT value FROM aggregates WHERE name = ?", (name,)).fetchone()[0]
+
+
+def inbound_seen(message_id: str) -> bool:
+    """True if an inbound text with this id was already processed (survives restarts)."""
+    with closing(connect()) as conn:
+        return conn.execute("SELECT 1 FROM inbound_seen WHERE message_id = ?", (message_id,)).fetchone() is not None
+
+
+def mark_inbound_seen(message_id: str) -> None:
+    with closing(connect()) as conn, conn:
+        conn.execute("INSERT OR IGNORE INTO inbound_seen (message_id) VALUES (?)", (message_id,))
+
+
+def add_session(id_hash: str, expires_at: float) -> None:
+    with closing(connect()) as conn, conn:
+        conn.execute("DELETE FROM operator_sessions WHERE expires_at < ?", (time.time(),))
+        conn.execute("INSERT INTO operator_sessions (id_hash, expires_at) VALUES (?, ?)", (id_hash, expires_at))
+
+
+def session_valid(id_hash: str) -> bool:
+    with closing(connect()) as conn:
+        row = conn.execute("SELECT expires_at FROM operator_sessions WHERE id_hash = ?", (id_hash,)).fetchone()
+    return row is not None and row[0] > time.time()
+
+
+def delete_session(id_hash: str) -> None:
+    with closing(connect()) as conn, conn:
+        conn.execute("DELETE FROM operator_sessions WHERE id_hash = ?", (id_hash,))
 
 
 def record_policy(version: str, note: str = "") -> None:

@@ -7,6 +7,7 @@ edits this file to add a route.
 from __future__ import annotations
 
 import importlib
+import os
 import pkgutil
 from contextlib import asynccontextmanager
 
@@ -38,7 +39,10 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="CallSafe", lifespan=lifespan)
+    # /docs, /redoc and /openapi.json map every route; only serve them when asked (API_DOCS=on, local dev).
+    docs = os.environ.get("API_DOCS", "").strip().lower() == "on"
+    app = FastAPI(title="CallSafe", lifespan=lifespan, docs_url="/docs" if docs else None,
+                  redoc_url="/redoc" if docs else None, openapi_url="/openapi.json" if docs else None)
     for router in discover_routers():
         app.include_router(router)
     return app

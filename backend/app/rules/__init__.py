@@ -42,6 +42,7 @@ class _Policy:
     cfg: dict
     categories: tuple[_Category, ...]
     clause_split: re.Pattern
+    sentence_split: re.Pattern
     negation: re.Pattern
     hedges: re.Pattern
     exclusions: re.Pattern
@@ -55,7 +56,8 @@ def _rx(pattern: str) -> re.Pattern:
 
 
 def _any(patterns: list[str]) -> re.Pattern:
-    return _rx(r"\b(?:" + "|".join(f"(?:{p})" for p in patterns) + r")\b")
+    # Lookarounds, not \b: a term may start or end with a symbol ("$100").
+    return _rx(r"(?<!\w)(?:" + "|".join(f"(?:{p})" for p in patterns) + r")(?!\w)")
 
 
 @lru_cache
@@ -78,7 +80,8 @@ def load_policy(policy_version: str) -> _Policy:
             *(_rx(rf"\b(?:{p})\b") for p in c["extra"]),
         )
         categories.append(_Category(name, c, _any(lexicon[name]), requests))
-    return _Policy(cfg, tuple(categories), _rx(cfg["clause_split"]), _any(cfg["negation"]),
+    return _Policy(cfg, tuple(categories), _rx(cfg["clause_split"]), _rx(cfg["sentence_split"]),
+                   _any(cfg["negation"]),
                    _any(cfg["hedges"]), _rx(r"(?:" + "|".join(cfg["exclusions"]) + r")\b"),
                    _rx(cfg["context_object"]), _rx(rf"\b{cfg['negated_object']}\b"),
                    _rx(cfg["negated_object_end"]))
@@ -127,9 +130,11 @@ def _antecedent(p: _Policy, window: list[Segment], before: list[str]) -> str | N
     current turn's text before the pronoun as the most recent (even negated: "never share your code, but
     you can read it to me")."""
     for texts in [before] + [[s.text] for s in reversed(window)]:
-        for cat in p.categories:
-            if any(cat.lexicon.search(t) for t in texts):
-                return cat.name
+        # The latest mention position; on a tie the earlier category in the policy.
+        latest = max(((i, m.start(), -j, cat.name) for j, cat in enumerate(p.categories)
+                      for i, t in enumerate(texts) for m in cat.lexicon.finditer(t)), default=None)
+        if latest:
+            return latest[3]
     return None
 
 
@@ -149,14 +154,18 @@ def _requests(p: _Policy, segments: list[Segment], i: int, policy_version: str) 
     """B events for caller turn i, given the turns before it (dialogue state)."""
     seg = segments[i]
     window = segments[max(0, i - p.cfg["context_turns"]):i]
-    clauses = [c for c in p.clause_split.split(seg.text) if c.strip()]
+    # Clauses with their sentence: a request's object is a lexicon term in its own sentence or an
+    # earlier one of the turn ("The fee is $300. How will you pay?"), never a later one.
+    split = [(n, c) for n, sentence in enumerate(p.sentence_split.split(seg.text))
+             for c in p.clause_split.split(sentence) if c.strip()]
+    clauses = [c for _, c in split]
     # A pronoun refers back to the most recently mentioned category (this turn counts as latest).
     out = []
     for cat in p.categories:
         for k, clause in enumerate(clauses):
             if not _is_request(p, cat, clause):
                 continue
-            if _mentioned(p, cat, clauses):
+            if _mentioned(p, cat, [c for n, c in split if n <= split[k][0]]):
                 rid, conf, span = cat.cfg["b_rules"]["high"], "high", [seg.seq]
             elif ((pron := p.context_object.search(clause))
                   and _antecedent(p, window, before := clauses[:k] + [clause[:pron.start()]]) == cat.name):

@@ -17,7 +17,7 @@ Preconditions:
 
 - Profile `cached`. The sandbox sets a random `PHOTON_BRIDGE_TOKEN` and `PHOTON_BRIDGE_URL=http://127.0.0.1:9` (discard port), so real-mode sends fail closed and never reach a running bridge. The harness posts exactly what `hackutd/src/index.ts` posts.
 
-- **Bad token.** Post `{id, text: WRONG, sender: DEMO_PHONE}` with no header, an empty token and a token with one changed character. All 403; no `reply`/`sms` events within 1 s; SQLite WRONG total unchanged.
+- **Bad token.** Post `{id, text: WRONG, sender: DEMO_PHONE}` with no header, an empty token and a token with one changed character. All 403. Then, with the right token, post STOP with `sender: null` and with an unenrolled number: both 204 (dropped, so the bridge doesn't retry). No `reply`/`sms`/`consent` events within 1 s; SQLite WRONG total and demo-phone consent unchanged.
 - **Inbound.** Post `text: "Wrong."` with the token. 204; SSE `reply` keyword WRONG; SSE `sms` R-WRONG `delivered` (simulated mode); SQLite WRONG total +1 when `counted` (always counted once `replay.bank-alert` passed in the run).
 - **Dedupe.** Post the identical request again. 204; no `reply`/`sms` event within 1.5 s; SQLite unchanged.
 - **Proof.** Assertions in `report.json`, `events-cached.jsonl`.

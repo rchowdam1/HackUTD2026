@@ -3,12 +3,13 @@ import { defineConfig } from "vite";
 
 // Same-origin proxy to the FastAPI backend so the session cookie and SSE just work.
 const backend = process.env.BACKEND_URL ?? "http://localhost:8000";
-const proxied = ["/login", "/events", "/demo", "/results", "/aggregates", "/sms", "/health"];
+const proxied = ["/login", "/events", "/demo", "/results", "/aggregates", "/sms", "/health", "/state", "/logout"];
 
 export default defineConfig({
   plugins: [react()],
   server: {
+    host: "127.0.0.1",
     proxy: Object.fromEntries(proxied.map((p) => [p, { target: backend, changeOrigin: true }])),
-    fs: { allow: [".."] }, // event fixtures live in ../tests/fixtures
+    fs: { allow: [".", "../tests/fixtures/events"] }, // ?fixtures replay globs ../tests/fixtures/events
   },
 });

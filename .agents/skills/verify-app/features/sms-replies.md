@@ -31,8 +31,8 @@ Preconditions:
 
 ## Gotchas
 
-- `counted` is false until some session in this process has sent an alert (`_last_alert`); a fresh instance counts nothing. That is why two checks require `replay.bank-alert`.
-- Reset never clears `_last_alert`, consent or counts; replies after a reset still attach to the last alert.
+- `counted` is false until this process has successfully sent an alert to the replying phone (`_last_alerts`, per recipient, recorded only after the gateway accepted it); a fresh instance counts nothing, and replies from a phone that got no alert are not counted. That is why two checks require `replay.bank-alert`.
+- Reset never clears `_last_alerts`, consent or counts; replies after a reset still attach to the last alert.
 - The phone frame bubble list is cleared on each `session running`/`reset`; assert texts after the action, not history.
 - Consent events are only emitted on a change; YES while already active emits a `reply` but no `consent` event.
 - Photon does no STOP handling, so the app answers STOP with R-STOP in both modes.

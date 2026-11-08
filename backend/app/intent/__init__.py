@@ -171,6 +171,7 @@ Judgment = Literal["confirm", "solo", "veto"]
 log = logging.getLogger(__name__)
 _cache: dict[str, dict[str, float] | None] = {}
 _lock = threading.Lock()
+failures = 0  # failed calls since start (each fell back to arm B), for eval provenance
 
 
 def enabled() -> bool:
@@ -183,6 +184,8 @@ def preload() -> None:
     """Nothing to load for a hosted model; log whether arm C can call it."""
     if os.environ.get("INTENT_MODEL", "").strip().lower() == "on" and not enabled():
         log.warning("INTENT_MODEL=on but TYPESAFE_API_KEY is not set; arm C will equal arm B")
+    elif enabled():
+        log.info("arm C on: each caller turn and the %d prior turns are sent to %s", CONTEXT_TURNS, URL)
 
 
 def state(window: list[Segment]) -> dict:
@@ -217,12 +220,15 @@ def answers(window: list[Segment]) -> dict[str, float] | None:
     with _lock:
         if key in _cache:
             return _cache[key]
-    if log.isEnabledFor(logging.DEBUG):
-        log.debug("typesafe request %s", json.dumps(body))
+    log.debug("typesafe request: %d earlier turns, %d questions", len(body["state"]["earlier_turns"]),
+              len(body["questions"]))  # never the call text
     try:
         resp = _post(body)
         result = {q: float(resp["answers"][q]["noul"]) for q in QUESTIONS}
     except Exception as e:  # an error, never a "no": arm C falls back to arm B for this turn
+        global failures
+        with _lock:
+            failures += 1
         log.error("TypeSafe call failed (%s: %s); arm C falls back to arm B for this turn", type(e).__name__, e)
         result = None
     with _lock:
