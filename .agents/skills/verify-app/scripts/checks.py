@@ -10,9 +10,6 @@ KNOWN-GAP and does not fail the verdict; a PASS is flagged so the marker gets re
 """
 from __future__ import annotations
 
-import base64
-import hashlib
-import hmac
 import json
 import re
 import subprocess
@@ -38,7 +35,7 @@ UI_HANDLES = [
 # Routes the harness calls; lint checks each is still declared in backend/app.
 API_ROUTES = ["/login", "/health", "/events/stream", "/demo/run/{scenario_id}", "/demo/end-call", "/demo/reset",
               "/demo/sms-mode", "/results/latest", "/aggregates", "/sms/simulate-inbound", "/sms/outbox",
-              "/sms/invite", "/sms/inbound", "/sms/status", "/sms/templates/{template_id}"]
+              "/sms/invite", "/sms/inbound", "/sms/templates/{template_id}"]
 
 
 @dataclass
@@ -542,7 +539,7 @@ def controls_mode(ctx: Context):
         ctx.expect(resp.value.status == 200, "POST /demo/sms-mode real -> 200", resp.value.status)
         ui_assert(ctx, "phone frame hidden in real mode", lambda: pw_expect()(card(page, "^Phone")).to_have_count(0))
         ui_assert(ctx, "'real' toggle highlighted", lambda: pw_expect()(real).to_have_class(re.compile(r"\bon\b")))
-        # Safe: clinic never alerts, the run is reset at once, and the sandbox has no Twilio account.
+        # Safe: clinic never alerts, the run is reset at once, and the sandbox's bridge URL is the discard port.
         ctx.expect(_run_clinic_mode(ctx, page, "real") == "real", "backend starts the next call in real mode (SSE)")
     finally:
         with page.expect_response(lambda r: r.url.endswith("/demo/sms-mode")):
@@ -570,46 +567,35 @@ def controls_mode_reload(ctx: Context):
         ctx.api.post("/demo/sms-mode", json={"mode": "simulated"})
 
 
-# --- twilio-webhooks --------------------------------------------------------------------------
+# --- bridge-inbound ---------------------------------------------------------------------------
 
-def twilio_signature(token: str, url: str, params: dict) -> str:
-    """Twilio's documented scheme, implemented independently of the app: base64(HMAC-SHA1(token,
-    url + concat(sorted key+value)))."""
-    data = url + "".join(k + params[k] for k in sorted(params))
-    return base64.b64encode(hmac.new(token.encode(), data.encode(), hashlib.sha1).digest()).decode()
-
-
-def post_twilio(ctx: Context, path: str, params: dict, sign: bool = True, bad: bool = False):
-    headers = {}
-    if sign:
-        sig = twilio_signature(ctx.env["TWILIO_AUTH_TOKEN"], ctx.env["PUBLIC_BASE_URL"] + path, params)
-        # corrupt deterministically: replacing with a fixed char is a no-op 1 time in 64
-        headers["X-Twilio-Signature"] = (("B" if sig[0] == "A" else "A") + sig[1:]) if bad else sig
-    return ctx.anon.post(path, data=params, headers=headers)
+def post_bridge(ctx: Context, body: dict, token: str | None = None):
+    """POST /sms/inbound the way the Photon Spectrum bridge (hackutd/) does: JSON + x-bridge-token."""
+    headers = {} if token is None else {"x-bridge-token": token}
+    return ctx.anon.post("/sms/inbound", json=body, headers=headers)
 
 
-@check("webhooks.signature-required", "twilio-webhooks")
-def webhooks_sig(ctx: Context):
+@check("webhooks.token-required", "bridge-inbound")
+def webhooks_token(ctx: Context):
     n, mark = ctx.reply_count("WRONG"), ctx.tap.mark()
-    params = {"MessageSid": "SMverify" + uuid.uuid4().hex[:24], "Body": "WRONG", "From": ctx.env["DEMO_PHONE"]}
-    for label, kw in (("unsigned", {"sign": False}), ("bad signature", {"bad": True})):
-        r = post_twilio(ctx, "/sms/inbound", params, **kw)
+    body = {"id": "verify-" + uuid.uuid4().hex, "text": "WRONG", "sender": ctx.env["DEMO_PHONE"]}
+    good = ctx.env["PHOTON_BRIDGE_TOKEN"]
+    for label, token in (("no token", None), ("empty token", ""), ("wrong token", ("B" if good[0] == "A" else "A") + good[1:])):
+        r = post_bridge(ctx, body, token)
         ctx.expect(r.status_code == 403, f"{label} POST /sms/inbound -> 403", r.status_code)
-    r = post_twilio(ctx, "/sms/status", {"MessageSid": "SMx", "MessageStatus": "delivered"}, sign=False)
-    ctx.expect(r.status_code == 403, "unsigned POST /sms/status -> 403", r.status_code)
     time.sleep(1)
     ctx.expect(not [e for e in ctx.tap.since(mark) if e["type"] in ("reply", "sms")], "no reply/sms events emitted", ctx.tap.since(mark))
     ctx.expect(ctx.reply_count("WRONG") == n, "SQLite WRONG count unchanged", ctx.reply_count("WRONG"))
 
 
-@check("webhooks.signed-inbound-dedupe", "twilio-webhooks")
+@check("webhooks.inbound-dedupe", "bridge-inbound")
 def webhooks_inbound(ctx: Context):
     n = ctx.reply_count("WRONG")
-    params = {"MessageSid": "SMverify" + uuid.uuid4().hex[:24], "Body": "Wrong.", "From": ctx.env["DEMO_PHONE"]}
+    body = {"id": "verify-" + uuid.uuid4().hex, "text": "Wrong.", "sender": ctx.env["DEMO_PHONE"]}
+    token = ctx.env["PHOTON_BRIDGE_TOKEN"]
     mark = ctx.tap.mark()
-    r = post_twilio(ctx, "/sms/inbound", params)
-    ctx.expect(r.status_code == 200 and "<Response></Response>" in r.text and r.headers["content-type"].startswith("text/xml"),
-               "signed inbound -> 200 empty TwiML", [r.status_code, r.headers.get("content-type"), r.text])
+    r = post_bridge(ctx, body, token)
+    ctx.expect(r.status_code == 204, "inbound with the bridge token -> 204", [r.status_code, r.text])
     rep = ctx.wait_event(lambda e: e["type"] == "reply", mark, 10, "reply event")["payload"]
     ctx.expect(rep["keyword"] == "WRONG", "'Wrong.' normalised to WRONG", rep)
     sms = ctx.wait_event(lambda e: e["type"] == "sms" and e["payload"]["template_id"] == "R-WRONG", mark, 5, "R-WRONG reply sms")
@@ -619,31 +605,12 @@ def webhooks_inbound(ctx: Context):
     if "replay.bank-alert" in ctx.passed:
         ctx.expect(rep["counted"], "counted, since this run already produced an alert")
     mark2 = ctx.tap.mark()
-    r = post_twilio(ctx, "/sms/inbound", params)
-    ctx.expect(r.status_code == 200, "duplicate MessageSid still acknowledged 200", r.status_code)
+    r = post_bridge(ctx, body, token)
+    ctx.expect(r.status_code == 204, "duplicate id still acknowledged 204", r.status_code)
     time.sleep(1.5)
-    ctx.expect(not [e for e in ctx.tap.since(mark2) if e["type"] in ("reply", "sms")], "duplicate MessageSid ignored (no events)",
+    ctx.expect(not [e for e in ctx.tap.since(mark2) if e["type"] in ("reply", "sms")], "duplicate id ignored (no events)",
                ctx.tap.since(mark2))
     ctx.expect(ctx.reply_count("WRONG") == n + delta, "duplicate not counted again (SQLite)", ctx.reply_count("WRONG"))
-
-
-@check("webhooks.status-callback", "twilio-webhooks")
-def webhooks_status(ctx: Context):
-    box = ctx.outbox()
-    if not box:
-        raise Blocked("no message in the simulated outbox to report status for")
-    mid = box[-1]["message_id"]
-    for status, mapped in (("delivered", "delivered"), ("undelivered", "failed")):
-        mark = ctx.tap.mark()
-        r = post_twilio(ctx, "/sms/status", {"MessageSid": mid, "MessageStatus": status})
-        ctx.expect(r.status_code == 204, f"signed status {status} -> 204", r.status_code)
-        ev = ctx.wait_event(lambda e: e["type"] == "sms" and e["payload"]["message_id"] == mid, mark, 5, f"sms {mapped} event")
-        ctx.expect(ev["payload"]["status"] == mapped and ev["payload"]["template_id"] == box[-1]["template_id"],
-                   f"status {status} relayed as {mapped} for {box[-1]['template_id']}", ev["payload"])
-    mark = ctx.tap.mark()
-    r = post_twilio(ctx, "/sms/status", {"MessageSid": "SMunknown" + uuid.uuid4().hex[:8], "MessageStatus": "delivered"})
-    time.sleep(1)
-    ctx.expect(r.status_code == 204 and not ctx.tap.since(mark), "unknown MessageSid -> 204, no event", [r.status_code, ctx.tap.since(mark)])
 
 
 # --- enrollment-invite ------------------------------------------------------------------------
@@ -722,8 +689,8 @@ def preflight_offline(ctx: Context):
         ctx.expect(pf["lines"].get(name, ("missing",))[0] == "PASS", f"preflight {name} PASS", pf["lines"].get(name))
     ctx.expect(pf["lines"].get("sms", ("",))[0] == "SKIP", "--no-sms skips the real text", pf["lines"].get("sms"))
     ctx.expect(pf["rc"] == 1 and "PREFLIGHT FAIL" in pf["stdout"],
-               "overall FAIL without tunnel/Twilio/phones (no false PASS)", pf["rc"])
-    leaked = [k for k in ("OPERATOR_PASSWORD", "SESSION_SECRET", "CONSENT_SALT", "TWILIO_AUTH_TOKEN") if pf["env"][k] in pf["stdout"]]
+               "overall FAIL without tunnel/messaging/phones (no false PASS)", pf["rc"])
+    leaked = [k for k in ("OPERATOR_PASSWORD", "SESSION_SECRET", "CONSENT_SALT", "PHOTON_BRIDGE_TOKEN") if pf["env"][k] in pf["stdout"]]
     ctx.expect(not leaked and pf["env"]["DEMO_PHONE"] not in pf["stdout"], "no secret or raw phone number printed", leaked)
 
 

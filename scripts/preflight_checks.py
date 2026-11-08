@@ -26,7 +26,7 @@ PHONE_VARS = ("TWILIO_FROM", "DEMO_PHONE", "SPARE_PHONE")
 TWILIO_VARS = ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM")
 # Routes the live demo needs (docs/track-b-brief.md), with the task that adds them.
 DEMO_ROUTES = {
-    "/sms/inbound": "b-sms #17", "/sms/status": "b-sms #17", "/login": "b-api #19",
+    "/sms/inbound": "b-sms #17", "/login": "b-api #19",
     "/events/stream": "b-api #19", "/demo/run/{scenario_id}": "b-api #19", "/demo/reset": "b-api #19",
 }
 DEMO_ALERTS = {"bank": ["ALERT-OTP-01"], "clinic": []}  # expected decisions per cached demo replay

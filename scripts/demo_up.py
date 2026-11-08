@@ -1,9 +1,9 @@
-"""Start the demo stack: cloudflared tunnel -> PUBLIC_BASE_URL -> Twilio webhook -> app (PRD §19.3, #29).
+"""Start the demo stack: cloudflared tunnel + Photon Spectrum bridge + app (PRD §19.3, #29, #68).
 
 Named tunnel when CLOUDFLARED_TUNNEL is set (PUBLIC_BASE_URL must already be its stable https URL);
 otherwise a quick tunnel, whose random trycloudflare.com URL is written to .env as PUBLIC_BASE_URL.
-Then points the TWILIO_FROM number's "A message comes in" webhook at PUBLIC_BASE_URL/sms/inbound
-(skipped when Twilio vars are unset: simulated mode) and runs the app on :8000 with .env loaded.
+Then starts the iMessage bridge in hackutd/ (`bun start`; skipped when PHOTON_BRIDGE_TOKEN is unset:
+simulated mode) and runs the app on :8000 with .env loaded.
 Ctrl-C stops both. Never prints numbers or secrets.
 """
 from __future__ import annotations
@@ -16,10 +16,11 @@ import threading
 import time
 from pathlib import Path
 
-from preflight_checks import REPO_ROOT, TWILIO_VARS, load_env, missing
+from preflight_checks import REPO_ROOT, load_env, missing
 
 PORT = 8000
 ENV_FILE = REPO_ROOT / ".env"
+BRIDGE_DIR = REPO_ROOT / "hackutd"
 QUICK_URL = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
 
 
@@ -64,18 +65,13 @@ def start_tunnel() -> tuple[subprocess.Popen, str]:
     sys.exit("cloudflared quick tunnel printed no trycloudflare.com URL within 30 s")
 
 
-def point_webhook(base: str) -> None:
-    need = missing(dict(os.environ), TWILIO_VARS)
-    if need:
-        print(f"demo_up: Twilio webhook not set ({', '.join(need)} unset); simulated SMS only", flush=True)
-        return
-    from twilio.rest import Client
-    client = Client(os.environ["TWILIO_ACCOUNT_SID"], os.environ["TWILIO_AUTH_TOKEN"])
-    numbers = client.incoming_phone_numbers.list(phone_number=os.environ["TWILIO_FROM"], limit=1)
-    if not numbers:
-        sys.exit("TWILIO_FROM is not a phone number on this Twilio account")
-    numbers[0].update(sms_url=f"{base}/sms/inbound", sms_method="POST")
-    print(f"demo_up: Twilio SMS webhook = POST {base}/sms/inbound", flush=True)
+def start_bridge() -> subprocess.Popen | None:
+    if not os.environ.get("PHOTON_BRIDGE_TOKEN"):
+        print("demo_up: PHOTON_BRIDGE_TOKEN unset; no Photon bridge, simulated SMS only", flush=True)
+        return None
+    subprocess.run(["bun", "install", "--silent"], cwd=BRIDGE_DIR, check=True)
+    print("demo_up: Photon bridge (hackutd/) -> 127.0.0.1:8787", flush=True)
+    return subprocess.Popen(["bun", "start"], cwd=BRIDGE_DIR)
 
 
 def main() -> int:
@@ -83,8 +79,8 @@ def main() -> int:
     tunnel, base = start_tunnel()
     os.environ["PUBLIC_BASE_URL"] = base  # beats .env: uvicorn's --env-file never overrides set vars
     print(f"demo_up: tunnel {base} -> localhost:{PORT}", flush=True)
+    bridge = start_bridge()
     try:
-        point_webhook(base)
         app = subprocess.run(["uvicorn", "app.main:app", "--port", str(PORT),
                               *(["--env-file", str(ENV_FILE)] if ENV_FILE.exists() else [])])
         return app.returncode
@@ -92,6 +88,8 @@ def main() -> int:
         return 0
     finally:
         tunnel.terminate()
+        if bridge:
+            bridge.terminate()
 
 
 if __name__ == "__main__":
