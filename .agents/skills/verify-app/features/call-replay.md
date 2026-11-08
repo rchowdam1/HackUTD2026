@@ -26,6 +26,7 @@ Preconditions:
 
 ## Gotchas
 
+- Every journey starts from `ctx.api_reset()`, which also sets SMS mode to simulated: reset never changes the mode, and a leftover real mode would hide the phone frame.
 - Replays run in real time (clinic ≈14 s, bank ≈22 s). Wait for the `session finished` event, not a sleep.
 - Open the console before clicking Run: the reducer clears on `session running`, so a page loaded mid-call shows a partial transcript.
 - The follow-up is only sent if consent is still active when the call finishes; a STOP during the call suppresses it by design.

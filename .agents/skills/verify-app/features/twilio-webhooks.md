@@ -20,7 +20,7 @@ Preconditions:
 - Profile `cached`. The sandbox sets `TWILIO_AUTH_TOKEN` (signing only) and `PUBLIC_BASE_URL=http://127.0.0.1:<port>`; the harness signs with Twilio's documented algorithm (`twilio_signature` in `checks.py`), independent of the app's Twilio library.
 
 - **Unsigned / bad signature.** Post `{MessageSid, Body: WRONG, From: DEMO_PHONE}` without a signature and with one corrupted character; post `/sms/status` unsigned. All 403; no `reply`/`sms` events within 1 s; SQLite WRONG total unchanged.
-- **Signed inbound.** Post `Body: "Wrong."` signed. 200, `content-type: text/xml`, body contains `<Response></Response>`; SSE `reply` keyword WRONG; SQLite WRONG total +1 when `counted` (always counted once `replay.bank-alert` passed in the run).
+- **Signed inbound.** Post `Body: "Wrong."` signed. 200, `content-type: text/xml`, body contains `<Response></Response>`; SSE `reply` keyword WRONG; SSE `sms` R-WRONG `delivered` (the reply text); SQLite WRONG total +1 when `counted` (always counted once `replay.bank-alert` passed in the run).
 - **Dedupe.** Post the identical signed request again. 200; no `reply`/`sms` event within 1.5 s; SQLite unchanged.
 - **Status.** Take the newest outbox `message_id`; post signed `MessageStatus=delivered` then `undelivered`. Each 204 with an SSE `sms` event for that id and template, status `delivered` then `failed`. An unknown `MessageSid` returns 204 with no event.
 - **Proof.** Assertions in `report.json`, `events-cached.jsonl`.
@@ -31,3 +31,4 @@ Preconditions:
 - A duplicate MessageSid still returns 200 so Twilio stops retrying; assert on side effects, not status.
 - `webhooks.status-callback` needs at least one message in the outbox; run order puts it after replies. Alone, it is BLOCKED, not passed.
 - Real Twilio delivery through the tunnel is external (see `coverage.json`).
+- Known product gap (not covered by a check, reported): with `TWILIO_AUTH_TOKEN` unset the app validates against an empty key, so anyone can sign a request with `""` and it is accepted (fail-open). The sandbox always sets a token. SHA256 signature settings are not supported (`algorithm` is never passed).

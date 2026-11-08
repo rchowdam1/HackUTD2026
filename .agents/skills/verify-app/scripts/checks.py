@@ -324,8 +324,8 @@ def replay_bank(ctx: Context):
                    mark, 40, "session finished (auto end-call)")
     evs = events_for(ctx, mark, ref)
     segs = [e["payload"] for e in evs if e["type"] == "segment"]
-    ctx.expect([(s["seq"], s["text"]) for s in segs] == [(x["seq"], x["text"]) for x in expected],
-               "SSE segments equal scenarios/demo/bank/transcript.json", segs)
+    ctx.expect([(s["seq"], s["text"], s["source"]) for s in segs] == [(x["seq"], x["text"], "cached") for x in expected],
+               "SSE segments equal scenarios/demo/bank/transcript.json, source cached", segs)
     order = [(e["type"], e["payload"].get("template_id") or e["payload"].get("state")) for e in evs
              if e["type"] in ("sms", "session")]
     ctx.save_json("event-order", order)
@@ -608,6 +608,8 @@ def webhooks_inbound(ctx: Context):
                "signed inbound -> 200 empty TwiML", [r.status_code, r.headers.get("content-type"), r.text])
     rep = ctx.wait_event(lambda e: e["type"] == "reply", mark, 10, "reply event")["payload"]
     ctx.expect(rep["keyword"] == "WRONG", "'Wrong.' normalised to WRONG", rep)
+    sms = ctx.wait_event(lambda e: e["type"] == "sms" and e["payload"]["template_id"] == "R-WRONG", mark, 5, "R-WRONG reply sms")
+    ctx.expect(sms["payload"]["status"] == "delivered", "R-WRONG reply delivered by the simulated gateway", sms["payload"])
     delta = 1 if rep["counted"] else 0
     ctx.expect(ctx.reply_count("WRONG") == n + delta, f"SQLite WRONG count +{delta} (counted={rep['counted']})", ctx.reply_count("WRONG"))
     if "replay.bank-alert" in ctx.passed:

@@ -177,7 +177,10 @@ class Context:
 
     # --- common operator steps (API) -----------------------------------------------------
     def api_reset(self) -> None:
+        """Baseline for a journey: simulated SMS mode (reset never changes the mode) + reset."""
         mark = self.tap.mark()
+        r = self.api.post("/demo/sms-mode", json={"mode": "simulated"})
+        self.expect(r.status_code == 200 and r.json() == {"mode": "simulated"}, "precondition: SMS mode simulated", r.text)
         self.expect(self.api.post("/demo/reset").status_code == 200, "POST /demo/reset -> 200")
         self.wait_event(lambda e: e["type"] == "session" and e["payload"]["state"] == "reset", mark, 10, "session reset event")
 

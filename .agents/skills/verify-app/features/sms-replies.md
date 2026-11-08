@@ -36,3 +36,4 @@ Preconditions:
 - The phone frame bubble list is cleared on each `session running`/`reset`; assert texts after the action, not history.
 - Consent events are only emitted on a change; YES while already active emits a `reply` but no `consent` event.
 - In real mode a STOP gets no R-STOP from us (Twilio answers); only the simulated phone shows R-STOP.
+- Every keyword (not just WRONG) is counted in `reply_counts` once an alert exists; SHARED before any alert becomes HELP. START behaves like YES.
