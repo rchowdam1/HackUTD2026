@@ -662,6 +662,7 @@ Public sources reviewed November 7, 2026. These support descriptions of existing
 - **Consent:** subscriber opt-in is necessary, not sufficient; caller-notice gate (§12, G-03). The routing answer in §9.4 no longer dodges audio routing.
 - **Evaluation:** H2 dropped; promotion is a no-regression workflow demo (§8.5, SM-10, UJ-05); H1 at least 20 hard-benign, text-only, hash-sealed (§9.1, §19.6).
 - **Scope:** "P0 never cut" replaced by §19.2 and the §19.10 slip plan; SQLite replaces PostgreSQL for the hackathon (§11.2); UJ-03 avoids FR-07 payment phrases.
+- **Out list completed (§19.2):** arm A, load tests, health-metrics panel, drift/feedback panel and the gate board console view are named as Out; the gate board is a static Q&A slide.
 - **Messaging:** follow-up teaches the tactic with "Hang up, look up, call back"; "verified offline" became "independent"; undefined "informational" level removed (FR-16, FR-23).
 
 **v1.3 (2026-11-07)**, operating-model change and gated verification:
@@ -719,14 +720,14 @@ This section is what the team and its agents build from. Where it conflicts with
 | 2:25-3:00 | Stack slide and future steps (carrier routing on the Live Translation path, in-call audio prompt, consent gate, sender verification). |
 - The console shows the live transcript in large type; the hall is too loud to rely on audio.
 - If a text hasn't arrived 10 s after it was sent, flip the console's **SMS mode toggle** to simulated and say so.
-- Q&A-only material: family-impersonation paraphrase (model path), gate board, full K/B/C table.
+- Q&A-only material: family-impersonation paraphrase (model path), gate board (a static deck slide, not a console view), full K/B/C table.
 
 **Reset:** one console button. It cancels any running replay and pending sends, invalidates the session and re-arms both replays. It never changes consent. If a phone was STOPped, text START from it (Twilio blocks sends after STOP) or switch to the spare phone. Judges are only ever asked to type WRONG.
 
 ### 19.2 Scope
 **In (must work):** replay ingestion, ASR on demo clips, rules + policy (arms K and B), alert SMS, follow-up SMS, reply keywords, consent, SMS mode toggle (real / simulated with on-screen reply buttons), console (live transcript, Why panel, WRONG counter, reset, results card, login), eval on H1 for K and B with one-command report, preflight script.
 **Stretch, in this order:** intent model + arm C + family paraphrase scene; promotion screen listing changed cases (labelled "H1 reused, not a fresh held-out set"); hedged "not certain" alert for model-only detections.
-**Out:** live telephony, screening proxy, voice anti-spoof model, Class 0 flash SMS, Kafka/Postgres/Prometheus, drift automation, audit export, H2, SMS quiz, WHY keyword, family alerts, live-mic demo.
+**Out:** live telephony, screening proxy, voice anti-spoof model, Class 0 flash SMS, Kafka/Postgres/Prometheus, drift automation and the drift/feedback panel (FR-27), audit export, H2, SMS quiz, WHY keyword, family alerts, live-mic demo, arm A (reputation-only), load tests (FR-21, SM-07), health-metrics panel (FR-21), gate board console view (FR-24; Q&A uses a static slide).
 
 ### 19.3 Frozen stack
 | Concern | Choice |
