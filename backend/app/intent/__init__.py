@@ -63,8 +63,8 @@ QUESTIONS: dict[str, dict] = {
     "otp_code": _noul(
         "In `caller_turn`, does the caller ask the listener to read out, say, send or key in for them a code or "
         "number that the listener received by text, email, app or letter?",
-        "The caller wants to learn the code, e.g. 'read me the six digits', 'what does the text say', 'pass "
-        "those numbers to me', 'say it out loud for the nurse'.",
+        "The caller wants to learn the code: the listener is to read it, say it, text it or pass it on to the "
+        "caller or to someone the caller names.",
         "The caller only mentions a code, or tells the listener to type it into their own app or website."),
     "otp_secret": _noul(
         "In `caller_turn`, does the caller ask the listener to tell them a password, PIN or the answer to a "
@@ -128,8 +128,8 @@ QUESTIONS: dict[str, dict] = {
     "known_payee": _noul(
         "In `caller_turn`, is the caller telling the listener to pay a business or person the listener chose "
         "themselves, for goods or a service the listener asked for, in the usual way?",
-        "For example paying the plumber when the job is done, paying at pickup, or paying a bill they expected "
-        "through their normal account.",
+        "The listener pays for work or goods they ordered, or a bill they expected, through their normal way "
+        "of paying.",
         "The caller wants payment sent to an account, card, person or method that the caller names, or for a "
         "debt, fee or problem the listener did not know about."),
     "self_service": {
