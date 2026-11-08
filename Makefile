@@ -1,6 +1,6 @@
 UV := env -u PYTHONPATH -u PYTHONHOME -u VIRTUAL_ENV uv
 
-.PHONY: install smoke test run preflight
+.PHONY: install smoke test run preflight demo-up
 
 install:
 	$(UV) sync
@@ -17,3 +17,6 @@ run:
 
 preflight: install
 	scripts/preflight
+
+demo-up: install
+	scripts/demo_up
