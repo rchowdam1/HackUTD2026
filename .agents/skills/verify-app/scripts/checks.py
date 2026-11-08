@@ -442,8 +442,8 @@ def replay_bank(ctx: Context):
     told = re.sub(r"^CallSafe:\s*(\w)", lambda m: m.group(1).upper(), ctx.templates["ALERT-OTP-01"])
     ui_assert(ctx, "Why panel 'We texted' = the ALERT-OTP-01 template text",
               lambda: pw_expect()(dd(why, "We texted")).to_have_text(told))
-    ui_assert(ctx, "Why panel 'Speed' shows the measured ms",
-              lambda: pw_expect()(dd(why, "Speed")).to_have_text(re.compile(r"^Alert went out \d+ ms after the line came in$")))
+    ui_assert(ctx, "Why panel 'Speed' shows the measured seconds",
+              lambda: pw_expect()(dd(why, "Speed")).to_have_text(re.compile(r"^Text sent \d+\.\d\d s after the line came in$")))
     for tid in ("ALERT-OTP-01", "FU-OTP-01"):
         ui_assert(ctx, f"phone frame shows {tid} text", lambda: pw_expect()(phone).to_contain_text(ctx.templates[tid]))
     ui_assert(ctx, "transcript marker '→ Alert text sent' right after the flagged line",

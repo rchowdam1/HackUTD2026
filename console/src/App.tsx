@@ -38,7 +38,10 @@ const MARKER_STATUS: Record<SmsPayload["status"], string> = { queued: "sent", se
 // The intent model behind arm C: app.intent.MODEL (perplexity/pplx-decider-v1.2-20261016).
 const MODEL_NAME = "Perplexity Decider";
 const ARM_WORDS: Record<string, string> = { K: "keywords only", B: "rules only", C: `rules + AI (${MODEL_NAME})` };
-const DETECTOR_WORDS: Record<string, string> = { K: "Keywords only", B: "CallSafe rules", C: `Rules + ${MODEL_NAME}` };
+const DETECTOR_WORDS: Record<string, string> = { K: "Keywords only", B: "Rules only (AI off)", C: `Rules + ${MODEL_NAME}` };
+// What the caller wanted, as the AI's sentence ends: "99.9% sure the caller wants money".
+const WANTS_WORDS: Record<RiskEvent["category"], string> = { otp: "a code", payment: "money", remote: "access to your device" };
+const percent = (score: number) => `${(Math.floor(score * 1000) / 10).toFixed(1)}%`;
 const SCENARIO_WORDS: Record<string, string> = { bank: "Bank", clinic: "Clinic", family: "Grandson" };
 
 export default function App() {
@@ -311,6 +314,12 @@ function CallClock({ state }: { state: State }) {
       </p>
       <p className="source">{session && session.state !== "reset" ? sourceWords(session.source) : "No call running"}</p>
       {session?.arm && session.state !== "reset" && <p className="arm">{DETECTOR_WORDS[session.arm] ?? session.arm}</p>}
+      {state.turns.some((t) => t.ai === "unavailable") && (
+        <p className="badge warn" role="status">
+          <span className="dot warn" aria-hidden="true" />
+          AI unavailable, rules only
+        </p>
+      )}
     </section>
   );
 }
@@ -480,6 +489,9 @@ function WhyPanel({ state, arrived }: { state: State; arrived: Map<string, numbe
   const line = risk && state.segments.find((s) => s.seq === risk.span_seq[risk.span_seq.length - 1]);
   const lineAt = line && arrived.get(segKey(line));
   const smsAt = out ? arrived.get(out.message_id) : undefined;
+  // The backend's measure (end of the turn's speech -> gateway accepted), else this console's clock.
+  const speedMs = out?.latency_ms ?? (lineAt && smsAt ? Math.max(0, smsAt - lineAt) : null);
+  const replay = state.session?.source?.startsWith("replay:") ?? true;
   return (
     <section className="card why alert" aria-labelledby="why-label">
       <h2 className="label" id="why-label">
@@ -492,16 +504,19 @@ function WhyPanel({ state, arrived }: { state: State; arrived: Map<string, numbe
           <>
             <dt>{line.speaker === "caller" ? "Caller said" : "You said"}</dt>
             <dd className="quote">
-              &ldquo;<Highlighted text={line.text} spans={risk.match_spans} />&rdquo;
+              {/* An AI catch has no matched words: the whole line is the request. */}
+              &ldquo;<Highlighted text={line.text} spans={risk.source === "intent" ? [[0, line.text.length]] : risk.match_spans} />&rdquo;
             </dd>
           </>
         )}
         <dt>Caught by</dt>
         <dd>{risk ? caughtBy(risk) : "-"}</dd>
-        {lineAt && smsAt && (
+        {speedMs !== null && (
           <>
             <dt>Speed</dt>
-            <dd>Alert went out {Math.max(0, smsAt - lineAt)} ms after the line came in</dd>
+            <dd>
+              Text sent {(speedMs / 1000).toFixed(2)} s after {replay ? "the line came in" : "the caller stopped talking"}
+            </dd>
           </>
         )}
         {risk && (
@@ -539,8 +554,8 @@ function Highlighted({ text, spans }: { text: string; spans: [number, number][] 
 
 function caughtBy(r: RiskEvent): string {
   if (r.source === "rule") return "CallSafe rules";
-  const sure = r.score === null ? "" : `: ${(Math.floor(r.score * 1000) / 10).toFixed(1)}% sure`;
-  return `${MODEL_NAME} (AI)${sure}`;
+  const sure = r.score === null ? "sure" : `${percent(r.score)} sure`;
+  return `${MODEL_NAME}: ${sure} the caller wants ${WANTS_WORDS[r.category]}`;
 }
 
 // Consent known and not active: alerts are skipped, not failed. null = not loaded yet (or fixture replay).

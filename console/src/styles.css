@@ -99,6 +99,8 @@ button:disabled { opacity: 0.45; cursor: default; }
 .clock .hero { font: 200 clamp(5rem, 8vw, 8rem)/0.86 var(--display); letter-spacing: -0.02em; }
 .clock .source { font: 300 26px/1.2 var(--display); margin-top: 18px; }
 .clock .arm { font: 500 12px/1.4 var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--info); margin-top: 8px; }
+.badge { display: inline-flex; align-items: center; gap: 8px; margin-top: 10px; font: 500 12px/1.4 var(--mono); text-transform: uppercase; letter-spacing: 0.08em; }
+.badge.warn { color: var(--warn); }
 .clock .label .dot.live { color: var(--good); }
 .rows li + li .row { border-top: 1px solid var(--line); }
 .rows li:last-child .row.danger { border-top: 1px dashed var(--ink-4); }
