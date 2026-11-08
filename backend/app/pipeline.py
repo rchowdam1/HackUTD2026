@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 
 from pydantic import BaseModel
 
-from app import consent, intent, rules, sms
+from app import callcontrol, consent, intent, rules, sms
 from app.events import emit
 from app.models import Arm, Decision, EventType, Segment, SessionPayload, SmsMode, SmsPayload, TurnPayload
 
@@ -114,6 +114,10 @@ async def process(segment: Segment) -> list[Decision]:
             s.alerts.append(d)
             _emit(s, "decision", d)
             _queue_send(s, d.template_id, ended_at)
+            if s.source == "phone":
+                task = asyncio.create_task(callcontrol.alert(d.template_id))
+                s.tasks.add(task)
+                task.add_done_callback(s.tasks.discard)
 
         # After the sends are queued, so the verdict never delays an alert. Arm C already asked the model
         # about this turn, so this reads its cached answers.

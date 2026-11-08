@@ -12,10 +12,12 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncIterator
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException, Request, Response, WebSocket
 from twilio.twiml.voice_response import VoiceResponse
 
-from app import consent, sms
+from app import callcontrol, consent, sms
 from app.ingest import live
 from app.sms.webhooks import signed, verified_form
 
@@ -29,13 +31,31 @@ def stream_url() -> str:
 
 @router.post("/incoming")
 async def incoming(request: Request) -> Response:
-    await verified_form(request)
-    subscriber = consent.configured("demo")
-    if subscriber is None:
+    form = await verified_form(request)
+    if consent.configured("demo") is None:
         raise HTTPException(503, "DEMO_PHONE is not set")
+    room = form["CallSid"]
     twiml = VoiceResponse()
     twiml.start().stream(url=stream_url(), track="both_tracks")
-    twiml.dial(subscriber)
+    # A conference, not a plain <Dial>, so an alert can hold the caller and speak to the subscriber alone.
+    twiml.dial().conference(room, participant_label="caller", beep="false", wait_url="",
+                            start_conference_on_enter=True, end_conference_on_exit=True)
+    asyncio.get_running_loop().run_in_executor(None, callcontrol.dial_subscriber, room, form.get("From"))
+    return Response(str(twiml), media_type="text/xml")
+
+
+@router.api_route("/announce", methods=["GET", "POST"])
+async def announce(t: str) -> Response:
+    twiml = VoiceResponse()
+    twiml.say(callcontrol.announcement(t), voice=callcontrol.VOICE)
+    return Response(str(twiml), media_type="text/xml")
+
+
+@router.api_route("/hold", methods=["GET", "POST"])
+async def hold() -> Response:
+    twiml = VoiceResponse()
+    twiml.say("Please hold.", voice=callcontrol.VOICE)
+    twiml.pause(length=60)
     return Response(str(twiml), media_type="text/xml")
 
 
