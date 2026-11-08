@@ -35,6 +35,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; } /* layout rules like .band { display: flex } must not show hidden views */
 body { margin: 0; background: var(--ground); }
 h1, h2, h3, p, ol, ul, dl, dd { margin: 0; }
 ol, ul { padding: 0; list-style: none; }
@@ -90,7 +91,7 @@ button:disabled { opacity: 0.45; cursor: default; }
   .page-main { min-height: 0; }
   .band { flex-wrap: nowrap; min-height: 0; }
   .col { min-height: 0; }
-  .col.left { overflow-y: auto; } /* never draws over the results band on a short screen */
+  .col.left { overflow-y: auto; } /* never draws over the ticker on a short screen */
   .transcript { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .transcript ol { flex: 1; min-height: 0; overflow-y: auto; }
   /* The Why panel scrolls before the phone shrinks: the alert bubble is the payoff and must stay whole. */
@@ -184,23 +185,35 @@ button:disabled { opacity: 0.45; cursor: default; }
 .modal-backdrop { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 16px; background: var(--scrim); }
 .modal { width: min(620px, 100%); background: var(--ground); border: 1px solid var(--line); border-radius: 4px; padding: 40px; box-shadow: 0 24px 60px rgba(20, 20, 19, 0.08); }
 .modal h2 { font: 300 40px/1.1 var(--display); text-wrap: balance; margin-bottom: 28px; }
+.hold-backdrop { background: rgba(239, 236, 231, 0.82); }
+.modal.hold h2 { color: var(--magenta); margin: 10px 0 18px; }
+.modal.hold .script { font: 300 22px/1.4 var(--display); color: var(--ink-2); }
+.modal.hold .label-text { display: inline-flex; align-items: center; gap: 8px; color: var(--magenta-text); }
+.dot.live-alert { color: var(--magenta); animation: blink 1.2s steps(1) infinite; }
 .choices li { display: grid; grid-template-columns: 96px 1fr; gap: 14px; padding: 14px 0; border-top: 1px solid var(--line); }
 .choices li:last-child { border-bottom: 1px solid var(--line); }
 .modal-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 28px; }
 
-/* Results band (full width, below the three columns) */
-.results { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: clamp(24px, 4vw, 72px); align-items: end; padding: 10px 0 12px; border-top: 1px solid var(--line); }
-.results .label { grid-column: 1 / -1; margin-bottom: 4px; }
-.results-grid { min-width: 0; overflow-x: auto; }
-.results table { border-collapse: collapse; font-size: 15px; }
-.results caption { caption-side: bottom; text-align: left; padding-top: 6px; font: 400 12px/1.4 var(--mono); color: var(--ink-3); }
-.results th, .results td { padding: 2px 28px 2px 0; text-align: left; border-bottom: 1px solid var(--line); }
-.results thead th { font: 500 12px/1.4 var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); }
-.results tbody th { font-weight: 500; padding-right: 36px; }
-.results th { white-space: nowrap; }
-.results td { font: 300 clamp(17px, 1.4vw, 20px)/1.3 var(--display); }
-.wrong-count { font: 500 12px/1.4 var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); text-align: right; }
-.wrong-count .n { display: block; font: 200 clamp(2.8rem, min(4vw, 7vh), 4.4rem)/0.86 var(--display); letter-spacing: -0.02em; color: var(--ink); text-transform: none; }
+.wrong-count { display: flex; align-items: baseline; justify-content: flex-end; gap: 8px; margin-top: 10px; font: 500 12px/1.4 var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); }
+.wrong-count .n { font: 300 28px/1 var(--display); color: var(--ink); }
+
+/* The numbers page */
+.nav { font: 500 13px/1 var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink); text-underline-offset: 4px; min-height: 44px; display: inline-flex; align-items: center; }
+.numbers { flex: 1; display: flex; flex-direction: column; gap: clamp(28px, 5vh, 56px); padding: clamp(20px, 4vh, 48px) 0; max-width: 1100px; overflow-y: auto; min-height: 0; }
+.hero-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 28px clamp(24px, 4vw, 64px); }
+.stat .big { font: 200 clamp(2.6rem, 4.5vw, 4.4rem)/1 var(--display); letter-spacing: -0.02em; margin-top: 8px; }
+.stat .before { color: var(--ink-3); font-size: 0.55em; }
+.stat .note { font: 400 13px/1.4 var(--mono); color: var(--ink-3); margin-top: 8px; }
+.stats { border-collapse: collapse; width: 100%; font-size: 15px; }
+.stats th, .stats td { padding: 10px 24px 10px 0; text-align: left; border-bottom: 1px solid var(--line); vertical-align: baseline; }
+.stats thead th { font: 500 12px/1.4 var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); }
+.stats tbody th { font-weight: 500; white-space: nowrap; }
+.stats td { font: 300 clamp(20px, 1.8vw, 26px)/1.3 var(--display); }
+.stats small { display: block; font: 400 12px/1.4 var(--mono); color: var(--ink-3); }
+.fine { font: 400 12px/1.5 var(--mono); color: var(--ink-3); margin-top: 10px; }
+.parts { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 18px 32px; }
+.parts dt { font: 500 12px/1.4 var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); }
+.parts dd { font: 300 26px/1.2 var(--display); margin-top: 4px; }
 
 /* Ticker: one hairline above, one below */
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -219,6 +232,7 @@ button:disabled { opacity: 0.45; cursor: default; }
   .typing::after { animation: none; }
   .ticker { overflow-x: auto; }
   .ticker-track { animation: none; }
+  .dot.live-alert { animation: none; }
   .ticker-list[aria-hidden] { display: none; }
 }
 
@@ -234,8 +248,6 @@ button:disabled { opacity: 0.45; cursor: default; }
   .label { margin-bottom: 8px; }
   .line { font-size: 19px; padding: 8px 0; }
   .why dl { gap: 6px 12px; }
-  .results table { font-size: 14px; }
-  .results caption { padding-top: 2px; }
   .ticker { display: none; } /* the Why panel and the transcript already say what the ticker says */
 }
 
@@ -259,10 +271,7 @@ button:disabled { opacity: 0.45; cursor: default; }
   .marker { margin-left: 92px; }
   .why dl { grid-template-columns: 1fr; gap: 2px; }
   .why dd + dt { margin-top: 8px; }
-  .results { grid-template-columns: 1fr; row-gap: 12px; }
-  .results th { white-space: normal; }
-  .results th, .results td { padding-right: 12px; }
-  .wrong-count { text-align: left; }
+  .stats tbody th { white-space: normal; }
   .modal { padding: 24px; }
   .modal h2 { font-size: 30px; }
   .choices li { grid-template-columns: 72px 1fr; }
