@@ -17,6 +17,14 @@
       "TN": 30,
       "hard_benign_fp": 0,
       "hard_benign_n": 22
+    },
+    "C": {
+      "TP": 5,
+      "FP": 1,
+      "FN": 25,
+      "TN": 29,
+      "hard_benign_fp": 1,
+      "hard_benign_n": 22
     }
   },
   "discordant": {
