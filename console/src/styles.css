@@ -37,11 +37,14 @@ header { display: flex; align-items: center; gap: 1rem; }
 header .status { margin-left: auto; font-size: 1.2rem; font-weight: 600; }
 .tag { font-size: 0.75rem; padding: 0.15rem 0.5rem; border-radius: 999px; border: 1px solid var(--muted); color: var(--muted); text-transform: none; letter-spacing: 0; vertical-align: middle; }
 .tag.warn { border-color: #ffb020; color: #ffb020; }
+.tag.live { border-color: var(--alert); color: var(--alert); font-weight: 700; }
 .tag.stale { border: 2px solid var(--alert); color: var(--alert); font-size: 1rem; font-weight: 700; }
 .action-error { margin: 0; padding: 0.5rem 1rem; border-radius: 8px; background: var(--alert); color: #000; font-weight: 700; display: flex; align-items: center; gap: 1rem; }
 .action-error button { margin-left: auto; border-color: #000; color: #000; padding: 0.2rem 0.8rem; }
 .controls { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
 .controls .spacer { flex: 1; }
+.live-mic { display: flex; gap: 0.6rem; }
+.live-mic button.recording { background: var(--alert); border-color: var(--alert); color: #000; }
 main { display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; flex: 1; }
 aside { display: flex; flex-direction: column; gap: 1rem; }
 .card { background: var(--card); border-radius: 12px; padding: 1rem 1.25rem; }

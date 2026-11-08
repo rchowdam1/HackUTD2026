@@ -38,12 +38,13 @@ Each feature file starts with an H1 title and one paragraph describing the user-
 ## Features
 
 - [Operator login](./operator-login.md) covers the password form, the signed server-side session cookie, and the 401 wall on every operator route.
-- [Call replay](./call-replay.md) covers Run clinic (silent, "not a safety verdict"), Run bank (alert, Why panel, auto end-call, one follow-up) and Run grandson (rules alone stay silent; the model catches it).
+- [Call replay](./call-replay.md) covers Run clinic (silent, "No alert detected"), Run bank (alert, Why panel, auto end-call, one follow-up) and Run grandson (rules alone stay silent; the model catches it).
 - [SMS replies](./sms-replies.md) covers the simulated phone's YES / WRONG / SHARED / STOP buttons, keyword normalisation, WRONG counting, and consent gating of alerts.
 - [Call controls](./call-controls.md) covers End call and Reset mid-replay and the real / simulated SMS-mode toggle.
 - [Results card](./results-card.md) covers `GET /results/latest` (pending, and `python -m eval.run` output served byte-for-byte); the console no longer shows results.
 - [Twilio webhooks](./twilio-webhooks.md) covers `X-Twilio-Signature` on `/sms/inbound` and `/sms/status`, sender binding, MessageSid dedupe and status callbacks.
 - [Enrollment invite](./enrollment-invite.md) covers `POST /sms/invite` for the demo and spare phones and hashed-only storage.
 - [Fixture replay](./fixture-replay.md) covers the console's backend-free `?fixtures` mode.
+- [Live mic](./live-mic.md) covers the console's browser-mic conversation: Start, Caller / You turns, alert mid-call, follow-up on End call.
 - [ASR replay](./asr-replay.md) covers whisper transcription of the demo audio when `REPLAY_SOURCE=asr`.
 - [Preflight](./preflight.md) covers the offline parts of `scripts/preflight`.

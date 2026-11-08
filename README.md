@@ -4,6 +4,8 @@ CallSafe texts you during a call when the caller asks for a code, money or acces
 
 The demo runs arm C (rules + Perplexity Decider) when `INTENT_MODEL=on` and `OPENROUTER_API_KEY` are set, otherwise arm B (rules only); either way in simulated SMS mode: the console's phone frame shows the texts and has on-screen reply buttons. The Twilio account is still a trial (no number, can't send our message bodies), and real SMS needs an upgraded account plus 10DLC or toll-free registration, which takes days.
 
+**Live mic.** Besides the replays, the console runs a live conversation from the laptop microphone: click `Start live conversation`, then two people take turns with the `Caller` and `You` buttons (tap to record, tap again to send). Each turn is transcribed in memory by whisper and runs through the same pipeline. An alert doesn't end the conversation; `End call` does, and sends the follow-up. Open the console at `localhost` (browsers only allow the mic there or over HTTPS) and set `REPLAY_SOURCE=asr` so the model is loaded at startup.
+
 ## Stack
 
 - Backend: Python 3.11, FastAPI and uvicorn in one process (`backend/app`).

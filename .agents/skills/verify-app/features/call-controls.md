@@ -20,7 +20,7 @@ Preconditions:
 
 - Profile `cached` with the console; demo phone opted in (the checks reply YES if needed).
 
-- **End call.** Click `Run bank`, wait for the first `segment` event, click `End call`. SSE `session finished` for that call within 10 s. Wait until 24 s after start: no event for that `session_ref` after `finished`, fewer than 4 segments, no `decision`/`sms`, outbox unchanged. Banner `call ended`; Why panel `No alert - not a safety verdict`.
+- **End call.** Click `Run bank`, wait for the first `segment` event, click `End call`. SSE `session finished` for that call within 10 s. Wait until 24 s after start: no event for that `session_ref` after `finished`, fewer than 4 segments, no `decision`/`sms`, outbox unchanged. Banner `call ended`; Why panel `No alert detected`.
 - **Reset.** Snapshot SQLite `consent` and `reply_counts`. Click `Run bank`, wait for segment 2, click `Reset`. SSE `session reset`; banner `reset`; `Live transcript` shows `No call yet.`. Wait until 10 s after start (past the OTP turn at ≈5.3 s and the replay end at ≈8 s): no event carrying the old `session_ref` after the reset event, outbox unchanged, both SQLite tables byte-identical to the snapshot.
 - **SMS mode.** Click `real`: `POST /demo/sms-mode` → 200, the `Phone` card disappears, `real` has class `on`. Click `Run clinic`: the SSE `session running` payload says `sms_mode: real`; click `Reset`. Click `simulated`: phone card returns, `simulated` has class `on`, the next `Run clinic` starts with `sms_mode: simulated`; `Reset`.
 - **Mode after reload.** Click `real`, reload the console, expect `real` to keep class `on` within 5 s. Afterwards the check sets simulated via the API.

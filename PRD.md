@@ -461,7 +461,7 @@ Synthetic replay (P0) / controlled VoIP call (P1)
 
 | Concern | Preferred | Backup / caveat |
 |---|---|---|
-| Call demo | Synthetic replay through the same ingestion interface a live call uses (P0) | Twilio Programmable Voice + Media Streams (P1), only after the topology below is verified |
+| Call demo | Synthetic replay through the same ingestion interface a live call uses (P0) | Browser-mic live conversation on the console (D-33); Twilio Programmable Voice dropped (no number) |
 | Subscriber channel | SMS through an SMS API (e.g., Twilio Programmable Messaging) to a team-owned test phone, behind the messaging gateway (P0) | Class 0 flash cue if the provider and demo handset support it (P1); carrier SMS center in production |
 | Backend | Python 3.11+, FastAPI (WebSockets for ingestion, webhooks for SMS replies and receipts), Pydantic v2 | Standard Python async functions for ingestion |
 | Event bus | In-process queue behind a publish interface | Kafka-compatible broker (Apache Kafka or Redpanda in Docker Compose) if setup takes under an hour; Kafka in production (§11.4) |
@@ -632,6 +632,7 @@ If the team has a Java developer, building the messaging gateway as a small Spri
 - **D-30 [DECIDED, v1.5]:** The demo runs in simulated SMS mode (console phone frame with reply buttons), because the Twilio trial account can't send custom bodies. The real-phone path returns only if the account is upgraded and 10DLC or toll-free registration completes. This supersedes the real-SMS part of D-16 for judging.
 - **D-31 [DECIDED, v1.5]:** Arm C calls Perplexity Decider V1.2 (`perplexity/pplx-decider-v1.2-20261016`) through OpenRouter's Decisions API instead of TypeSafe's Jev API, which returned 402 (out of credit). Same request shape and thresholds (tuned on Jev 1.14, not re-tuned); key `OPENROUTER_API_KEY`. The arm C numbers below were measured with TypeSafe Jev 1.14, the previous arm C model.
 - **D-32 [DECIDED, v1.5]:** The demo console runs arm C (rules + Perplexity Decider) whenever the intent model is on, adds a third call ("grandson", `scenarios/demo/family`) that only the model catches, and shows who caught each alert (rules, or the model with its probability). The held-out results, "Where we fail" and WRONG-counter cards and the rule/policy/keyword rows of the Why panel were removed from the demo screen (Arnav); the numbers stay in the deck and `GET /results/latest`.
+- **D-33 [DECIDED, 2026-11-08]:** The live demo is a browser-mic conversation, not a Twilio call (Twilio won't give us a number; #94 and #96 closed). On one laptop the operator clicks Start live conversation; two people take turns with Caller / You buttons (tap to record, tap to send; one at a time, either may go twice). Each turn is transcribed in memory by whisper (`POST /live/utterance`) and runs through the same pipeline as a replay. An alert does not end the conversation; End call does, and that sends the follow-up. A call with no alert reads "No alert detected" (#100).
 
 **Traceability:** UJ-01 -> FR-02/03/04/05/07/08/15/26; UJ-02 -> FR-01/03/06/07/08/09/14/16/17/23/26; UJ-03 -> FR-01/06/10/11/12/13/14/15/16/17; UJ-04 -> FR-09/19/20/21/22/24/27; UJ-05 -> FR-20/24/25/26/27. Every active FR maps to at least one journey (FR-18 is retired), and every success measure in §7 names the FRs it verifies. Open gates G-01 through G-07 are not silently treated as decisions.
 
@@ -733,7 +734,7 @@ This section is what the team and its agents build from. Where it conflicts with
 | Time | Content |
 |---|---|
 | 0:00-0:20 | Problem slide: a call passes Scam Shield, then asks for your code. |
-| 0:20-0:40 | Replay 1 (clinic, audio <= 15 s): mentions a code but says not to share it. Phone stays silent. Console: "no alert - not a safety verdict." |
+| 0:20-0:40 | Replay 1 (clinic, audio <= 15 s): mentions a code but says not to share it. Phone stays silent. Console: "No alert detected." |
 | 0:40-1:50 | Replay 2 (bank, audio <= 25 s): turns into an OTP request. The alert appears on the console phone frame (labelled "simulated SMS"). Replay ends, end-call fires automatically, follow-up arrives. The judge presses WRONG on the phone frame's reply buttons. Console counter ticks. If Twilio is upgraded, the same loop runs on the real phone: it buzzes, and the judge types WRONG in the open SMS thread. |
 | 1:50-2:25 | "Why this alert" panel, then one number: on 6228 blind scripted calls (H4), keywords alert on 64% of harmless calls; B alerts on 0.9% and catches 66% of scams. "Where we fail" card. |
 | 2:25-3:00 | Stack slide and future steps (carrier routing on the Live Translation path, in-call audio prompt, consent gate, sender verification). |
@@ -747,7 +748,7 @@ This section is what the team and its agents build from. Where it conflicts with
 **In (must work):** replay ingestion, ASR on demo clips, rules + policy (arms K and B), alert SMS, follow-up SMS, reply keywords, consent, SMS mode toggle (real / simulated with on-screen reply buttons), console (live transcript, Why panel, WRONG counter, reset, results card, login), eval on H1 for K and B with one-command report, preflight script.
 **Stretch, in this order:** intent model + arm C + family paraphrase scene (built on Perplexity Decider V1.2 through OpenRouter, D-31; opt-in, not in the demo); promotion screen listing changed cases (labelled "H1 reused, not a fresh held-out set"); hedged "not certain" alert for model-only detections.
 **Out:** live telephony, screening proxy, voice anti-spoof model, Class 0 flash SMS, Kafka/Postgres/Prometheus, drift automation and the drift/feedback panel (FR-27), audit export, H2, SMS quiz, WHY keyword, family alerts, live-mic demo, arm A (reputation-only), load tests (FR-21, SM-07), health-metrics panel (FR-21), gate board console view (FR-24; Q&A uses a static slide).
-**Status (2026-11-08):** the demo runs arm C (rules + Perplexity Decider) when the model is on, else arm B, in simulated SMS mode (D-32); real SMS waits on an upgraded, registered Twilio account (§11.2).
+**Status (2026-11-08):** the demo runs arm C (rules + Perplexity Decider) when the model is on, else arm B, in simulated SMS mode (D-32), plus a live browser-mic conversation (D-33); real SMS waits on an upgraded, registered Twilio account (§11.2).
 
 ### 19.3 Frozen stack
 | Concern | Choice |

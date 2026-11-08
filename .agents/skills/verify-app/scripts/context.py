@@ -215,15 +215,19 @@ class Context:
         if self._pw is None:
             self._pw = sync_playwright().start()
             try:
-                self._browser = self._pw.chromium.launch(headless=True)
+                # Fake mic for live.mic-ui: auto-grants getUserMedia and loops the bank call's code request.
+                wav = self.sandbox / "audio/demo/bank/t04.wav"
+                self._browser = self._pw.chromium.launch(headless=True, args=[
+                    "--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream",
+                    f"--use-file-for-fake-audio-capture={wav}"])
             except Exception as e:
                 raise Blocked(f"chromium for playwright 1.64.1 not installed ({str(e).splitlines()[0]}); "
                               "run `uv run --with playwright==1.64.1 playwright install chromium`") from None
         if fresh_context:
-            ctx = self._browser.new_context(viewport={"width": 1440, "height": 900})
+            ctx = self._browser.new_context(viewport={"width": 1440, "height": 900}, permissions=["microphone"])
             return ctx.new_page()
         if self.page is None:
-            ctx = self._browser.new_context(viewport={"width": 1440, "height": 900})
+            ctx = self._browser.new_context(viewport={"width": 1440, "height": 900}, permissions=["microphone"])
             self.page = ctx.new_page()
             self.page.set_default_timeout(15_000)
         return self.page

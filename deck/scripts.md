@@ -11,7 +11,7 @@ The demo runs arm B with simulated SMS: texts appear in the console's phone fram
 "This call got past Scam Shield. The number looks fine. Thirty seconds in, the caller says: read me the code we just sent you. That's the moment the money goes, and nothing on your phone says a word."
 
 **0:20-0:40 Replay 1, clinic (console)**
-"Here's a clinic call. It mentions a code, but it tells you not to share it." (The phone frame stays empty.) "No alert. The console says 'no alert, not a safety verdict'. Silence never means a call is safe."
+"Here's a clinic call. It mentions a code, but it tells you not to share it." (The phone frame stays empty.) "No alert. The console says 'No alert detected', never 'safe'. Silence never means a call is safe."
 
 **0:40-1:50 Replay 2, bank (console phone frame)**
 "Now a bank fraud call. It starts out normal..." (The caller asks for the code and the alert lands in the phone frame.) "That's the alert: 'caller is asking for a code. Don't share it. Hang up, call your bank's number yourself.' It names the request and gives one safe step." (The replay ends, the call ends automatically, and the follow-up arrives.) "After the call, the follow-up explains the trick: banks never ask for codes." (Point the judge to the reply buttons under the phone frame.) "Say we got it wrong. Press WRONG." (The console counter ticks.) "That goes to a person, and any change is tested before it goes live."
