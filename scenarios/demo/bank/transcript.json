@@ -3,35 +3,35 @@
     "seq": 1,
     "speaker": "caller",
     "t_start_ms": 0,
-    "t_end_ms": 6120,
+    "t_end_ms": 6400,
     "text": "Hi, this is the fraud team at your bank. We stopped a suspicious charge on your debit card."
   },
   {
     "seq": 2,
     "speaker": "subscriber",
-    "t_start_ms": 6420,
-    "t_end_ms": 8120,
+    "t_start_ms": 6400,
+    "t_end_ms": 8960,
     "text": "Oh no. What was it?"
   },
   {
     "seq": 3,
     "speaker": "caller",
-    "t_start_ms": 8420,
-    "t_end_ms": 14200,
+    "t_start_ms": 8960,
+    "t_end_ms": 15680,
     "text": "An online purchase we put on hold. To cancel it, I need to verify it's really you."
   },
   {
     "seq": 4,
     "speaker": "caller",
-    "t_start_ms": 14500,
-    "t_end_ms": 19600,
+    "t_start_ms": 15680,
+    "t_end_ms": 20080,
     "text": "I just sent a code to your phone. Can you read it back to me?"
   },
   {
     "seq": 5,
     "speaker": "subscriber",
-    "t_start_ms": 19900,
-    "t_end_ms": 21260,
+    "t_start_ms": 20080,
+    "t_end_ms": 22480,
     "text": "Um, okay, hold on."
   }
 ]
