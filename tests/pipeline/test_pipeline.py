@@ -23,24 +23,24 @@ class FakeGateway:
 
 
 def fake_detect(segments, arm, policy_version):
-    return [RiskEvent(event_type="code_request", source="rule", rule_id="B-OTP-REQ-01", category="otp",
+    return [RiskEvent(session_ref=s.session_ref, event_type="code_request", source="rule", rule_id="B-OTP-REQ-01", category="otp",
                       span_seq=[s.seq], confidence_class="high", policy_version=policy_version)
             for s in segments if s.speaker == "caller" and "code" in s.text]
 
 
-def fake_decide(segments, arm, policy_version):
-    if not any(s.speaker == "caller" and "code" in s.text for s in segments):
-        return [Decision(level="none", policy_version=policy_version)]
-    return [Decision(level="action_warning", template_id="ALERT-OTP-01", followup_template_id="FU-OTP-01",
-                     basis=["B-OTP-REQ-01"], policy_version=policy_version)]
+def fake_evaluate(segments, arm, policy_version):
+    events = fake_detect(segments, arm, policy_version)
+    if not events:
+        return events, [Decision(level="none", policy_version=policy_version)]
+    return events, [Decision(session_ref=events[0].session_ref, level="action_warning", template_id="ALERT-OTP-01",
+                             followup_template_id="FU-OTP-01", basis=["B-OTP-REQ-01"], policy_version=policy_version)]
 
 
 @pytest.fixture
 def gw(monkeypatch):
     gateway = FakeGateway()
     monkeypatch.setattr(sms, "get_gateway", lambda: gateway)
-    monkeypatch.setattr(rules, "detect", fake_detect)
-    monkeypatch.setattr(rules, "decide", fake_decide)
+    monkeypatch.setattr(rules, "evaluate", fake_evaluate)
     monkeypatch.setattr(consent, "is_active", lambda: True)
     return gateway
 
@@ -119,7 +119,7 @@ def test_no_followup_without_alert_or_consent(gw, monkeypatch):
         await pipeline.finish(ref)
 
     run(opted_out)
-    assert gw.sent == ["ALERT-OTP-01"]  # the gateway itself refuses alerts when consent is off
+    assert gw.sent == ["ALERT-OTP-01"]  # no follow-up; the fake gateway doesn't check consent itself
 
 
 def test_start_while_active_finishes_old_session(gw):
@@ -231,16 +231,16 @@ class SlowRules:
     def __init__(self):
         self.entered, self.go = threading.Event(), threading.Event()
 
-    def detect(self, segments, arm, policy_version):
+    def evaluate(self, segments, arm, policy_version):
         self.entered.set()
         self.go.wait(2)
-        return fake_detect(segments, arm, policy_version)
+        return fake_evaluate(segments, arm, policy_version)
 
 
 @pytest.fixture
 def slow(gw, monkeypatch):
     r = SlowRules()
-    monkeypatch.setattr(rules, "detect", r.detect)
+    monkeypatch.setattr(rules, "evaluate", r.evaluate)
     return r
 
 
@@ -270,8 +270,8 @@ def test_reset_during_arm_c_inference_drops_result(slow):
         await asyncio.sleep(0.05)
         return new
 
-    (new, events), gw = run(scenario), sms.get_gateway()
-    assert new == [] and gw.sent == []
+    new, events = run(scenario)
+    assert new == [] and sms.get_gateway().sent == []
     assert [e.type for e in events] == ["session", "segment", "session"]
 
 
@@ -296,11 +296,11 @@ def test_intent_cache_cleared_when_session_ends(gw, monkeypatch, end):
     monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
     monkeypatch.setattr(intent, "_post", lambda body: {"answers": {q: {"noul": 0.0} for q in intent.QUESTIONS}})
 
-    def detect(segments, arm, policy_version):
+    def evaluate(segments, arm, policy_version):
         intent.answers(segments)
-        return fake_detect(segments, arm, policy_version)
+        return fake_evaluate(segments, arm, policy_version)
 
-    monkeypatch.setattr(rules, "detect", detect)
+    monkeypatch.setattr(rules, "evaluate", evaluate)
 
     async def scenario():
         ref = await pipeline.start("C", "v1.0", "simulated")

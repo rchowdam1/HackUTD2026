@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer, useState } from "react";
 import * as api from "./api";
-import { initial, reduce, type Bubble, type State } from "./state";
+import { initial, reduce, type Action, type Bubble, type State } from "./state";
 import type { ArmCounts, Event, Results, RiskEvent, SmsPayload } from "./types";
 
 const FIXTURES = new URLSearchParams(location.search).has("fixtures");
@@ -16,6 +16,7 @@ const DISPATCH_WORDS: Record<SmsPayload["status"], string> = {
   delivered: "Alert text delivered",
   failed: "Warning detected but the alert text was NOT sent (failed)",
 };
+const ARM_NAMES: Record<string, string> = { K: "Keyword only (K)", B: "CallSafe rules (B)", C: "Rules + intent model (C)" };
 const CONFIDENCE_WORDS: Record<RiskEvent["confidence_class"], string> = {
   high: "High confidence",
   medium: "Medium confidence",
@@ -154,7 +155,7 @@ function sessionLabel(s: State): string {
   return s.session.state === "finished" ? "call ended" : "reset";
 }
 
-function Controls({ state, dispatch }: { state: State; dispatch: (a: { type: "sms_mode"; mode: "real" | "simulated" }) => void }) {
+function Controls({ state, dispatch }: { state: State; dispatch: (a: Action) => void }) {
   const mode = state.smsMode;
   return (
     <nav className="controls">
@@ -209,7 +210,7 @@ function WhyPanel({ state }: { state: State }) {
       </section>
     );
   }
-  const risk = state.risks.find((r) => r.rule_id && alert.basis.includes(r.rule_id)) ?? state.risks[0];
+  const risk = state.risks.find((r) => r.rule_id && alert.basis.includes(r.rule_id));
   const sms = state.bubbles.find((b) => b.kind === "out" && b.sms.template_id === alert.template_id);
   const status = sms?.kind === "out" ? sms.sms.status : null;
   return (
@@ -282,7 +283,7 @@ function ResultsCard({ results }: { results: Results }) {
   const arm = (name: string, c?: ArmCounts) =>
     c && (
       <div className="arm" key={name}>
-        <h3>{name === "K" ? "Keyword only (K)" : name === "B" ? "CallSafe rules (B)" : name}</h3>
+        <h3>{ARM_NAMES[name] ?? name}</h3>
         <p>
           Hard-benign false alerts: <b>{c.hard_benign_fp} of {c.hard_benign_n}</b>
         </p>

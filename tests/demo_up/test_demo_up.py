@@ -1,22 +1,10 @@
 """scripts/demo_up.py: startup order, cleanup and .env helpers with fakes (no cloudflared, no uvicorn, no Twilio)."""
-import importlib.util
-import sys
-from pathlib import Path
 
 import pytest
 
-SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
-sys.path.insert(0, str(SCRIPTS))  # demo_up imports preflight_checks
+from conftest import load_script
 
-
-def _load(name):
-    spec = importlib.util.spec_from_file_location(name, SCRIPTS / f"{name}.py")
-    mod = sys.modules[name] = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-du = _load("demo_up")
+du = load_script("demo_up")
 
 
 class FakeProc:

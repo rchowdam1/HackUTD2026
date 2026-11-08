@@ -1,15 +1,16 @@
-"""Consent (Track B): state per enrolled phone, stored only as an HMAC keyed by CONSENT_SALT.
+"""Consent (Track B): the enrolled phones (env DEMO_PHONE, SPARE_PHONE) and each one's state,
+stored only as an HMAC keyed by CONSENT_SALT.
 
-Numbers are E.164 strings; `phone=None` means env DEMO_PHONE (operator simulation only:
-external inbound must name an enrolled sender, see app.sms.webhooks). A phone with no
-record is "invited" (not yet opted in). Every state change emits a `consent` event.
+Numbers are E.164 strings; `phone=None` means DEMO_PHONE, where alerts go (operator simulation
+only: external inbound must come from an `enrolled` sender). A phone with no record is "invited"
+(not yet opted in). Every state change emits a `consent` event.
 """
 from __future__ import annotations
 
 import hashlib
 import hmac
 import os
-from contextlib import closing
+import re
 from typing import Literal
 
 from app import storage
@@ -35,38 +36,47 @@ def _legacy_hash(phone: str) -> str:
     return hashlib.sha256((_salt() + phone).encode()).hexdigest()  # before HMAC; migrated on first read
 
 
-def _phone(phone: str | None) -> str | None:
-    return phone or os.environ.get("DEMO_PHONE") or None
+def configured(name: Literal["demo", "spare"]) -> str | None:
+    return os.environ.get(f"{name.upper()}_PHONE") or None
 
 
-def _stored(number: str) -> State | None:
-    with closing(storage.connect()) as conn, conn:
-        row = conn.execute("SELECT state FROM consent WHERE phone_hash = ?", (_hash(number),)).fetchone()
-        if row is None:
-            row = conn.execute("SELECT state FROM consent WHERE phone_hash = ?", (_legacy_hash(number),)).fetchone()
-            if row is not None:
-                conn.execute("UPDATE consent SET phone_hash = ? WHERE phone_hash = ?",
-                             (_hash(number), _legacy_hash(number)))
-    return row[0] if row else None
+def number(phone: str | None) -> str | None:
+    return phone or configured("demo")
+
+
+def enrolled(sender: str | None) -> str | None:
+    """The configured DEMO_PHONE / SPARE_PHONE that `sender` is (digits compared), else None."""
+    digits = re.sub(r"\D", "", sender or "")
+    if not digits:
+        return None
+    for name in ("demo", "spare"):
+        configured_number = configured(name)
+        if configured_number and re.sub(r"\D", "", configured_number) == digits:
+            return configured_number
+    return None
+
+
+def _stored(phone: str) -> State | None:
+    state = storage.consent_state(_hash(phone))
+    if state is None:
+        state = storage.consent_state(_legacy_hash(phone))
+        if state is not None:
+            storage.rehash_consent(_legacy_hash(phone), _hash(phone))
+    return state
 
 
 def get_state(phone: str | None = None) -> State:
-    number = _phone(phone)
-    return (_stored(number) if number else None) or "invited"
+    n = number(phone)
+    return (_stored(n) if n else None) or "invited"
 
 
 def set_state(state: State, phone: str | None = None) -> None:
-    number = _phone(phone)
-    if number is None:
+    n = number(phone)
+    if n is None:
         raise RuntimeError("no phone given and DEMO_PHONE is not set")
-    if _stored(number) == state:
+    if _stored(n) == state:
         return
-    with closing(storage.connect()) as conn, conn:
-        conn.execute(
-            "INSERT INTO consent (phone_hash, state) VALUES (?, ?) "
-            "ON CONFLICT (phone_hash) DO UPDATE SET state = excluded.state, updated_at = CURRENT_TIMESTAMP",
-            (_hash(number), state),
-        )
+    storage.set_consent(_hash(n), state)
     emit("consent", ConsentPayload(state=state), None)
 
 

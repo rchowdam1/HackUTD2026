@@ -10,34 +10,21 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from twilio.request_validator import RequestValidator
 
-from app import sms
+from app import consent, sms
 
 log = logging.getLogger(__name__)
-router = APIRouter(prefix="/sms")
+router = APIRouter(prefix="/sms", tags=["tunnel"])
 
 EMPTY_TWIML = '<?xml version="1.0" encoding="UTF-8"?><Response></Response>'
 
 
-def enrolled_number(sender: str | None) -> str | None:
-    """The configured DEMO_PHONE / SPARE_PHONE that `sender` is (digits compared), else None."""
-    digits = re.sub(r"\D", "", sender or "")
-    if not digits:
-        return None
-    for var in ("DEMO_PHONE", "SPARE_PHONE"):
-        number = os.environ.get(var) or ""
-        if number and re.sub(r"\D", "", number) == digits:
-            return number
-    return None
-
-
 async def _verified_form(request: Request) -> dict[str, str]:
     token = os.environ.get("TWILIO_AUTH_TOKEN", "")
-    base = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
+    base = sms.public_base_url()
     if not token or not base:  # RequestValidator("") accepts a signature anyone can compute
         raise HTTPException(403, "twilio webhook not configured")
     form = {k: str(v) for k, v in (await request.form()).items()}
@@ -49,7 +36,7 @@ async def _verified_form(request: Request) -> dict[str, str]:
 @router.post("/inbound")
 async def inbound(request: Request) -> Response:
     form = await _verified_form(request)
-    number = enrolled_number(form.get("From"))
+    number = consent.enrolled(form.get("From"))
     if number is None:
         log.warning("inbound text from a missing or unenrolled sender ignored")
     else:

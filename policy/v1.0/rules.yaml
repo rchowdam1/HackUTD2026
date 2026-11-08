@@ -120,7 +120,6 @@ intro: '(to|before|after|once|when|whenever|as soon as|if|for|in order to)'
 categories:
   otp:
     alert: ALERT-OTP-01
-    followup: FU-OTP-01
     k_rule: K-OTP-01
     b_rules: {high: B-OTP-REQ-01, medium: B-OTP-CTX-01}
     c_rules: {confirm: C-INTENT-OTP-01, solo: C-INTENT-OTP-SOLO}
@@ -137,7 +136,6 @@ categories:
       - "(read|tell)( me| us)? what (it|the text|the message|that|this) (says|said|shows|reads)"
   payment:
     alert: ALERT-PAY-01
-    followup: FU-PAY-01
     k_rule: K-PAY-01
     b_rules: {high: B-PAY-REQ-01, medium: B-PAY-CTX-01}
     c_rules: {confirm: C-INTENT-PAY-01, solo: C-INTENT-PAY-SOLO}
@@ -156,7 +154,6 @@ categories:
       - \"(if|once|when|as soon as) you( \\w+)? (pay|send|buy|wire|transfer|purchase)( \\w+){0,4}? (today|now|right now|immediately|tonight|within)\"
   remote:
     alert: ALERT-REMOTE-01
-    followup: FU-REMOTE-01
     k_rule: K-REMOTE-01
     b_rules: {high: B-REMOTE-REQ-01, medium: B-REMOTE-CTX-01}
     c_rules: {confirm: C-INTENT-REMOTE-01, solo: C-INTENT-REMOTE-SOLO}

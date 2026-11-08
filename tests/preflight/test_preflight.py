@@ -1,19 +1,15 @@
 """scripts/preflight check logic with fakes: no network, no Twilio, no model."""
-import importlib.util
 import io
 import os
-import sys
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from app import asr, consent
 
-_spec = importlib.util.spec_from_file_location(
-    "preflight_checks", Path(__file__).resolve().parents[2] / "scripts" / "preflight_checks.py")
-pf = sys.modules["preflight_checks"] = importlib.util.module_from_spec(_spec)  # dataclass needs it registered
-_spec.loader.exec_module(pf)
+from conftest import load_script
+
+pf = load_script("preflight_checks")
 
 SID, TOKEN = "AC" + "0123456789abcdef" * 2, "tok-secret-123"
 ENV = {"TWILIO_ACCOUNT_SID": SID, "TWILIO_AUTH_TOKEN": TOKEN, "TWILIO_FROM": "+15550001111",
@@ -115,16 +111,15 @@ def test_model_pass_notes_cached_source(monkeypatch):
     assert r.status == "PASS" and "cached transcripts" in r.detail
 
 
-def test_app_missing_routes_fail_names_owner(monkeypatch):
+def test_app_missing_routes_fail(monkeypatch):
     monkeypatch.delenv("REPLAY_SOURCE", raising=False)
-    monkeypatch.setattr(pf, "DEMO_ROUTES", {"/health": "x", "/nope": "b-x #99"})
+    monkeypatch.setattr(pf, "DEMO_ROUTES", ("/health", "/nope"))
     r = pf.check_app()
-    assert r.status == "FAIL" and "/nope" in r.detail and "b-x #99" in r.fix
+    assert r.status == "FAIL" and "/nope" in r.detail and "/health" not in r.detail
 
 
-def test_app_pass_when_routes_present(monkeypatch):
+def test_app_pass_with_the_real_routes(monkeypatch):
     monkeypatch.delenv("REPLAY_SOURCE", raising=False)
-    monkeypatch.setattr(pf, "DEMO_ROUTES", {"/health": "x"})
     assert pf.check_app().status == "PASS"
 
 
@@ -135,7 +130,7 @@ def test_app_route_probe_finds_post_route_without_running_it(monkeypatch):
     router.add_api_route("/demo/run/{scenario_id}", lambda scenario_id: calls.append(scenario_id), methods=["POST"])
     real = main.discover_routers
     monkeypatch.setattr(main, "discover_routers", lambda: real() + [router])
-    monkeypatch.setattr(pf, "DEMO_ROUTES", {"/health": "x", "/demo/run/{scenario_id}": "b-api #19"})
+    monkeypatch.setattr(pf, "DEMO_ROUTES", ("/health", "/demo/run/{scenario_id}"))
     monkeypatch.delenv("REPLAY_SOURCE", raising=False)
     assert pf.check_app().status == "PASS" and calls == []
 
@@ -198,28 +193,16 @@ def test_webhook_match(monkeypatch):
 
 # --- consent / sms -----------------------------------------------------------------------------
 
-@pytest.fixture(autouse=True)
-def _no_db(monkeypatch):
-    from app import storage
-    monkeypatch.setattr(storage, "init", lambda: None)  # never touch data/safesignal.db from tests
-
-
-def test_consent_stub_fails_with_owner(monkeypatch):
-    monkeypatch.delattr(consent, "get_state", raising=False)
-    r = pf.check_consent(ENV)
-    assert r.status == "FAIL" and "#18" in r.fix
-
-
 def test_consent_not_active_masks_phone(monkeypatch):
     states = {ENV["DEMO_PHONE"]: "active", ENV["SPARE_PHONE"]: "stopped"}
-    monkeypatch.setattr(consent, "get_state", states.get, raising=False)
+    monkeypatch.setattr(consent, "get_state", states.get)
     r = pf.check_consent(ENV)
     assert r.status == "FAIL" and "SPARE_PHONE +1******9876 is stopped" in r.detail
     assert ENV["SPARE_PHONE"] not in r.detail
 
 
 def test_consent_both_active(monkeypatch):
-    monkeypatch.setattr(consent, "get_state", lambda phone: "active", raising=False)
+    monkeypatch.setattr(consent, "get_state", lambda phone: "active")
     assert pf.check_consent(ENV).status == "PASS"
 
 

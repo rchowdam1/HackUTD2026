@@ -106,7 +106,7 @@ def test_refuses_arm_c_without_the_intent_model(scen_dir, tmp_path, monkeypatch)
 def test_intent_cache_cleared_per_scenario_and_c_failures_reported(scen_dir, tmp_path, monkeypatch):
     monkeypatch.setenv("INTENT_MODEL", "on")
     monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
-    monkeypatch.setattr(httpx, "post", lambda *a, **k: (_ for _ in ()).throw(httpx.ConnectTimeout("down")))
+    monkeypatch.setattr(intent, "_post", lambda body: (_ for _ in ()).throw(httpx.ConnectTimeout("down")))
     seen = []
 
     def decide(segments, arm, policy_version):
@@ -132,4 +132,3 @@ def test_report_header_states_revision_arms_and_policy(scen_dir, tmp_path, monke
 def test_revision_tolerates_missing_git(monkeypatch):
     monkeypatch.setattr(ev.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(FileNotFoundError("git")))
     assert ev.revision() == "unknown"
-    assert ev.revision.__module__ == "eval.run"

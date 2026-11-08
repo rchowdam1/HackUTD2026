@@ -26,11 +26,7 @@ SECRET_VARS = ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TYPESAFE_API_KEY", "C
                "SESSION_SECRET")
 PHONE_VARS = ("TWILIO_FROM", "DEMO_PHONE", "SPARE_PHONE")
 TWILIO_VARS = ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM")
-# Routes the live demo needs (PRD §19.4), with the task that adds them.
-DEMO_ROUTES = {
-    "/sms/inbound": "b-sms #17", "/login": "b-api #19",
-    "/events/stream": "b-api #19", "/demo/run/{scenario_id}": "b-api #19", "/demo/reset": "b-api #19",
-}
+DEMO_ROUTES = ("/sms/inbound", "/login", "/events/stream", "/demo/run/{scenario_id}", "/demo/reset")  # PRD §19.4
 DEMO_ALERTS = {"bank": ["ALERT-OTP-01"], "clinic": []}  # expected decisions per cached demo replay
 MODEL_DOWNLOAD = ("env -u PYTHONPATH -u VIRTUAL_ENV uv run python -c \"from faster_whisper import WhisperModel; "
                   "WhisperModel('small.en', device='cpu', compute_type='int8')\"  (once, online)")
@@ -96,19 +92,13 @@ def check_model() -> Result:
     detail = f"faster-whisper {asr.MODEL_NAME} loaded offline in {time.monotonic() - t0:.1f}s"
     if asr.default_source() != "asr":
         return Result("PASS", "model", detail + "; note: REPLAY_SOURCE is not asr, demo replays use cached transcripts")
-    no_audio = [sid for sid in DEMO_ALERTS if not _has_audio(ingest, sid)]
+    no_audio = [sid for sid in DEMO_ALERTS if ingest.audio_turns(sid) is None]
     note = f"; note: no audio for {', '.join(no_audio)}, those replay cached" if no_audio else ", demo audio present"
     return Result("PASS", "model", detail + note)
 
 
-def _has_audio(ingest, scenario_id: str) -> bool:
-    from app.models import Scenario
-    s = Scenario.model_validate_json((ingest.DEMO_DIR / f"{scenario_id}.json").read_text())
-    return all(t.audio and (ingest.AUDIO_DIR / t.audio).is_file() for t in s.turns)
-
-
 def check_app() -> Result:
-    """App starts (lifespan: storage.init + ASR preload) with HF offline, /health ok, demo routes mounted."""
+    """App starts (lifespan: ASR preload) with HF offline, /health ok, demo routes mounted."""
     from fastapi.testclient import TestClient
     from app.main import create_app
     with TestClient(create_app()) as client:
@@ -120,9 +110,8 @@ def check_app() -> Result:
         return Result("FAIL", "app-offline", f"/health returned {r.status_code} {r.text[:80]}",
                       "run `make run` and read the startup traceback")
     if absent:
-        owners = sorted({DEMO_ROUTES[p] for p in absent})
         return Result("FAIL", "app-offline", f"app starts offline but routes are missing: {', '.join(absent)}",
-                      f"needs {', '.join(owners)} merged to main")
+                      "a router module failed to define `router`; see app.main.discover_routers")
     return Result("PASS", "app-offline", "app starts offline, /health ok, demo routes mounted")
 
 
@@ -187,16 +176,22 @@ def twilio_client(env: dict):
     return Client(env["TWILIO_ACCOUNT_SID"], env["TWILIO_AUTH_TOKEN"])
 
 
+def twilio_number(env: dict):
+    """The account's TWILIO_FROM number resource, or None if the account doesn't own it."""
+    numbers = twilio_client(env).incoming_phone_numbers.list(phone_number=env["TWILIO_FROM"], limit=1)
+    return numbers[0] if numbers else None
+
+
 def check_webhook(env: dict) -> Result:
     need = missing(env, TWILIO_VARS + ("PUBLIC_BASE_URL",))
     if need:
         return Result("FAIL", "webhook", f"not set: {', '.join(need)}", f"fill {', '.join(need)} in .env")
     want = env["PUBLIC_BASE_URL"].strip().rstrip("/") + "/sms/inbound"
-    numbers = twilio_client(env).incoming_phone_numbers.list(phone_number=env["TWILIO_FROM"], limit=1)
-    if not numbers:
+    number = twilio_number(env)
+    if number is None:
         return Result("FAIL", "webhook", "TWILIO_FROM is not a phone number on this Twilio account",
                       "set TWILIO_FROM to the account's number (E.164)")
-    url, method = numbers[0].sms_url or "", (numbers[0].sms_method or "").upper()
+    url, method = number.sms_url or "", (number.sms_method or "").upper()
     if url != want or method != "POST":
         return Result("FAIL", "webhook", f"Twilio number's messaging webhook is {method} {url or '(empty)'}, "
                       f"expected POST {want}",
@@ -209,11 +204,7 @@ def check_consent(env: dict) -> Result:
     need = missing(env, ("DEMO_PHONE", "SPARE_PHONE"))
     if need:
         return Result("FAIL", "consent", f"not set: {', '.join(need)}", f"fill {', '.join(need)} in .env (E.164)")
-    from app import consent, storage
-    if not hasattr(consent, "get_state"):
-        return Result("FAIL", "consent", "app.consent has no get_state() yet (skeleton stub)",
-                      "needs b-consent-storage, issue #18")
-    storage.init()
+    from app import consent
     states = {var: consent.get_state(env[var]) for var in ("DEMO_PHONE", "SPARE_PHONE")}
     off = {var: s for var, s in states.items() if s != "active"}
     if off:

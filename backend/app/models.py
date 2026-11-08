@@ -157,3 +157,7 @@ class SmsGateway(Protocol):
         Must check consent first and refuse (raise) if not active.
         """
         ...
+
+    def deliver(self, template_id: str, to: str | None = None, session_ref: str | None = None) -> str:
+        """Send a template without the consent check (keyword replies, ENROLL); `to` None = DEMO_PHONE."""
+        ...

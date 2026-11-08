@@ -1,19 +1,16 @@
 """ASR: faster-whisper small.en, CPU int8, preloaded at startup (PRD §19.3).
 
-Env `REPLAY_SOURCE` picks the default replay source: `asr` (whisper on the demo
-WAVs) or `cached` (scenarios/demo/<id>/transcript.json). Default `cached`, so
+Env `REPLAY_SOURCE` picks the default replay source (app.ingest): `asr` (whisper on the
+demo WAVs) or `cached` (scenarios/demo/<id>/transcript.json). Default `cached`, so
 pytest and `make smoke` never load a model; the demo sets `REPLAY_SOURCE=asr`.
 """
 from __future__ import annotations
 
-import json
 import logging
 import os
 import threading
 from pathlib import Path
 from typing import Literal
-
-from app.models import TranscriptLine
 
 Source = Literal["asr", "cached"]
 MODEL_NAME = "small.en"
@@ -52,7 +49,3 @@ def transcribe(path: Path) -> tuple[list[tuple[float, float, str]], float]:
     segments, info = load_model().transcribe(str(path), beam_size=5)
     # `segments` is a lazy generator: the decoding happens here, on iteration.
     return [(s.start, s.end, s.text.strip()) for s in segments if s.text.strip()], info.duration
-
-
-def load_transcript(path: Path) -> list[TranscriptLine]:
-    return [TranscriptLine.model_validate(x) for x in json.loads(Path(path).read_text())]

@@ -19,14 +19,10 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from functools import lru_cache
-from pathlib import Path
 
-import yaml
-
-from app import intent
+from app import intent, policy
 from app.models import Arm, Decision, RiskEvent, Segment
-
-POLICY_DIR = Path(__file__).resolve().parents[3] / "policy"
+from app.policy import templates
 
 
 @dataclass(frozen=True)
@@ -62,9 +58,8 @@ def _any(patterns: list[str]) -> re.Pattern:
 
 @lru_cache
 def load_policy(policy_version: str) -> _Policy:
-    root = POLICY_DIR / policy_version
-    cfg = yaml.safe_load((root / "rules.yaml").read_text())
-    lexicon = yaml.safe_load((root / "lexicon.yaml").read_text())["categories"]
+    cfg = policy.load("rules", policy_version)
+    lexicon = policy.load("lexicon", policy_version)["categories"]
     frames = "|".join(f"(?:{f})" for f in cfg["frames"])
     direct = "|".join(f"(?:{f})" for f in cfg["direct_frames"])
     categories = []
@@ -225,18 +220,24 @@ def detect(segments: list[Segment], arm: Arm, policy_version: str) -> list[RiskE
     return list(first.values())
 
 
-def decide(segments: list[Segment], arm: Arm, policy_version: str) -> list[Decision]:
-    """One action_warning per category with evidence, in order of first evidence. [] = no alert."""
-    p = load_policy(policy_version)
+def evaluate(segments: list[Segment], arm: Arm, policy_version: str) -> tuple[list[RiskEvent], list[Decision]]:
+    """detect() and decide() from one detection pass."""
     keyword = detect(segments, "K", policy_version)
     events = keyword if arm == "K" else detect(segments, arm, policy_version)
+    cfg = {c.name: c.cfg for c in load_policy(policy_version).categories}
     by_category: dict[str, list[RiskEvent]] = {}
     for e in events:
         by_category.setdefault(e.category, []).append(e)
-    cfg = p.cfg["categories"]
-    return [Decision(session_ref=evs[0].session_ref, level="action_warning",
-                     template_id=cfg[cat]["alert"], followup_template_id=cfg[cat]["followup"],
-                     basis=[e.rule_id for e in evs if e.rule_id],
-                     keyword_arm_would_fire=any(k.category == cat for k in keyword),
-                     policy_version=policy_version)
-            for cat, evs in by_category.items()]
+    decisions = []
+    for cat, evs in by_category.items():
+        alert = cfg[cat]["alert"]
+        decisions.append(Decision(
+            session_ref=evs[0].session_ref, level="action_warning", template_id=alert,
+            followup_template_id=templates.followup_for(alert), basis=[e.rule_id for e in evs if e.rule_id],
+            keyword_arm_would_fire=any(k.category == cat for k in keyword), policy_version=policy_version))
+    return events, decisions
+
+
+def decide(segments: list[Segment], arm: Arm, policy_version: str) -> list[Decision]:
+    """One action_warning per category with evidence, in order of first evidence. [] = no alert."""
+    return evaluate(segments, arm, policy_version)[1]

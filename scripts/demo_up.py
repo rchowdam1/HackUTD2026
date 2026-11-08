@@ -19,7 +19,7 @@ import threading
 import time
 import urllib.request
 
-from preflight_checks import REPO_ROOT, TWILIO_VARS, load_env, missing
+from preflight_checks import REPO_ROOT, TWILIO_VARS, load_env, missing, twilio_number
 
 PORT = 8000
 ENV_FILE = REPO_ROOT / ".env"
@@ -85,12 +85,10 @@ def point_webhook(base: str) -> None:
     if need:
         print(f"demo_up: Twilio webhook not set ({', '.join(need)} unset); simulated SMS only", flush=True)
         return
-    from twilio.rest import Client
-    client = Client(os.environ["TWILIO_ACCOUNT_SID"], os.environ["TWILIO_AUTH_TOKEN"])
-    numbers = client.incoming_phone_numbers.list(phone_number=os.environ["TWILIO_FROM"], limit=1)
-    if not numbers:
+    number = twilio_number(dict(os.environ))
+    if number is None:
         sys.exit("TWILIO_FROM is not a phone number on this Twilio account")
-    numbers[0].update(sms_url=f"{base}/sms/inbound", sms_method="POST")
+    number.update(sms_url=f"{base}/sms/inbound", sms_method="POST")
     print(f"demo_up: Twilio SMS webhook = POST {base}/sms/inbound", flush=True)
 
 

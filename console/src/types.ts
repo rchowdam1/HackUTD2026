@@ -35,6 +35,8 @@ export interface Decision {
 
 export type SmsMode = "real" | "simulated";
 
+export type ConsentState = "invited" | "active" | "stopped";
+
 export interface SessionPayload {
   state: "running" | "finished" | "reset";
   arm: "K" | "B" | "C" | null;
@@ -60,7 +62,7 @@ export type Event =
   | { event_id: string; session_ref: string | null; type: "decision"; payload: Decision }
   | { event_id: string; session_ref: string | null; type: "sms"; payload: SmsPayload }
   | { event_id: string; session_ref: string | null; type: "reply"; payload: ReplyPayload }
-  | { event_id: string; session_ref: string | null; type: "consent"; payload: { state: "invited" | "active" | "stopped" } };
+  | { event_id: string; session_ref: string | null; type: "consent"; payload: { state: ConsentState } };
 
 export interface ArmCounts {
   TP: number;

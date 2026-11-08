@@ -39,6 +39,5 @@ def state() -> dict:
         consent_state = consent.get_state()
     except RuntimeError:  # CONSENT_SALT unset
         consent_state = None
-    wrong = sum(r["count"] for r in storage.aggregates()["replies"] if r["keyword"] == "WRONG")
-    return {"sms_mode": sms.get_mode(), "wrong_count": wrong, "consent": consent_state,
+    return {"sms_mode": sms.get_mode(), "wrong_count": storage.reply_total("WRONG"), "consent": consent_state,
             "events": [e.model_dump(mode="json") for e in hub.history]}

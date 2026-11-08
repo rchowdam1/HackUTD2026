@@ -25,34 +25,31 @@ logging.getLogger("twilio.http_client").setLevel(logging.WARNING)
 STOP_WORDS = {"STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT", "STOP PLEASE", "PLEASE STOP"}
 
 _mode: SmsMode = "simulated"
-# Latest alert each recipient was actually sent: recipient (consent._phone) -> (session_ref, ALERT template_id).
+# Latest alert each recipient was actually sent: number -> (session_ref, ALERT template_id).
 # Recorded only after the gateway accepted the alert, so replies never attach to a failed alert.
 _last_alerts: dict[str | None, tuple[str, str]] = {}
 _sent: dict[str, tuple[str, str | None]] = {}  # message id -> (template_id, session_ref), for status callbacks
 
 
-def _check(template_id: str) -> None:
-    if not consent.is_active():
-        raise RuntimeError("consent not active")
-    templates.get(template_id)  # unknown id -> KeyError before anything is sent
+class _Gateway:
+    def send(self, template_id: str, session_ref: str) -> str:
+        """Consent-checked send to DEMO_PHONE (the pipeline's path); a sent alert is what replies count against."""
+        if not consent.is_active():
+            raise RuntimeError("consent not active")
+        message_id = self.deliver(template_id, session_ref=session_ref)
+        if templates.is_alert(template_id):
+            _last_alerts[consent.number(None)] = (session_ref, template_id)
+        return message_id
+
+    def deliver(self, template_id: str, to: str | None = None, session_ref: str | None = None) -> str:
+        raise NotImplementedError
 
 
-def _track(template_id: str, session_ref: str) -> None:
-    if template_id.startswith("ALERT-"):
-        _last_alerts[consent._phone(None)] = (session_ref, template_id)  # alerts go to DEMO_PHONE
-
-
-class SimulatedGateway:
+class SimulatedGateway(_Gateway):
     """Records messages for the console phone frame instead of sending them."""
 
     def __init__(self) -> None:
         self.outbox: list[dict] = []
-
-    def send(self, template_id: str, session_ref: str) -> str:
-        _check(template_id)
-        message_id = self.deliver(template_id, session_ref=session_ref)
-        _track(template_id, session_ref)
-        return message_id
 
     def deliver(self, template_id: str, to: str | None = None, session_ref: str | None = None) -> str:
         message_id = f"SIM{uuid.uuid4().hex[:12]}"
@@ -61,30 +58,29 @@ class SimulatedGateway:
         return message_id
 
 
-class TwilioGateway:
+class TwilioGateway(_Gateway):
     """Programmable Messaging. Status callbacks go to PUBLIC_BASE_URL/sms/status."""
 
     def __init__(self) -> None:
         self.client = Client(os.environ["TWILIO_ACCOUNT_SID"], os.environ["TWILIO_AUTH_TOKEN"])
         self.from_ = os.environ["TWILIO_FROM"]
 
-    def send(self, template_id: str, session_ref: str) -> str:
-        _check(template_id)
-        message_id = self.deliver(template_id, session_ref=session_ref)
-        _track(template_id, session_ref)
-        return message_id
-
     def deliver(self, template_id: str, to: str | None = None, session_ref: str | None = None) -> str:
-        to = to or os.environ["DEMO_PHONE"]
-        base = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
+        base = public_base_url()
         extra = {"status_callback": f"{base}/sms/status"} if base else {}
-        message = self.client.messages.create(to=to, from_=self.from_, body=templates.get(template_id), **extra)
+        message = self.client.messages.create(to=consent.number(to), from_=self.from_,
+                                              body=templates.get(template_id), **extra)
         _sent[message.sid] = (template_id, session_ref)
         return message.sid
 
 
-_simulated = SimulatedGateway()
+simulated = SimulatedGateway()
 _twilio: TwilioGateway | None = None
+
+
+def public_base_url() -> str:
+    """The https URL Twilio reaches us at (the tunnel); webhook signatures are computed over it."""
+    return os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
 
 
 def set_mode(mode: SmsMode) -> None:
@@ -99,7 +95,7 @@ def get_mode() -> SmsMode:
 def get_gateway() -> SmsGateway:
     global _twilio
     if _mode == "simulated":
-        return _simulated
+        return simulated
     if _twilio is None:
         _twilio = TwilioGateway()
     return _twilio
@@ -114,7 +110,7 @@ async def _reply(template_id: str, to: str | None, session_ref: str | None) -> N
     gateway = get_gateway()
     try:
         message_id = await asyncio.to_thread(gateway.deliver, template_id, to, session_ref)
-        status = "delivered" if gateway is _simulated else "queued"
+        status = "delivered" if gateway is simulated else "queued"
     except Exception:
         log.exception("sms reply failed template=%s", template_id)
         message_id, status = "", "failed"
@@ -129,7 +125,7 @@ async def handle_inbound(message_sid: str, body: str, phone: str | None = None) 
     if storage.inbound_seen(message_sid):
         return None
     word = normalise(body)
-    alert = _last_alerts.get(consent._phone(phone))
+    alert = _last_alerts.get(consent.number(phone))
     session_ref = alert[0] if alert else None
 
     if word in STOP_WORDS:
@@ -149,8 +145,7 @@ async def handle_inbound(message_sid: str, body: str, phone: str | None = None) 
     if counted:
         storage.incr_reply(keyword, alert[1])
     storage.mark_inbound_seen(message_sid)
-    wrong_count = sum(r["count"] for r in storage.aggregates()["replies"] if r["keyword"] == "WRONG")
-    payload = ReplyPayload(keyword=keyword, counted=counted, wrong_count=wrong_count)
+    payload = ReplyPayload(keyword=keyword, counted=counted, wrong_count=storage.reply_total("WRONG"))
     log.info("sms reply keyword=%s counted=%s", keyword, counted)
     emit("reply", payload, session_ref)
 
