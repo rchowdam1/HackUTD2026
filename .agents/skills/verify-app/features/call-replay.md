@@ -30,7 +30,7 @@ Preconditions:
 ## Gotchas
 
 - Every journey starts from `ctx.api_reset()`, which also sets SMS mode to simulated: reset never changes the mode, and a leftover real mode would hide the phone frame.
-- Replays are paced for the console's word-by-word typing (`WORD_MS` per word plus `TURN_GAP_MS` per line in `backend/app/ingest`): clinic ≈5.5 s, bank ≈8 s, grandson ≈11 s. Wait for the `session finished` event, not a sleep.
+- Cached replays with turn audio are paced by it (each line is due at its `t_start_ms`): clinic ≈15 s, bank ≈22 s, grandson ≈29 s. Wait for the `session finished` event, not a sleep.
 - Open the console before clicking Run: the reducer clears on `session running`, so a page loaded mid-call shows a partial transcript.
 - Markers come from `sms` events (a failed one reads `not delivered`), placed after the transcript line that was last when the event arrived; they are console-only, there is no marker event.
 - The follow-up is only sent if consent is still active when the call finishes; a STOP during the call suppresses it by design.

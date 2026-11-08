@@ -152,6 +152,11 @@ def transcript_lines(ctx: Context, scenario: str) -> list[dict]:
     return json.loads((ctx.sandbox / "scenarios/demo" / scenario / "transcript.json").read_text())
 
 
+def replay_end_s(ctx: Context, scenario: str) -> float:
+    """When a cached replay's last line ends: replays with turn audio are paced by it (not by WORD_MS)."""
+    return max(line["t_end_ms"] for line in transcript_lines(ctx, scenario)) / 1000
+
+
 def events_for(ctx: Context, since: int, ref: str, type_: str | None = None) -> list[dict]:
     return [e for e in ctx.tap.since(since) if e.get("session_ref") == ref and (type_ is None or e["type"] == type_)]
 
@@ -575,8 +580,9 @@ def controls_end_call(ctx: Context):
     click(ctx, page, "End call")
     fin = ctx.wait_event(lambda e: e["session_ref"] == ref and e["type"] == "session" and e["payload"]["state"] == "finished",
                          mark, 10, "session finished after End call")
-    ctx.action("wait past the replay's natural end (≈8 s) for late events")
-    time.sleep(max(0.0, 10 - (time.monotonic() - t0)))
+    end_s = replay_end_s(ctx, "bank")
+    ctx.action(f"wait past the replay's natural end (≈{end_s:.0f} s, paced by its audio) for late events")
+    time.sleep(max(0.0, end_s + 2 - (time.monotonic() - t0)))
     evs = events_for(ctx, mark, ref)
     after = evs[evs.index(fin) + 1:]
     ctx.expect(not after, "no events for the call after it finished", after)
@@ -604,8 +610,9 @@ def controls_reset(ctx: Context):
     rst = ctx.wait_event(lambda e: e["type"] == "session" and e["payload"]["state"] == "reset", mark, 10, "reset event")
     ui_assert(ctx, "status 'reset'", lambda: pw_expect()(page.get_by_role("banner")).to_contain_text("reset"))
     ui_assert(ctx, "transcript cleared", lambda: pw_expect()(card(page, "^Live transcript")).to_contain_text("No call yet."))
-    ctx.action("wait past where the alert would have fired (seq 4 ≈5.3 s) and the replay end (≈8 s)")
-    time.sleep(max(0.0, 10 - (time.monotonic() - t0)))
+    end_s = replay_end_s(ctx, "bank")
+    ctx.action(f"wait past where the alert would have fired (seq 4) and the replay end (≈{end_s:.0f} s, paced by its audio)")
+    time.sleep(max(0.0, end_s + 2 - (time.monotonic() - t0)))
     tail = ctx.tap.since(mark)
     late = [e for e in tail[tail.index(rst) + 1:] if e.get("session_ref") == ref]
     ctx.expect(not late, "no late events from the reset call (generation invariant)", late)

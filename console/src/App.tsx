@@ -581,7 +581,7 @@ function Transcript({ state, live, transcribing }: { state: State; live: Map<str
         {state.session?.source === "phone" && <span className="meta">Phone call</span>}
       </h2>
       {state.segments.length === 0 && <p className="empty">No call yet.</p>}
-      <ol ref={end}>
+      <ol ref={end} tabIndex={0} aria-label="Transcript lines">
         {state.segments.map((s) => {
           const category = flaggedAt.get(s.seq);
           const flagged = category !== undefined;
@@ -607,7 +607,7 @@ function Transcript({ state, live, transcribing }: { state: State; live: Map<str
           );
         })}
       </ol>
-      {transcribing && <p className="empty">Transcribing…</p>}
+      {transcribing && <p className="empty">Transcribing...</p>}
     </section>
   );
 }
@@ -621,7 +621,7 @@ function TypedText({ text, wordMs }: { text: string; wordMs: number | undefined 
   const shown = wordMs ? Math.min(all.length, Math.floor((Date.now() - start) / wordMs)) : all.length;
   useEffect(() => {
     if (!wordMs || shown >= all.length) return;
-    const t = setTimeout(() => tick((n) => n + 1), wordMs);
+    const t = setTimeout(() => tick((n) => n + 1), Math.max(0, (shown + 1) * wordMs - (Date.now() - start))); // next word boundary
     return () => clearTimeout(t);
   });
   if (shown >= all.length) return <>{text}</>;
@@ -634,7 +634,7 @@ function WhyPanel({ state, arrived }: { state: State; arrived: Map<string, numbe
   const told = useTemplateText(sms && alert ? alert.template_id : null);
   if (!alert) {
     return (
-      <section className="card why" aria-labelledby="why-label">
+      <section className="card why" aria-labelledby="why-label" tabIndex={0}>
         <h2 className="label" id="why-label">
           <span>Why this alert</span>
         </h2>
@@ -653,7 +653,7 @@ function WhyPanel({ state, arrived }: { state: State; arrived: Map<string, numbe
   const speedMs = out?.latency_ms ?? (lineAt && smsAt ? Math.max(0, smsAt - lineAt) : null);
   const replay = state.session?.source?.startsWith("replay:") ?? true;
   return (
-    <section className="card why alert" aria-labelledby="why-label">
+    <section className="card why alert" aria-labelledby="why-label" tabIndex={0}>
       <h2 className="label" id="why-label">
         <span>Why this alert</span>
       </h2>
@@ -753,7 +753,7 @@ function Phone({ bubbles, simulated, off }: { bubbles: Bubble[]; simulated: bool
       </h2>
       {blocked && <p className="note">Real texts are blocked by carriers until our number's registration clears; this frame shows what was sent.</p>}
       <div className="frame">
-        <div className="screen">
+        <div className="screen" tabIndex={0} role="log" aria-label="Texts on the phone">
           {off ? <p className="empty">Call monitoring is off.</p> : bubbles.length === 0 && <p className="empty">No texts yet.</p>}
           <ol className="thread" ref={thread}>
             {bubbles.map((b) =>
@@ -888,7 +888,9 @@ function tickerItems(s: State): TickerItem[] {
   const sms = (afterSeq: number) =>
     s.bubbles.flatMap((b): TickerItem[] => {
       if (b.kind !== "out" || b.afterSeq !== afterSeq) return [];
-      const latency = b.sms.latency_ms == null ? "" : ` · ${(b.sms.latency_ms / 1000).toFixed(2)} s after turn end`;
+      // A replay line is timed from when it came in (its audio starts then); a live turn from when it ended.
+      const after = s.session?.source?.startsWith("replay:") ? "after the line came in" : "after the turn ended";
+      const latency = b.sms.latency_ms == null ? "" : ` · ${(b.sms.latency_ms / 1000).toFixed(2)} s ${after}`;
       const tag = b.sms.template_id.startsWith("ALERT-") ? "alert" : "sms";
       return [{ key: `sms-${b.sms.message_id || b.sms.template_id}`, tag, text: `${templateWords(b.sms.template_id)} · ${statusWords(b.sms)}${latency}` }];
     });
@@ -913,7 +915,7 @@ function Ticker({ state }: { state: State }) {
     </ul>
   );
   return (
-    <section className="ticker" aria-label="Pipeline log">
+    <section className="ticker" aria-label="Pipeline log" tabIndex={0}>
       {items.length === 0 ? (
         <p className="ticker-empty">Each turn's verdict and every text appear here during a call.</p>
       ) : (
