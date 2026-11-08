@@ -104,8 +104,12 @@ def test_request_shape_auth_timeout_and_cache(jev):
                           {"speaker": "caller", "text": "It's your nephew."},
                           {"speaker": "listener", "text": "Oh!"}],
         "caller_turn": "I'm in a bit of trouble."}
-    assert set(body["questions"]) == {"otp", "payment", "remote", "warning", "reported", "self_service"}
-    assert all(q["type"] == "noul" and "`caller_turn`" in q["instructions"] for q in body["questions"].values())
+    assert body["questions"] == intent.QUESTIONS  # every question for the turn in ONE request
+    asked = set(intent.QUESTIONS)
+    assert {q for qs in intent.REQUESTS.values() for q in qs} | {g for gs in intent.GUARDS.values() for g in gs} \
+        | {"pressure"} == asked  # and the decision table reads every one of them
+    assert all(q["type"] == "noul" and q["instructions"].startswith("The caller phoned the listener.")
+               for q in body["questions"].values())
 
 
 def test_payload_logged_only_in_debug_and_never_the_key(jev, caplog):
@@ -122,17 +126,33 @@ def test_payload_logged_only_in_debug_and_never_the_key(jev, caplog):
 # --- decision table -----------------------------------------------------------
 
 @pytest.mark.parametrize("category, nouls, lexicon_seen, expected", [
-    ("otp", {"otp": 0.95}, False, "solo"),
-    ("otp", {"otp": 0.95}, True, "confirm"),
-    ("otp", {"otp": 0.8}, True, None),  # not confident enough, lexicon or not
-    ("otp", {"otp": 0.95, "warning": 0.6}, True, None),  # a raised guard blocks it
-    ("otp", {"otp": 0.95, "reported": 0.6}, False, None),
-    ("payment", {"payment": 0.95, "self_service": 0.9}, False, "solo"),  # "buy the cards yourself" is a scam
-    ("remote", {"remote": 0.95, "self_service": 0.9}, True, None),  # "update it yourself" is not
-    ("remote", {"remote": 0.95, "otp": 0.99}, False, "solo"),  # categories are judged separately
+    ("otp", {"otp": 0.8}, False, "solo"),  # a likely request, no guard raised
+    ("otp", {"otp_code": 0.8}, True, "confirm"),  # any of the category's request Nouls (OR)
+    ("otp", {"otp": 0.6}, True, None),  # not likely enough, lexicon or not
+    ("otp", {"otp": 0.9, "warning": 0.4}, True, None),  # a raised guard blocks a likely request
+    ("otp", {"otp": 0.9, "reported": 0.4}, False, None),
+    ("otp", {"otp": 0.98, "warning": 0.9}, False, "solo"),  # ... but not a near-certain one
+    ("otp", {"otp": 0.9, "reported": 0.6, "pressure": 0.8}, False, "solo"),  # pressure overrules guards
+    ("otp", {"otp": 0.8, "reported": 0.6, "pressure": 0.8}, False, None),  # ... only for a sure request
+    ("payment", {"pay_send": 0.9, "self_service": 0.9}, False, "solo"),  # "buy the cards yourself" is a scam
+    ("payment", {"payment": 0.9, "known_payee": 0.6}, True, None),  # "pay the plumber when he's done"
+    ("remote", {"rem_install": 0.9, "self_service": 0.9}, True, None),  # "update it yourself" is not
+    ("remote", {"remote": 0.9, "known_payee": 0.9}, False, "solo"),  # guards are per category
+    ("remote", {"remote": 0.2, "otp": 0.99}, False, None),  # categories are judged separately
 ])
 def test_judge(category, nouls, lexicon_seen, expected):
     assert intent.judge({**NO, **nouls}, category, lexicon_seen) == expected
+
+
+@pytest.mark.parametrize("nouls, expected", [
+    ({"otp": 0.5, "warning": 0.9}, "veto"),  # the rules read a warning as a request
+    ({"otp": 0.9, "done": 0.5}, "veto"),
+    ({"otp": 0.98, "warning": 0.9}, None),  # a near-certain request: the rules stand
+    ({"otp": 0.9, "reported": 0.5, "pressure": 0.9}, None),  # a pressed request: the rules stand
+    ({"otp": 0.1}, None),  # no guard raised: the rules stand even if Jev sees no request
+])
+def test_judge_veto_of_rule_requests(nouls, expected):
+    assert intent.judge({**NO, **nouls}, "otp", True, rule_fired=True) == expected
 
 
 # --- arm C through app.rules ----------------------------------------------------
@@ -159,18 +179,27 @@ def test_confirmation_needs_the_lexicon(jev):
 
 
 def test_guards_block_model_detections(jev):
-    jev(lambda turn: {"otp": 0.97, "warning": 0.95})
+    jev(lambda turn: {"otp": 0.9, "warning": 0.95})
     assert rules_of(call("We'd never want that from you, remember.")) == []
 
 
-def test_b_rules_are_never_vetoed_and_fired_categories_not_asked(jev):
-    sent = jev(lambda turn: {"otp": 0.01})
-    assert rules_of(call("Read me the code now.")) == ["B-OTP-REQ-01"]
-    assert len(sent) == 1  # still asked once, for the other categories
-    sent.clear()
-    assert rules_of(call("Read me the code, then send the gift cards, then install AnyDesk.")) == [
-        "B-OTP-REQ-01", "B-PAY-REQ-01", "B-REMOTE-REQ-01"]
-    assert sent == []  # every category already fired: no call
+def test_guards_veto_b_requests_on_their_turn_only(jev):
+    jev(lambda turn: {"otp": 0.01})
+    assert rules_of(call("Read me the code now.")) == ["B-OTP-REQ-01"]  # no guard raised: B stands
+    # "Do it yourself" reads to the rules as a request to install; Jev's guard vetoes it.
+    jev(lambda turn: {"rem_install": 0.9, "self_service": 0.9} if "yourself" in turn else {})
+    diy = "You can install the new captions update yourself, no remote session needed."
+    assert rules_of(call(diy), "B") == ["B-REMOTE-REQ-01"]
+    assert rules_of(call(diy)) == []
+    # The veto is for that turn only: a later request still fires.
+    assert rules_of(call(diy, "Now install AnyDesk.")) == ["B-REMOTE-REQ-01"]
+
+
+def test_categories_with_evidence_are_not_asked_again(jev):
+    sent = jev(lambda turn: {})
+    assert rules_of(call("Read me the code, then send the gift cards, then install AnyDesk.",
+                         "Thanks.")) == ["B-OTP-REQ-01", "B-PAY-REQ-01", "B-REMOTE-REQ-01"]
+    assert len(sent) == 1  # asked on the first turn (to check for a veto), not after every category fired
 
 
 def test_only_caller_turns_are_sent(jev):

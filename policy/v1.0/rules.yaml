@@ -6,9 +6,10 @@
 #   card"), not negated, hedged or reported, whose object is a lexicon term in the
 #   same turn (high) or, if the clause only has a pronoun ("read it to me", "what
 #   does it say"), in the previous `context_turns` turns of any speaker (medium).
-# Arm C: B, plus the intent model (app.intent) on caller turns. The model confirms a
-#   category the lexicon saw (C-INTENT-*-01) or, above a stricter bar, detects alone
-#   (C-INTENT-*-SOLO). See backend/app/intent for the questions and thresholds.
+# Arm C: B, plus the intent model (app.intent) on caller turns. Its guards can veto a
+#   turn's B request; it adds a request in a category the lexicon saw (C-INTENT-*-01)
+#   or one the lexicon missed (model-only, C-INTENT-*-SOLO). See backend/app/intent for
+#   the questions and thresholds.
 version: v1.0
 context_turns: 3
 negation_max_gap_words: 3
