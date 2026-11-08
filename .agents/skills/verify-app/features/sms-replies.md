@@ -1,6 +1,6 @@
 # SMS replies
 
-The subscriber answers texts with keywords. In simulated mode the console's phone frame has YES / WRONG / SHARED / STOP buttons that go through the same inbound handler as the Photon bridge. YES opts in, STOP opts out (and stops alerts), WRONG is counted against the latest alert and ticks the console's WRONG counter, SHARED gets category-specific advice, anything else gets HELP. Keywords are trimmed, de-punctuated and case-insensitive.
+The subscriber answers texts with keywords. In simulated mode the console's phone frame has YES / WRONG / SHARED / STOP buttons that go through the same inbound handler as Twilio. YES opts in, STOP opts out (and stops alerts), WRONG is counted against the latest alert and ticks the console's WRONG counter, SHARED gets category-specific advice, anything else gets HELP. Keywords are trimmed, de-punctuated and case-insensitive.
 
 ## Sub-features
 
@@ -14,7 +14,7 @@ The subscriber answers texts with keywords. In simulated mode the console's phon
 
 - Phone frame buttons `YES`, `WRONG`, `SHARED`, `STOP` (visible only in simulated SMS mode).
 - `POST /sms/simulate-inbound {"body": "..."}` (cookie required), the endpoint the buttons call.
-- A real phone texting the Photon line (see `bridge-inbound.md`; real phone is external).
+- A real phone texting the Twilio number (see `twilio-webhooks.md`; real phone is external).
 
 ## Driving it with verify.py
 
@@ -35,5 +35,5 @@ Preconditions:
 - Reset never clears `_last_alerts`, consent or counts; replies after a reset still attach to the last alert.
 - The phone frame bubble list is cleared on each `session running`/`reset`; assert texts after the action, not history.
 - Consent events are only emitted on a change; YES while already active emits a `reply` but no `consent` event.
-- Photon does no STOP handling, so the app answers STOP with R-STOP in both modes.
+- In real mode a STOP gets no R-STOP from us (Twilio answers); only the simulated phone shows R-STOP.
 - Every keyword (not just WRONG) is counted in `reply_counts` once an alert exists; SHARED before any alert becomes HELP. START behaves like YES.

@@ -12,7 +12,7 @@ import os
 import re
 import uuid
 
-import httpx
+from twilio.rest import Client
 
 from app import consent, storage
 from app.events import emit
@@ -20,7 +20,7 @@ from app.models import ReplyPayload, SmsGateway, SmsMode, SmsPayload
 from app.policy import templates
 
 log = logging.getLogger(__name__)
-logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("twilio.http_client").setLevel(logging.WARNING)
 
 STOP_WORDS = {"STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT", "STOP PLEASE", "PLEASE STOP"}
 
@@ -28,6 +28,7 @@ _mode: SmsMode = "simulated"
 # Latest alert each recipient was actually sent: recipient (consent._phone) -> (session_ref, ALERT template_id).
 # Recorded only after the gateway accepted the alert, so replies never attach to a failed alert.
 _last_alerts: dict[str | None, tuple[str, str]] = {}
+_sent: dict[str, tuple[str, str | None]] = {}  # Twilio MessageSid -> (template_id, session_ref), for status callbacks
 
 
 def _check(template_id: str) -> None:
@@ -59,15 +60,12 @@ class SimulatedGateway:
         return message_id
 
 
-class PhotonGateway:
-    """iMessage through Photon Spectrum, via the local Bun bridge in hackutd/ (docs/photon-live.md).
-
-    Spectrum has no HTTP send API, so the bridge owns the SDK; inbound texts come back on /sms/inbound.
-    """
+class TwilioGateway:
+    """Programmable Messaging. Status callbacks go to PUBLIC_BASE_URL/sms/status."""
 
     def __init__(self) -> None:
-        self.http = httpx.Client(base_url=os.environ.get("PHOTON_BRIDGE_URL") or "http://127.0.0.1:8787",
-                                 headers={"x-bridge-token": os.environ["PHOTON_BRIDGE_TOKEN"]}, timeout=30)
+        self.client = Client(os.environ["TWILIO_ACCOUNT_SID"], os.environ["TWILIO_AUTH_TOKEN"])
+        self.from_ = os.environ["TWILIO_FROM"]
 
     def send(self, template_id: str, session_ref: str) -> str:
         _check(template_id)
@@ -76,13 +74,16 @@ class PhotonGateway:
         return message_id
 
     def deliver(self, template_id: str, to: str | None = None, session_ref: str | None = None) -> str:
-        response = self.http.post("/send", json={"to": to or os.environ["DEMO_PHONE"], "text": templates.get(template_id)})
-        response.raise_for_status()
-        return response.json()["id"]
+        to = to or os.environ["DEMO_PHONE"]
+        base = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
+        extra = {"status_callback": f"{base}/sms/status"} if base else {}
+        message = self.client.messages.create(to=to, from_=self.from_, body=templates.get(template_id), **extra)
+        _sent[message.sid] = (template_id, session_ref)
+        return message.sid
 
 
 _simulated = SimulatedGateway()
-_photon: PhotonGateway | None = None
+_twilio: TwilioGateway | None = None
 
 
 def set_mode(mode: SmsMode) -> None:
@@ -95,12 +96,12 @@ def get_mode() -> SmsMode:
 
 
 def get_gateway() -> SmsGateway:
-    global _photon
+    global _twilio
     if _mode == "simulated":
         return _simulated
-    if _photon is None:
-        _photon = PhotonGateway()
-    return _photon
+    if _twilio is None:
+        _twilio = TwilioGateway()
+    return _twilio
 
 
 def normalise(body: str) -> str:
@@ -120,9 +121,9 @@ async def _reply(template_id: str, to: str | None, session_ref: str | None) -> N
 
 
 async def handle_inbound(message_sid: str, body: str, phone: str | None = None) -> ReplyPayload | None:
-    """One inbound text from an enrolled phone (bridge webhook) or the simulated buttons (phone=None:
-    DEMO_PHONE). Duplicate message ids are ignored. The id is recorded only after consent and counts
-    are stored, so a text whose processing failed (raised) is processed again when the bridge retries.
+    """One inbound text from an enrolled phone (Twilio webhook) or the simulated buttons (phone=None:
+    DEMO_PHONE). Duplicate MessageSids are ignored. The id is recorded only after consent and counts
+    are stored, so a text whose processing failed (raised) is processed again when Twilio retries.
     Everything up to the record runs without awaiting, so a concurrent duplicate can't interleave."""
     if storage.inbound_seen(message_sid):
         return None
@@ -152,9 +153,19 @@ async def handle_inbound(message_sid: str, body: str, phone: str | None = None) 
     log.info("sms reply keyword=%s counted=%s", keyword, counted)
     emit("reply", payload, session_ref)
 
-    # Photon does no STOP handling of its own, so we confirm R-STOP ourselves in both modes.
-    await _reply(template_id, phone, session_ref)
+    # After STOP, Twilio blocks sends and replies itself; only the simulated phone shows R-STOP.
+    if keyword != "STOP" or get_mode() == "simulated":
+        await _reply(template_id, phone, session_ref)
     return payload
+
+
+def handle_status(message_sid: str, status: str) -> None:
+    """Twilio status callback: emit sent/delivered/failed for a message we sent."""
+    mapped = {"sent": "sent", "delivered": "delivered", "failed": "failed", "undelivered": "failed"}.get(status)
+    if mapped is None or message_sid not in _sent:
+        return
+    template_id, session_ref = _sent[message_sid]
+    emit("sms", SmsPayload(message_id=message_sid, template_id=template_id, status=mapped), session_ref)
 
 
 async def invite(phone: str | None = None) -> str:
