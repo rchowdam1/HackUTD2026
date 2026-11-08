@@ -1,54 +1,41 @@
 # Photon live setup (#68, PRD §19.3, §19.7)
 
-Real mode sends through Photon's messaging API (`https://api.photon.codes/v1`, Bearer project API key).
-The channel is iMessage by default. `PHOTON_PLATFORM=sms` uses the same code path, but Photon SMS needs an
-approved US 10DLC campaign, which is the same thing that blocked Twilio. Nothing below has been run against a
-live Photon account yet. If a call fails, check it against `https://api.photon.codes/openapi.json`.
+Real mode sends iMessage through Photon **Spectrum** (Spectrum Cloud, `app.photon.codes`). Spectrum has no
+HTTP send API; only its TypeScript SDK can send. So `hackutd/` is a small Bun bridge that owns the SDK:
 
-## 1. Photon project (human)
-- In the Photon dashboard (Beta / 2.0 platform, not Spectrum), create a project and a project API key
-  (`pho_sk_...`). Fill `.env`: `PHOTON_API_KEY`, `PHOTON_PROJECT_ID` (`pho_prj_...`), `DEMO_PHONE`, `SPARE_PHONE`
-  (E.164), `CONSENT_SALT`, `OPERATOR_PASSWORD`, `SESSION_SECRET`.
-- Assign each phone to a shared iMessage line. A shared line only texts a phone that has an active
-  assignment and has messaged it since that assignment, so no unsolicited first text:
-  ```bash
-  H=(-H "Authorization: Bearer $PHOTON_API_KEY" -H "Content-Type: application/json")
-  API=https://api.photon.codes/v1/projects/$PHOTON_PROJECT_ID
-  curl "${H[@]}" -H "Idempotency-Key: assign-demo" -d "{\"handle\":\"$DEMO_PHONE\"}" $API/platforms/imessage/assignments
-  ```
-  Repeat with `SPARE_PHONE` and `Idempotency-Key: assign-spare`.
-- `PHOTON_SENDER_ID` is our line's agent user (`pho_usr_...`). Find it with
-  `curl "${H[@]}" "$API/users?platform=imessage"` and take the item whose `kind` is `agent`.
-- Create the webhook destination once. The URL is replaced on every `make demo-up`:
-  ```bash
-  curl "${H[@]}" -H "Idempotency-Key: safesignal-webhook" -d '{"name":"safe-signal","apiVersion":"2026-07-01",
-    "url":"https://example.com/sms/inbound",
-    "enabledEvents":["message.received","message.dispatched","message.delivered","message.failed"]}' \
-    https://api.photon.codes/v1/projects/$PHOTON_PROJECT_ID/webhooks/destinations
-  ```
-  Put `destination.id` in `PHOTON_WEBHOOK_ID` and `signingSecret` (`whsec_...`) in `PHOTON_WEBHOOK_SECRET`.
-  The secret is shown only on create or rotate.
+```
+backend PhotonGateway --POST 127.0.0.1:8787/send {to, text}--> hackutd bridge --spectrum-ts--> iMessage
+backend /sms/inbound  <--POST {id, text, sender}--------------- hackutd bridge <--app.messages-- iMessage
+```
+
+Both hops carry `x-bridge-token: $PHOTON_BRIDGE_TOKEN`. `/sms/inbound` returns 403 when the token is unset
+or wrong. Inbound comes over the SDK's own connection, so messaging needs no public webhook or tunnel.
+
+## 1. One-time setup (human)
+- `hackutd/` was scaffolded with
+  `bun create spectrum-project@latest hackutd --projectId 35a6c20b-6bdb-4471-a729-53c0159313a1 --providers imessage --yes`.
+  That logs in to Spectrum Cloud and writes `hackutd/.env` (`PROJECT_ID`, `PROJECT_SECRET`; gitignored).
+  On a new checkout, copy `hackutd/.env` across or rerun the command, then `cd hackutd && bun install`.
+- Root `.env`: set `PHOTON_BRIDGE_TOKEN` to any random string (`openssl rand -hex 16`), plus `DEMO_PHONE`,
+  `SPARE_PHONE` (E.164), `CONSENT_SALT`, `OPERATOR_PASSWORD`, `SESSION_SECRET`.
+- Free/Pro plans use a shared line pool. Each recipient must be registered as a project user in the Photon
+  dashboard first, otherwise sends fail with `Target not allowed for this project`. Register both phones.
+  Quotas: 50 new conversations per line per day.
 
 ## 2. Start the stack
 ```bash
 make demo-up        # = scripts/demo_up
 ```
-- Empty `CLOUDFLARED_TUNNEL`: quick tunnel. Its random `https://*.trycloudflare.com` URL is written to `.env`
-  as `PUBLIC_BASE_URL` on every start, so a restart gives a new URL (the webhook is repointed too).
-- `CLOUDFLARED_TUNNEL=<name>`: named tunnel (`cloudflared tunnel login`, `create <name>`,
-  `route dns <name> <host>`, once). Set `PUBLIC_BASE_URL=https://<host>` by hand.
-- It then PATCHes the `PHOTON_WEBHOOK_ID` destination to `$PUBLIC_BASE_URL/sms/inbound` and runs the app on
-  :8000 with `.env` loaded. Ctrl-C stops the app and the tunnel.
-- `/sms/inbound` takes every event and checks the Standard Webhooks signature (`webhook-id`,
-  `webhook-timestamp`, `webhook-signature`, 5-minute tolerance). It returns 403 if `PHOTON_WEBHOOK_SECRET` is
-  unset or wrong. `message.received` drives keyword replies. `message.dispatched|delivered|failed` become
-  `sent|delivered|failed` SMS events.
+This starts the tunnel, the bridge (`bun install && bun start` in `hackutd/`, skipped when
+`PHOTON_BRIDGE_TOKEN` is unset) and the app on :8000. Ctrl-C stops all three.
+To run the bridge alone: `cd hackutd && PHOTON_BRIDGE_TOKEN=... bun start`
+(it reads `hackutd/.env` for the Spectrum credentials).
 
 ## 3. Enroll phones
-Text `YES` (or `START`) from `DEMO_PHONE` and `SPARE_PHONE` to the assigned line while the stack is up. This
-also opens the line for our sends. Photon has no carrier STOP handling, so the app answers STOP with R-STOP
-itself.
+Text `YES` (or `START`) from `DEMO_PHONE` and `SPARE_PHONE` to the line while the stack is up. Then flip
+the console's SMS mode to **real**. Photon does no STOP handling of its own, so the app answers STOP with
+R-STOP itself. Spectrum sends no delivery receipts, so real-mode alerts stay `queued` in the console.
 
 ## 4. Preflight
-The Twilio H+1 kill check (`scripts/sms_kill_check.py`) is retired. The webhook/sms checks in
-`scripts/preflight` still call Twilio and will FAIL until a-preflight ports them (ASK on issue #1).
+The Twilio H+1 kill check is retired. `scripts/preflight` still checks Twilio for the webhook/sms steps,
+so those will FAIL until a-preflight ports them (ASK on issue #1).

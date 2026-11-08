@@ -1,14 +1,10 @@
-"""SMS gateway (issues #17, #68): keywords, message-id dedupe, signatures, consent refusal, privacy.
+"""SMS gateway (issues #17, #68): keywords, message-id dedupe, bridge auth, consent refusal, privacy.
 
-The Photon API is always mocked; nothing leaves the machine.
+The Spectrum bridge is always mocked; nothing leaves the machine.
 """
 import asyncio
-import base64
-import hashlib
-import hmac
 import json
 import logging
-import time
 
 import httpx
 import pytest
@@ -19,20 +15,17 @@ from app.main import create_app
 from app.policy import templates
 
 DEMO = "+15551234567"
-SECRET = "whsec_" + base64.b64encode(b"photon-signing-key").decode()
-SENDER = "pho_usr_sender"
+TOKEN = "bridge-token"
 
 
 @pytest.fixture(autouse=True)
 def env(tmp_path, monkeypatch):
     monkeypatch.setattr(storage, "DB_PATH", tmp_path / "safesignal.db")
-    for k, v in {"CONSENT_SALT": "salt", "DEMO_PHONE": DEMO, "PHOTON_API_KEY": "pho_sk_test",
-                 "PHOTON_PROJECT_ID": "pho_prj_test", "PHOTON_SENDER_ID": SENDER,
-                 "PHOTON_WEBHOOK_SECRET": SECRET, "OPERATOR_PASSWORD": "op", "SESSION_SECRET": "secret"}.items():
+    for k, v in {"CONSENT_SALT": "salt", "DEMO_PHONE": DEMO, "PHOTON_BRIDGE_TOKEN": TOKEN,
+                 "OPERATOR_PASSWORD": "op", "SESSION_SECRET": "secret"}.items():
         monkeypatch.setenv(k, v)
     monkeypatch.setattr(sms, "_mode", "simulated")
     monkeypatch.setattr(sms, "_last_alert", None)
-    monkeypatch.setattr(sms, "_sent", {})
     monkeypatch.setattr(sms, "_seen_sids", set())
     monkeypatch.setattr(sms, "_simulated", sms.SimulatedGateway())
     monkeypatch.setattr(sms, "_photon", None)
@@ -48,14 +41,12 @@ def events(monkeypatch):
 
 @pytest.fixture
 def photon(monkeypatch):
-    """Fake Photon API; returns the list of (path, idempotency-key, json body) it received."""
+    """Fake Spectrum bridge; returns the list of (path, x-bridge-token, json body) it received."""
     calls = []
 
     def handler(request):
-        body = json.loads(request.content)
-        calls.append((request.url.path, request.headers.get("idempotency-key"), body))
-        prefix = {"users": "pho_usr_", "spaces": "pho_spc_", "messages": "pho_msg_"}[request.url.path.rsplit("/", 1)[1]]
-        return httpx.Response(201, json={"id": f"{prefix}{len(calls)}"})
+        calls.append((request.url.path, request.headers.get("x-bridge-token"), json.loads(request.content)))
+        return httpx.Response(200, json={"id": f"spc-msg-{len(calls)}"})
 
     gateway = sms.PhotonGateway()
     gateway.http = httpx.Client(base_url=gateway.http.base_url, headers=gateway.http.headers,
@@ -65,7 +56,7 @@ def photon(monkeypatch):
 
 
 def sent_texts(calls):
-    return [body["content"]["text"] for path, _, body in calls if path.endswith("/messages")]
+    return [body["text"] for _, _, body in calls]
 
 
 def alerted(ref="sess1", template_id="ALERT-OTP-01"):
@@ -170,22 +161,11 @@ def test_send_refuses_without_consent(events, photon, mode):
     assert sms._last_alert is None
 
 
-def test_photon_send_creates_space_once_then_sends_template_text(events, photon):
+def test_photon_send_posts_template_text_to_bridge(events, photon):
     sms.set_mode("real")
     consent.set_state("active")
-    message_id = sms.get_gateway().send("ALERT-OTP-01", "sess1")
-    sms.get_gateway().send("ALERT-PAY-01", "sess2")
-    base = "/v1/projects/pho_prj_test"
-    assert [(path, body) for path, _, body in photon[:2]] == [
-        (f"{base}/users", {"handle": DEMO, "platform": "imessage"}),
-        (f"{base}/spaces", {"participantIds": [SENDER, "pho_usr_1"], "platform": "imessage"})]
-    path, key, body = photon[2]
-    assert path == f"{base}/messages" and key
-    assert body == {"spaceId": "pho_spc_2", "senderId": SENDER,
-                    "content": {"type": "text", "format": "plain", "text": templates.get("ALERT-OTP-01")}}
-    assert [p for p, _, _ in photon[3:]] == [f"{base}/messages"]  # space is cached per phone
-    assert photon[3][1] != key  # fresh idempotency key per message
-    assert sms._sent[message_id] == ("ALERT-OTP-01", "sess1")
+    assert sms.get_gateway().send("ALERT-OTP-01", "sess1") == "spc-msg-1"
+    assert photon == [("/send", TOKEN, {"to": DEMO, "text": templates.get("ALERT-OTP-01")})]
 
 
 def test_unknown_template_raises_before_sending(events):
@@ -203,23 +183,9 @@ def test_mode_toggle():
 
 # --- webhooks + signatures -----------------------------------------------------
 
-def event(type, message_id, text=None):
-    obj = {"id": message_id, "platform": "imessage", "sentBy": {"handle": DEMO, "id": "pho_usr_peer"}}
-    if text is not None:
-        obj["content"] = {"type": "text", "format": "plain", "text": text}
-    return json.dumps({"id": "evt_1", "type": type, "apiVersion": "2026-07-01", "data": {"object": obj}})
-
-
-def signed(raw, secret=SECRET, ts=None):
-    ts = str(int(time.time()) if ts is None else ts)
-    key = base64.b64decode(secret.removeprefix("whsec_"))
-    sig = base64.b64encode(hmac.new(key, f"evt_1.{ts}.{raw}".encode(), hashlib.sha256).digest()).decode()
-    return {"webhook-id": "evt_1", "webhook-timestamp": ts, "webhook-signature": f"v1,{sig}",
-            "content-type": "application/json"}
-
-
-def post(client, raw, headers):
-    return client.post("/sms/inbound", content=raw, headers=headers)
+def post(client, text, message_id="spc-msg-in1", token=TOKEN):
+    headers = {"x-bridge-token": token} if token else {}
+    return client.post("/sms/inbound", json={"id": message_id, "text": text, "sender": DEMO}, headers=headers)
 
 
 @pytest.fixture
@@ -227,35 +193,19 @@ def client():
     return TestClient(create_app())
 
 
-def test_inbound_webhook_rejects_bad_signature(client, events, monkeypatch):
-    raw = event("message.received", "pho_msg_in1", "WRONG")
-    other = "whsec_" + base64.b64encode(b"other").decode()
-    assert post(client, raw, {"content-type": "application/json"}).status_code == 403
-    assert post(client, raw, signed(raw, secret=other)).status_code == 403
-    assert post(client, raw, signed(raw, ts=int(time.time()) - 600)).status_code == 403  # stale
-    assert post(client, raw + " ", signed(raw)).status_code == 403  # body changed after signing
-    monkeypatch.delenv("PHOTON_WEBHOOK_SECRET")
-    assert post(client, raw, signed(raw)).status_code == 403  # fails closed without a secret
+def test_inbound_rejects_bad_bridge_token(client, events, monkeypatch):
+    assert post(client, "WRONG", token=None).status_code == 403
+    assert post(client, "WRONG", token="nope").status_code == 403
+    monkeypatch.delenv("PHOTON_BRIDGE_TOKEN")
+    assert post(client, "WRONG").status_code == 403  # fails closed without a token
     assert [e for e in events if e[0] == "reply"] == []
 
 
-def test_inbound_webhook_accepts_valid_signature(client, events):
+def test_inbound_accepts_bridge_token_and_dedupes(client, events):
     alerted()
-    raw = event("message.received", "pho_msg_in9", "Wrong.")
-    assert post(client, raw, signed(raw)).status_code == 204
-    assert post(client, raw, signed(raw)).status_code == 204  # Photon retry: same message id, ignored
+    assert post(client, "Wrong.", "spc-msg-in9").status_code == 204
+    assert post(client, "Wrong.", "spc-msg-in9").status_code == 204  # same message id again: ignored
     assert [p.keyword for t, p, _ in events if t == "reply"] == ["WRONG"]
-
-
-def test_status_webhook_emits_mapped_status(client, events):
-    message_id = alerted()
-    for event_type in ["message.dispatched", "message.delivered", "message.failed", "message.accepted"]:
-        raw = event(event_type, message_id)
-        assert post(client, raw, signed(raw)).status_code == 204
-    raw = event("message.delivered", "pho_msg_unknown")
-    post(client, raw, signed(raw))
-    assert [(p.message_id, p.status) for t, p, _ in events if t == "sms"] == [
-        (message_id, "sent"), (message_id, "delivered"), (message_id, "failed")]
 
 
 # --- operator routes -----------------------------------------------------------
@@ -287,8 +237,7 @@ def test_no_raw_number_or_body_in_logs(client, events, caplog, photon):
     asyncio.run(sms.invite(DEMO))
     inbound("YES", "SM1", DEMO)
     alerted()
-    raw = event("message.received", "pho_msg_in2", "Wrong. my code is 4821")
-    post(client, raw, signed(raw))
-    assert sent_texts(photon)  # messages went through the mocked API
+    post(client, "Wrong. my code is 4821", "spc-msg-in2")
+    assert sent_texts(photon)  # messages went through the mocked bridge
     for secret in [DEMO, DEMO.lstrip("+"), "4821", templates.get("ALERT-OTP-01"), templates.get("ENROLL")]:
         assert secret not in caplog.text
