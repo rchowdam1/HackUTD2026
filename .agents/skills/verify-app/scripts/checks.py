@@ -352,10 +352,12 @@ def replay_clinic(ctx: Context):
     ctx.expect(not events_for(ctx, mark, ref, "sms"), "no SMS event for the clinic call", events_for(ctx, mark, ref, "sms"))
     ctx.expect(len(ctx.outbox()) == out0, "simulated outbox unchanged (phone stays silent)", len(ctx.outbox()) - out0)
     tr = card(page, "^Live transcript")
+    # The console types the last line over its turn's audio (6.5 s) and shows 'call ended' only after it.
+    ui_assert(ctx, "status shows 'call ended'",
+              lambda: pw_expect()(page.get_by_role("banner")).to_contain_text("call ended", timeout=15_000))
     for x in expected:
         ui_assert(ctx, f"transcript shows turn {x['seq']}", lambda: pw_expect()(tr).to_contain_text(x["text"]))
     ui_assert(ctx, "transcript labelled 'cached transcript'", lambda: pw_expect()(tr.get_by_text("cached transcript")).to_be_visible())
-    ui_assert(ctx, "status shows 'call ended'", lambda: pw_expect()(page.get_by_role("banner")).to_contain_text("call ended"))
     ui_assert(ctx, "Why panel: 'No alert detected'",
               lambda: pw_expect()(card(page, "^Why this alert")).to_contain_text("No alert detected"))
     ui_assert(ctx, "phone frame shows no texts", lambda: pw_expect()(card(page, "^Phone")).to_contain_text("No texts yet."))
