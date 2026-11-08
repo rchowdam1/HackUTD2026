@@ -9,6 +9,8 @@ const FIXTURES = new URLSearchParams(location.search).has("fixtures");
 const WORD_MS = 100;
 const words = (text: string) => text.split(/\s+/).filter(Boolean);
 const segKey = (s: Segment) => `${s.session_ref}:${s.seq}`;
+// How long a live line takes to type out: over its turn's audio when the replay has some, else WORD_MS a word.
+const lineMs = (s: Segment) => (s.audio && s.t_end_ms > s.t_start_ms ? s.t_end_ms - s.t_start_ms : words(s.text).length * WORD_MS);
 
 const CATEGORY_WORDS: Record<RiskEvent["category"], string> = {
   otp: "Caller asked for a code",
@@ -120,7 +122,8 @@ function Console({ onLoggedOut, askOptIn, onOptInDone }: { onLoggedOut: (why: st
   const [state, dispatch] = useReducer(reduce, initial);
   const [stream, setStream] = useState<"connecting" | "live" | "stale">(FIXTURES ? "live" : "connecting");
   const [error, setError] = useState<string | null>(null);
-  const live = useRef(new Set<string>()); // segments that arrived over the stream type out; hydrated ones don't
+  const live = useRef(new Map<string, number>()); // ms per word for segments that arrived over the stream; hydrated ones don't type
+  const player = useRef<Player>({ interrupt: () => {}, flush: () => {} }); // set by the stream effect; the controls call it
   const arrived = useRef(new Map<string, number>()); // receive time per segment / sms, before the typing hold
 
   // Ask once per login, and only when the snapshot says the demo phone isn't opted in yet.
@@ -142,22 +145,58 @@ function Console({ onLoggedOut, askOptIn, onOptInDone }: { onLoggedOut: (why: st
     let buffer: Event[] | null = null;
     let generation = 0;
     let retry: ReturnType<typeof setTimeout> | undefined;
-    // Hold each live event until the line before it has finished typing, so an alert never shows before its words.
+    // Live events wait, in order, until the line before them has finished typing (and its audio has played),
+    // so an alert never shows before its words.
+    let queue: Event[] = [];
     let gate = 0;
-    const held = new Set<ReturnType<typeof setTimeout>>();
+    let held: ReturnType<typeof setTimeout> | undefined;
+    let audio: HTMLAudioElement | null = null;
+    const stopAudio = () => {
+      audio?.pause();
+      audio = null;
+    };
+    const run = (e: Event) => {
+      if (e.type === "segment") {
+        const ms = lineMs(e.payload);
+        live.current.set(segKey(e.payload), ms / Math.max(1, words(e.payload.text).length));
+        gate = Date.now() + ms;
+        if (e.payload.audio) {
+          stopAudio();
+          audio = new Audio(`/demo/audio/${e.payload.audio}`);
+          audio.play().catch(() => {}); // muted tab or autoplay block: the line still types out on time
+        }
+      }
+      dispatch(e);
+    };
+    const pump = () => {
+      clearTimeout(held);
+      while (queue.length) {
+        const wait = gate - Date.now();
+        if (wait > 0) {
+          held = setTimeout(pump, wait);
+          return;
+        }
+        run(queue.shift()!);
+      }
+    };
+    // Reset / a new call: drop what is still held for the old one and go silent at once.
+    const interrupt = () => {
+      queue = [];
+      gate = 0;
+      clearTimeout(held);
+      stopAudio();
+    };
+    // End call: go silent and show everything already received now.
+    const flush = () => {
+      stopAudio();
+      gate = 0;
+      pump();
+    };
+    player.current = { interrupt, flush };
     const paced = (e: Event) => {
-      const wait = gate - Date.now();
-      if (e.type === "segment") gate = Math.max(gate, Date.now()) + words(e.payload.text).length * WORD_MS;
-      const run = () => {
-        if (e.type === "segment") live.current.add(segKey(e.payload));
-        dispatch(e);
-      };
-      if (wait <= 0) return run();
-      const t = setTimeout(() => {
-        held.delete(t);
-        run();
-      }, wait);
-      held.add(t);
+      if (e.type === "session" && e.payload.state !== "finished") interrupt();
+      queue.push(e);
+      pump();
     };
     const sync = async (gen: number) => {
       const snap = await api.snapshot();
@@ -191,7 +230,7 @@ function Console({ onLoggedOut, askOptIn, onOptInDone }: { onLoggedOut: (why: st
     return () => {
       generation++;
       clearTimeout(retry);
-      held.forEach(clearTimeout);
+      interrupt();
       unsubscribe();
     };
   }, [onLoggedOut]);
@@ -223,7 +262,7 @@ function Console({ onLoggedOut, askOptIn, onOptInDone }: { onLoggedOut: (why: st
         <div className="band">
         <div className="col left">
           <CallClock state={state} />
-          <Controls state={state} dispatch={dispatch} />
+          <Controls state={state} dispatch={dispatch} player={player} />
         </div>
         <div className="col centre">
           <Verdict state={state} />
@@ -350,19 +389,42 @@ function ControlRow({ label, hint, icon, className, onClick }: { label: string; 
   );
 }
 
-function Controls({ state, dispatch }: { state: State; dispatch: (a: Action) => void }) {
+type Player = { interrupt: () => void; flush: () => void };
+
+function Controls({ state, dispatch, player }: { state: State; dispatch: (a: Action) => void; player: { current: Player } }) {
   const mode = state.smsMode;
+  const run = (id: "clinic" | "bank" | "family") => {
+    player.current.interrupt();
+    api.runScenario(id);
+  };
   return (
     <section className="card controls" aria-labelledby="controls-label">
       <h2 className="visually-hidden" id="controls-label">
         Controls
       </h2>
       <ul className="rows">
-        <ControlRow label="Run clinic" hint="harmless" icon="▶" onClick={() => api.runScenario("clinic")} />
-        <ControlRow label="Run bank" hint="asks for a code" icon="▶" className="primary-row" onClick={() => api.runScenario("bank")} />
-        <ControlRow label="Run grandson" hint="asks for money" icon="▶" onClick={() => api.runScenario("family")} />
-        <ControlRow label="End call" hint="hang up" icon="■" onClick={() => api.endCall()} />
-        <ControlRow label="Reset" hint="clear screen" icon="↺" className="danger" onClick={() => api.reset()} />
+        <ControlRow label="Run clinic" hint="harmless" icon="▶" onClick={() => run("clinic")} />
+        <ControlRow label="Run bank" hint="asks for a code" icon="▶" className="primary-row" onClick={() => run("bank")} />
+        <ControlRow label="Run grandson" hint="asks for money" icon="▶" onClick={() => run("family")} />
+        <ControlRow
+          label="End call"
+          hint="hang up"
+          icon="■"
+          onClick={() => {
+            player.current.flush();
+            api.endCall();
+          }}
+        />
+        <ControlRow
+          label="Reset"
+          hint="clear screen"
+          icon="↺"
+          className="danger"
+          onClick={() => {
+            player.current.interrupt();
+            api.reset();
+          }}
+        />
       </ul>
       <div className="toggle" role="group" aria-labelledby="sms-mode-label">
         <span className="label-text" id="sms-mode-label">
@@ -409,7 +471,7 @@ function Verdict({ state }: { state: State }) {
   );
 }
 
-function Transcript({ state, live }: { state: State; live: Set<string> }) {
+function Transcript({ state, live }: { state: State; live: Map<string, number> }) {
   // The line that carried the request (the Why panel quotes the same one).
   const flaggedAt = new Map(state.risks.map((r) => [r.span_seq[r.span_seq.length - 1], r.category] as const));
   const cached = state.segments.some((s) => s.source === "cached");
@@ -441,7 +503,7 @@ function Transcript({ state, live }: { state: State; live: Set<string> }) {
                 <span className="dot" aria-hidden="true" />
                 <span className="who">{s.speaker === "caller" ? "Caller" : "You"}</span>
                 <span className="text">
-                  <TypedText text={s.text} animate={live.has(segKey(s))} />
+                  <TypedText text={s.text} wordMs={live.get(segKey(s))} />
                 </span>
                 {category && <span className="rel">{REQUEST_TAG[category]}</span>}
               </p>
@@ -460,16 +522,16 @@ function Transcript({ state, live }: { state: State; live: Set<string> }) {
   );
 }
 
-// Reveals a line one word per WORD_MS, like a streamed chat reply. Words shown are computed from the
-// clock, not counted ticks, so throttled timers can't fall behind the event hold in Console.
-function TypedText({ text, animate }: { text: string; animate: boolean }) {
+// Reveals a line one word per `wordMs` (undefined: all at once), like a streamed chat reply. Words shown are
+// computed from the clock, not counted ticks, so throttled timers can't fall behind the event hold in Console.
+function TypedText({ text, wordMs }: { text: string; wordMs: number | undefined }) {
   const all = words(text);
   const [start] = useState(() => Date.now());
   const [, tick] = useState(0);
-  const shown = animate ? Math.min(all.length, Math.floor((Date.now() - start) / WORD_MS)) : all.length;
+  const shown = wordMs ? Math.min(all.length, Math.floor((Date.now() - start) / wordMs)) : all.length;
   useEffect(() => {
-    if (shown >= all.length) return;
-    const t = setTimeout(() => tick((n) => n + 1), WORD_MS);
+    if (!wordMs || shown >= all.length) return;
+    const t = setTimeout(() => tick((n) => n + 1), wordMs);
     return () => clearTimeout(t);
   });
   if (shown >= all.length) return <>{text}</>;
