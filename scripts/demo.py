@@ -3,7 +3,8 @@
 Order: .env key table -> Twilio CLI installed -> warm whisper -> ports -> cloudflared tunnel -> backend
 (REPLAY_SOURCE=asr) + console -> Twilio number webhooks (Twilio CLI) -> preflight --no-sms -> summary.
 Flags: --no-twilio (mic + replay only, simulated SMS), --tailnet (tailscale serve the console).
-Ctrl-C stops every child it started. Never prints secrets, DEMO_PHONE or SPARE_PHONE.
+If the tunnel drops it starts a new one and re-points the number. Ctrl-C stops every child it started.
+Never prints secrets, DEMO_PHONE or SPARE_PHONE.
 """
 from __future__ import annotations
 
@@ -80,24 +81,13 @@ def require_twilio_cli() -> None:
                  "or run `make demo ARGS=--no-twilio`")
 
 
-def live_calls() -> bool:
-    # /voice/incoming arrives with #94; pointing the number's voice webhook at a 404 would turn every call
-    # into Twilio's "application error", so leave the voice webhook alone on builds without it.
-    return (REPO_ROOT / "backend" / "app" / "api" / "voice.py").exists()
-
-
 def webhook_urls(base: str) -> dict[str, str]:
-    urls = {"smsUrl": f"{base}/sms/inbound"}
-    if live_calls():
-        urls["voiceUrl"] = f"{base}/voice/incoming"
-    return urls
+    return {"smsUrl": f"{base}/sms/inbound", "voiceUrl": f"{base}/voice/incoming"}
 
 
 def webhook_argv(number: str, base: str) -> list[str]:
-    argv = ["twilio", "phone-numbers:update", number]
-    if live_calls():
-        argv += [f"--voice-url={base}/voice/incoming", "--voice-method=POST"]
-    return argv + [f"--sms-url={base}/sms/inbound", "--sms-method=POST"]
+    return ["twilio", "phone-numbers:update", number, f"--voice-url={base}/voice/incoming", "--voice-method=POST",
+            f"--sms-url={base}/sms/inbound", "--sms-method=POST"]
 
 
 def point_webhooks(number: str, base: str) -> None:
@@ -212,8 +202,7 @@ def main(argv: list[str]) -> int:
             procs.append(tunnel)
             os.environ["PUBLIC_BASE_URL"] = base  # beats .env: uvicorn's --env-file never overrides set vars
             say(f"tunnel {base} -> 127.0.0.1:{port} (Twilio webhooks and /health only)")
-        procs.append(spawn(["uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", str(port),
-                            *(["--env-file", str(ENV_FILE)] if ENV_FILE.exists() else [])], cwd=REPO_ROOT))
+        procs.append(backend(port))
         console = REPO_ROOT / "console"
         if not (console / "node_modules").is_dir():
             say("console: npm ci")
@@ -229,11 +218,7 @@ def main(argv: list[str]) -> int:
         say(f"backend on http://127.0.0.1:{port}")
 
         if base:
-            point_webhooks(os.environ["TWILIO_FROM"], base)
-            if tunnel_answers(base):
-                say(f"tunnel ok: {base}/health")
-            else:
-                say(f"WARN tunnel: {base}/health did not answer within 60 s; live calls will not reach the app")
+            expose(base)
 
         say("preflight --no-sms (real SMS is carrier-blocked: Twilio 30034)")
         verdict = subprocess.run([str(REPO_ROOT / "scripts" / "preflight"), "--no-sms"], cwd=REPO_ROOT).returncode
@@ -246,16 +231,52 @@ def main(argv: list[str]) -> int:
             tailnet_url = tailnet_up(console_port)
             tailnet_on = True
         print(summary(console_port, tailnet_url, use_twilio), flush=True)
-        while all(p.poll() is None for p in procs):
+        while True:
             time.sleep(1)
-        say("a child process exited; stopping the rest")
-        return 1
+            if base and procs[0].poll() is not None:
+                procs[0], procs[1], base = recover_tunnel(port, procs[1], base)
+            if any(p.poll() is not None for p in procs):
+                say("a child process exited; stopping the rest")
+                return 1
     except KeyboardInterrupt:
         return 0
     finally:
+        for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+            signal.signal(sig, signal.SIG_IGN)  # a second Ctrl-C must not cut cleanup short
         if tailnet_on:
             subprocess.run(["tailscale", "serve", "--https=443", "off"], capture_output=True)
         stop(procs)
+
+
+def backend(port: int) -> subprocess.Popen:
+    return spawn(["uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", str(port),
+                  *(["--env-file", str(ENV_FILE)] if ENV_FILE.exists() else [])], cwd=REPO_ROOT)
+
+
+def expose(base: str) -> None:
+    # Point the number only at a tunnel that answers, never at a dead URL.
+    if tunnel_answers(base):
+        say(f"tunnel ok: {base}/health")
+        point_webhooks(os.environ["TWILIO_FROM"], base)
+    else:
+        say(f"WARN tunnel: {base}/health did not answer within 60 s; webhooks left unchanged, calls will not reach "
+            "the app (use Start live conversation or a replay)")
+
+
+def recover_tunnel(port: int, app: subprocess.Popen, base: str) -> tuple[subprocess.Popen, subprocess.Popen, str]:
+    """A dropped tunnel ends the call in progress; bring up a new one so the next call works without a restart."""
+    say("tunnel exited; starting a new one")
+    tunnel, new_base = demo_up.start_tunnel()
+    os.environ["PUBLIC_BASE_URL"] = new_base
+    if new_base != base:
+        # A quick tunnel gets a new hostname, and the backend signs and checks Twilio webhooks against it.
+        say("new tunnel hostname: restarting the backend (the console reconnects by itself)")
+        stop([app])
+        app = backend(port)
+        if not demo_up.wait_healthy(app, f"http://127.0.0.1:{port}/health"):
+            say("backend did not come back after the tunnel restart")
+    expose(new_base)
+    return tunnel, app, new_base
 
 
 def summary(console_port: int, tailnet_url: str | None, use_twilio: bool) -> str:
@@ -263,14 +284,13 @@ def summary(console_port: int, tailnet_url: str | None, use_twilio: bool) -> str
     if tailnet_url:
         lines.append(f"  Tailnet:  {tailnet_url}")
     if use_twilio:
-        lines.append(f"  Call {format_us(os.environ['TWILIO_FROM'])} to start a live call" if live_calls()
-                     else "  Live calls: not in this build (no /voice/incoming, #94); voice webhook left unchanged")
+        lines.append(f"  Call {format_us(os.environ['TWILIO_FROM'])} to start a live call")
         lines.append("  Real SMS: carrier-blocked until 10DLC registration (Twilio 30034) "
                      "— console phone frame mirrors every send")
     else:
         lines.append("  --no-twilio: no tunnel, no live calls; SMS is simulated in the console phone frame")
     lines.append(f"  Arm:      {'C (rules + AI)' if arm_c() else 'B (rules only)'}")
-    lines.append("  Fallbacks: Live (mic) button; Run grandson replay")
+    lines.append("  Fallbacks: Start live conversation (laptop mic); Run grandson replay")
     lines.append("  Ctrl-C stops everything.")
     lines.append("=" * 60)
     return "\n".join(lines)

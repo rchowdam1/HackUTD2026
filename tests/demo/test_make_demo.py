@@ -58,29 +58,24 @@ def test_busy_port_falls_back_to_first_free():
     assert got > taken and demo.port_free(got)
 
 
-@pytest.mark.parametrize("voice_route", [True, False])
-def test_webhook_update_argv_and_read_back(monkeypatch, voice_route):
+def test_webhook_update_argv_and_read_back(monkeypatch):
     base, number = "https://brave-otter.trycloudflare.com", "+14132883877"
-    monkeypatch.setattr(demo, "live_calls", lambda: voice_route)
     calls = []
 
     def run(argv, **kw):
         calls.append(argv)
-        # Without the voice route the number keeps whatever voice URL it had; only smsUrl is read back.
-        out = json.dumps([{"phoneNumber": number, "smsUrl": f"{base}/sms/inbound",
-                           "voiceUrl": f"{base}/voice/incoming" if voice_route else "https://old.example/x"}])
+        out = json.dumps([{"phoneNumber": number, "smsUrl": f"{base}/sms/inbound", "voiceUrl": f"{base}/voice/incoming"}])
         return subprocess.CompletedProcess(argv, 0, stdout=out if "phone-numbers:list" in argv else "", stderr="")
     monkeypatch.setattr(demo.subprocess, "run", run)
     demo.point_webhooks(number, base)
-    voice = [f"--voice-url={base}/voice/incoming", "--voice-method=POST"] if voice_route else []
     assert calls == [
-        ["twilio", "phone-numbers:update", number, *voice, f"--sms-url={base}/sms/inbound", "--sms-method=POST"],
+        ["twilio", "phone-numbers:update", number, f"--voice-url={base}/voice/incoming", "--voice-method=POST",
+         f"--sms-url={base}/sms/inbound", "--sms-method=POST"],
         ["twilio", "phone-numbers:list", "-o", "json"],
     ]
 
 
 def test_webhook_read_back_mismatch_aborts(monkeypatch):
-    monkeypatch.setattr(demo, "live_calls", lambda: True)
     stale = json.dumps([{"phoneNumber": "+14132883877", "voiceUrl": "https://old.example/voice/incoming",
                          "smsUrl": "https://old.example/sms/inbound"}])
     monkeypatch.setattr(demo.subprocess, "run",
@@ -126,12 +121,10 @@ def test_no_twilio_skips_tunnel_and_twilio_cli(env, monkeypatch, capsys):
     assert "(413) 288-3877" not in out  # no live-call line without Twilio
 
 
-@pytest.mark.parametrize("voice_route", [True, False])
-def test_twilio_mode_uses_env_account_not_a_cli_profile(env, monkeypatch, capsys, voice_route):
+def test_twilio_mode_uses_env_account_not_a_cli_profile(env, monkeypatch, capsys):
     # .env credentials outrank any CLI profile, so `profiles:list` shows the env profile active and a named one
     # inactive; the old profile check aborted here before the tunnel or backend started.
     base, number = "https://brave-otter.trycloudflare.com", SECRETS["TWILIO_FROM"]
-    monkeypatch.setattr(demo, "live_calls", lambda: voice_route)
     ran = []
 
     def run(argv, **kw):
@@ -156,6 +149,34 @@ def test_twilio_mode_uses_env_account_not_a_cli_profile(env, monkeypatch, capsys
     assert not any(argv[:2] == ["twilio", "profiles:use"] or argv[:2] == ["twilio", "profiles:list"] for argv in ran)
     assert demo.webhook_argv(number, base) in ran
     out = capsys.readouterr().out
-    assert ("Call (413) 288-3877 to start a live call" in out) == voice_route
-    assert ("Live calls: not in this build" in out) != voice_route
+    assert "Call (413) 288-3877 to start a live call" in out
     assert demo.os.environ["PUBLIC_BASE_URL"] == base
+
+
+class DeadProc(FakeProc):
+    def poll(self):
+        return 1
+
+
+def test_dead_quick_tunnel_is_replaced_and_the_number_repointed(env, monkeypatch):
+    # A quick tunnel comes back with a new hostname; the backend checks Twilio signatures against it, so it restarts.
+    old, new = "https://old-otter.trycloudflare.com", "https://new-otter.trycloudflare.com"
+    pointed, stopped = [], []
+    monkeypatch.setattr(demo.demo_up, "start_tunnel", lambda: (FakeProc(["cloudflared"]), new))
+    monkeypatch.setattr(demo, "spawn", lambda cmd, **kw: FakeProc(cmd, **kw))
+    monkeypatch.setattr(demo.demo_up, "wait_healthy", lambda proc, url, timeout_s=120: True)
+    monkeypatch.setattr(demo, "tunnel_answers", lambda b: True)
+    monkeypatch.setattr(demo, "point_webhooks", lambda number, base: pointed.append(base))
+    monkeypatch.setattr(demo, "stop", lambda procs: stopped.extend(procs))
+    app = DeadProc(["uvicorn"])
+
+    tunnel, new_app, base = demo.recover_tunnel(8000, app, old)
+
+    assert base == new and demo.os.environ["PUBLIC_BASE_URL"] == new and pointed == [new]
+    assert stopped == [app] and new_app.cmd[0] == "uvicorn" and tunnel.cmd == ["cloudflared"]
+
+
+def test_webhooks_stay_put_when_the_tunnel_does_not_answer(env, monkeypatch):
+    monkeypatch.setattr(demo, "tunnel_answers", lambda b: False)
+    monkeypatch.setattr(demo, "point_webhooks", lambda number, base: pytest.fail("pointed at a dead tunnel"))
+    demo.expose("https://dead.trycloudflare.com")
