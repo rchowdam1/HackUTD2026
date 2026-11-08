@@ -2,7 +2,7 @@ import { type ReactNode, useCallback, useEffect, useReducer, useRef, useState } 
 import * as api from "./api";
 import OptInPrompt from "./OptInPrompt";
 import { initial, reduce, type Action, type Bubble, type State } from "./state";
-import type { ArmCounts, Event, Results, RiskEvent, Segment, SmsPayload, TurnPayload } from "./types";
+import type { ArmCounts, Event, Results, RiskEvent, Segment, SmsPayload, TurnPayload, Speaker } from "./types";
 
 const FIXTURES = new URLSearchParams(location.search).has("fixtures");
 // Live transcript typing speed. Must match WORD_MS in backend/app/ingest/__init__.py (cached replay pacing).
@@ -127,6 +127,33 @@ function Console({ onLoggedOut, askOptIn, onOptInDone }: { onLoggedOut: (why: st
   const live = useRef(new Map<string, number>()); // ms per word for segments that arrived over the stream; hydrated ones don't type
   const player = useRef<Player>({ interrupt: () => {}, flush: () => {} }); // set by the stream effect; the controls call it
   const arrived = useRef(new Map<string, number>()); // receive time per segment / sms, before the typing hold
+  // Live mic conversation (#100): the session this tab started, the open mic, and turns still being transcribed.
+  const [liveRef, setLiveRef] = useState<string | null>(null);
+  const mic = useRef<MediaStream | null>(null);
+  const [transcribing, setTranscribing] = useState(0);
+  const liveOn = liveRef !== null && state.sessionRef === liveRef && state.session?.state === "running";
+  const wasOn = useRef(false);
+  const stopMic = () => {
+    mic.current?.getTracks().forEach((t) => t.stop());
+    mic.current = null;
+  };
+  useEffect(() => {
+    if (wasOn.current && !liveOn) stopMic(); // End call, Reset or another run: release the mic
+    wasOn.current = liveOn;
+  }, [liveOn]);
+  const startLive = async () => {
+    player.current.interrupt();
+    try {
+      stopMic();
+      mic.current = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    } catch {
+      setError("Microphone unavailable (permission denied or no mic found)");
+      return;
+    }
+    const r = await api.liveStart();
+    if (r) setLiveRef((await r.json()).session_ref);
+    else stopMic();
+  };
 
   // Ask once per login, and only when the snapshot says the demo phone isn't opted in yet.
   const hydrated = stream === "live";
@@ -264,11 +291,13 @@ function Console({ onLoggedOut, askOptIn, onOptInDone }: { onLoggedOut: (why: st
         <div className="band">
         <div className="col left">
           <CallClock state={state} />
-          <Controls state={state} dispatch={dispatch} player={player} />
+          <Controls state={state} dispatch={dispatch} player={player} onStartLive={liveOn ? null : startLive}>
+            {liveOn && mic.current && <LiveMic stream={mic.current} onTranscribing={(n) => setTranscribing((t) => t + n)} />}
+          </Controls>
         </div>
         <div className="col centre">
           <Verdict state={state} />
-          <Transcript state={state} live={live.current} />
+          <Transcript state={state} live={live.current} transcribing={transcribing > 0} />
         </div>
         <div className="col right">
           <WhyPanel state={state} arrived={arrived.current} />
@@ -280,7 +309,7 @@ function Console({ onLoggedOut, askOptIn, onOptInDone }: { onLoggedOut: (why: st
       <Ticker state={state} />
       <footer className="footer">
         <span>CallSafe · texts you during a call when the caller asks for a code, money or access</span>
-        <span>No alert is never a safety verdict</span>
+        <span>No alert detected never means safe</span>
       </footer>
       {askOptIn && hydrated && state.consent !== "active" && <OptInPrompt onDone={onOptInDone} />}
     </div>
@@ -373,11 +402,11 @@ function CallClock({ state }: { state: State }) {
   );
 }
 
-function ControlRow({ label, hint, icon, className, onClick }: { label: string; hint: string; icon: string; className?: string; onClick: () => void }) {
+function ControlRow({ label, hint, icon, className, onClick }: { label: string; hint: string; icon: string; className?: string; onClick: (() => void) | null }) {
   const id = `hint-${label.replace(/\W+/g, "-").toLowerCase()}`;
   return (
     <li>
-      <button className={`row ${className ?? ""}`} disabled={FIXTURES} aria-describedby={id} onClick={onClick}>
+      <button className={`row ${className ?? ""}`} disabled={FIXTURES || !onClick} aria-describedby={id} onClick={onClick ?? undefined}>
         <span className="icon" aria-hidden="true">
           {icon}
         </span>
@@ -393,7 +422,13 @@ function ControlRow({ label, hint, icon, className, onClick }: { label: string; 
 
 type Player = { interrupt: () => void; flush: () => void };
 
-function Controls({ state, dispatch, player }: { state: State; dispatch: (a: Action) => void; player: { current: Player } }) {
+function Controls({ state, dispatch, player, onStartLive, children }: {
+  state: State;
+  dispatch: (a: Action) => void;
+  player: { current: Player };
+  onStartLive: (() => void) | null; // null while this tab's live conversation runs
+  children: ReactNode;
+}) {
   const mode = state.smsMode;
   const run = (id: "clinic" | "bank" | "family") => {
     player.current.interrupt();
@@ -408,6 +443,8 @@ function Controls({ state, dispatch, player }: { state: State; dispatch: (a: Act
         <ControlRow label="Run clinic" hint="harmless" icon="▶" onClick={() => run("clinic")} />
         <ControlRow label="Run bank" hint="asks for a code" icon="▶" className="primary-row" onClick={() => run("bank")} />
         <ControlRow label="Run grandson" hint="asks for money" icon="▶" onClick={() => run("family")} />
+        <ControlRow label="Start live conversation" hint="laptop mic" icon="●" onClick={onStartLive} />
+        {children}
         <ControlRow
           label="End call"
           hint="hang up"
@@ -466,14 +503,62 @@ function Verdict({ state }: { state: State }) {
         <span>Verdict</span>
       </h2>
       <p className={`headline ${alerted ? "alerted" : ""}`} aria-live="polite">
-        {alerted ? (risk ? CATEGORY_WORDS[risk.category] : "Alert") : finished ? "No alert" : "No alert yet"}
+        {alerted ? (risk ? CATEGORY_WORDS[risk.category] : "Alert") : finished ? "No alert detected" : "No alert yet"}
       </p>
-      {!alerted && <p className="aside">not a safety verdict</p>}
     </section>
   );
 }
 
-function Transcript({ state, live }: { state: State; live: Map<string, number> }) {
+// Tap a speaker to record a turn, tap again to send it. One mic, so one speaker at a time; either may go twice in a row.
+function LiveMic({ stream, onTranscribing }: { stream: MediaStream; onTranscribing: (delta: number) => void }) {
+  const [speaker, setSpeaker] = useState<Speaker | null>(null);
+  const rec = useRef<MediaRecorder | null>(null);
+  useEffect(
+    () => () => {
+      if (rec.current?.state !== "recording") return;
+      rec.current.onstop = null; // the call ended mid-turn: drop the clip
+      rec.current.stop();
+    },
+    [],
+  );
+  const toggle = (who: Speaker) => {
+    if (speaker === who) {
+      rec.current?.stop();
+      setSpeaker(null);
+      return;
+    }
+    const r = new MediaRecorder(stream);
+    const chunks: Blob[] = [];
+    r.ondataavailable = (e) => chunks.push(e.data);
+    r.onstop = () => {
+      onTranscribing(1);
+      api.liveTurn(who, new Blob(chunks, { type: r.mimeType })).finally(() => onTranscribing(-1));
+    };
+    r.start();
+    rec.current = r;
+    setSpeaker(who);
+  };
+  return (
+    <li className="live-mic" role="group" aria-label="Live mic: tap a speaker to record, tap again to send">
+      {(["caller", "subscriber"] as const).map((who) => (
+        <button
+          key={who}
+          className={`pill ${speaker === who ? "on" : ""}`}
+          aria-pressed={speaker === who}
+          disabled={speaker !== null && speaker !== who}
+          onClick={() => toggle(who)}
+        >
+          {SPEAKER_WORDS[who]}
+          {speaker === who && " - tap to stop"}
+        </button>
+      ))}
+    </li>
+  );
+}
+
+const SPEAKER_WORDS: Record<Speaker, string> = { caller: "Caller", subscriber: "You" };
+
+function Transcript({ state, live, transcribing }: { state: State; live: Map<string, number>; transcribing: boolean }) {
   // The line that carried the request (the Why panel quotes the same one).
   const flaggedAt = new Map(state.risks.map((r) => [r.span_seq[r.span_seq.length - 1], r.category] as const));
   const cached = state.segments.some((s) => s.source === "cached");
@@ -492,6 +577,8 @@ function Transcript({ state, live }: { state: State; live: Map<string, number> }
       <h2 className="label" id="transcript-label">
         <span>Live transcript</span>
         {cached && <span className="meta">cached transcript</span>}
+        {state.session?.source === "mic" && <span className="meta">Live mic</span>}
+        {state.session?.source === "phone" && <span className="meta">Phone call</span>}
       </h2>
       {state.segments.length === 0 && <p className="empty">No call yet.</p>}
       <ol ref={end}>
@@ -503,7 +590,7 @@ function Transcript({ state, live }: { state: State; live: Map<string, number> }
               <p className={`line ${s.speaker} ${flagged ? "flagged" : ""}`}>
                 <span className="time">{clockText(s.t_start_ms)}</span>
                 <span className="dot" aria-hidden="true" />
-                <span className="who">{s.speaker === "caller" ? "Caller" : "You"}</span>
+                <span className="who">{SPEAKER_WORDS[s.speaker]}</span>
                 <span className="text">
                   <TypedText text={s.text} wordMs={live.get(segKey(s))} />
                 </span>
@@ -520,6 +607,7 @@ function Transcript({ state, live }: { state: State; live: Map<string, number> }
           );
         })}
       </ol>
+      {transcribing && <p className="empty">Transcribing…</p>}
     </section>
   );
 }
@@ -550,7 +638,7 @@ function WhyPanel({ state, arrived }: { state: State; arrived: Map<string, numbe
         <h2 className="label" id="why-label">
           <span>Why this alert</span>
         </h2>
-        <p className="quiet">{state.session?.state === "finished" ? "No alert - not a safety verdict" : "No alert yet"}</p>
+        <p className="quiet">{state.session?.state === "finished" ? "No alert detected" : "No alert yet"}</p>
         <p className="quiet">CallSafe texts only when a caller asks for a code, money or access to your device.</p>
       </section>
     );

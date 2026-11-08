@@ -1,4 +1,4 @@
-import type { ConsentState, Event, Results, SmsMode } from "./types";
+import type { ConsentState, Event, Results, SmsMode, Speaker } from "./types";
 
 // What GET /state returns: current values plus every event since the latest session running/reset.
 export interface Snapshot {
@@ -20,8 +20,8 @@ async function call(action: string, path: string, body?: unknown, method = "POST
   try {
     r = await fetch(path, {
       method,
-      headers: body === undefined ? undefined : { "Content-Type": "application/json" },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      headers: body === undefined || body instanceof FormData ? undefined : { "Content-Type": "application/json" },
+      body: body === undefined || body instanceof FormData ? body : JSON.stringify(body),
     });
   } catch {
     handlers.error(`${action} failed (network error)`);
@@ -51,6 +51,13 @@ export const reset = () => call("Reset", "/demo/reset");
 export const setSmsMode = (mode: SmsMode) => call("SMS mode change", "/demo/sms-mode", { mode });
 export const simulateReply = (body: string) => call(`Simulated ${body} reply`, "/sms/simulate-inbound", { body });
 export const setOptIn = (opt_in: boolean) => call("Opt-in choice", "/sms/consent", { opt_in });
+export const liveStart = () => call("Start live conversation", "/live/start");
+export function liveTurn(speaker: Speaker, audio: Blob) {
+  const form = new FormData();
+  form.append("speaker", speaker);
+  form.append("audio", audio, "turn.webm");
+  return call("Transcribing that turn", "/live/utterance", form);
+}
 
 // Background read: null on any failure, without an error banner (401 still returns to login).
 async function read<T>(path: string): Promise<T | null> {

@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import time
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
@@ -33,19 +34,20 @@ async def start() -> dict:
     except Exception as e:
         log.exception("ASR model failed to load")
         raise HTTPException(503, "speech recognition unavailable") from e
-    ref = await pipeline.start(ingest.arm(), policy.VERSION, sms.get_mode())
+    ref = await pipeline.start(ingest.arm(), policy.VERSION, sms.get_mode(), source="mic")
     return {"session_ref": ref}
 
 
 @router.post("/utterance")
 async def utterance(speaker: Speaker = Form(...), audio: UploadFile = File(...)) -> dict:
+    ended_at = time.time()  # the speaker tapped stop: the alert's latency is timed from here
     clip = io.BytesIO(await audio.read())
     async with _turns:
         s = pipeline.current()
         if s is None or s.finished:
             raise HTTPException(409, "no live conversation running")
         try:
-            parts, _ = await asyncio.to_thread(asr.transcribe, clip)
+            parts, _ = await asyncio.to_thread(asr.transcribe, clip, beam_size=1)  # greedy, as on a phone call
         except Exception as e:
             log.exception("ASR failed on a live turn")
             raise HTTPException(422, "could not transcribe that turn") from e
@@ -53,5 +55,5 @@ async def utterance(speaker: Speaker = Form(...), audio: UploadFile = File(...))
         if not text or pipeline.current() is not s or s.finished:  # silence, or the call ended meanwhile
             return {"text": text}
         await pipeline.process(Segment(session_ref=s.ref, seq=len(s.segments) + 1, speaker=speaker, text=text,
-                                       source="asr"))
+                                       source="asr", ended_at=ended_at))
     return {"text": text}
