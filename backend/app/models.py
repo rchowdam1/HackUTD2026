@@ -64,6 +64,9 @@ class RiskEvent(BaseModel):
     confidence_class: ConfidenceClass
     policy_version: str
     score: float | None = None  # intent events: the model's probability that the caller asked (app.intent)
+    # Rule events: [start, end) character spans in the text of segment span_seq[-1] (request phrase, object),
+    # so the console can highlight words it already shows. Offsets only, never call text.
+    match_spans: list[tuple[int, int]] = Field(default_factory=list)
 
 
 class Decision(BaseModel):

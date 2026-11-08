@@ -59,9 +59,11 @@ aside { display: flex; flex-direction: column; gap: 1rem; }
 .why .big-text { font-size: 1.8rem; font-weight: 700; margin: 0 0 0.6rem; }
 .why.alert { outline: 3px solid var(--alert); }
 .why.alert .big-text { color: var(--alert); }
-.why dl { display: grid; grid-template-columns: auto 1fr; gap: 0.3rem 1rem; margin: 0; font-size: 1.1rem; }
-.why dt { color: var(--muted); }
-.why dd { margin: 0; font-weight: 600; }
+.why dl { margin: 0; font-size: 1.05rem; }
+.why dt { margin-top: 0.55rem; color: var(--muted); font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.why dd { margin: 0.1rem 0 0; line-height: 1.3; }
+.why .quote { font-size: 1.15rem; font-weight: 700; }
+.why mark { background: none; color: var(--alert); text-decoration: underline; text-underline-offset: 0.15em; }
 .why .dispatch { margin: 0.8rem 0 0; font-size: 1.1rem; font-weight: 700; color: var(--muted); }
 .why .dispatch.sent, .why .dispatch.delivered { color: var(--ok); }
 .why .dispatch.failed { padding: 0.6rem 0.8rem; border-radius: 8px; background: var(--alert); color: #000; font-size: 1.4rem; font-weight: 800; }

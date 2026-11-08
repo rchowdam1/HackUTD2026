@@ -102,7 +102,8 @@ def _negated(p: _Policy, clause: str, anchor: int, max_gap: int | None = None) -
     return False
 
 
-def _is_request(p: _Policy, cat: _Category, clause: str) -> bool:
+def _request(p: _Policy, cat: _Category, clause: str) -> tuple[int, int] | None:
+    """Where the clause asks for this category (the matched request phrase), or None."""
     for pattern in cat.requests:
         for m in pattern.finditer(clause):
             anchor = m.start("v") if "v" in pattern.groupindex else m.start()
@@ -110,14 +111,16 @@ def _is_request(p: _Policy, cat: _Category, clause: str) -> bool:
                 continue
             if p.hedges.search(clause, 0, anchor) or _negated(p, clause, anchor):
                 continue
-            return True
-    return False
+            return m.start() + len(m.group()) - len(m.group().lstrip(" ,")), m.end()
+    return None
 
 
-def _mentioned(p: _Policy, cat: _Category, clauses: list[str]) -> bool:
-    """A lexicon term the turn doesn't negate or hedge ("you don't need to share your screen")."""
-    return any(not (p.hedges.search(c, 0, m.start()) or _negated(p, c, m.start(), p.cfg["negation_max_object_gap"]))
-               for c in clauses for m in cat.lexicon.finditer(c))
+def _mentioned(p: _Policy, cat: _Category, clauses: list[tuple[str, int]]) -> tuple[int, int] | None:
+    """The first lexicon term the turn doesn't negate or hedge ("you don't need to share your screen"),
+    as a span in the turn; clauses are (text, offset in the turn)."""
+    return next(((o + m.start(), o + m.end()) for c, o in clauses for m in cat.lexicon.finditer(c)
+                 if not (p.hedges.search(c, 0, m.start())
+                         or _negated(p, c, m.start(), p.cfg["negation_max_object_gap"]))), None)
 
 
 def _antecedent(p: _Policy, window: list[Segment], before: list[str]) -> str | None:
@@ -134,10 +137,12 @@ def _antecedent(p: _Policy, window: list[Segment], before: list[str]) -> str | N
 
 
 def _event(seg: Segment, event_type: str, source: str, rule_id: str, category: str,
-           span: list[int], confidence: str, policy_version: str, score: float | None = None) -> RiskEvent:
+           span: list[int], confidence: str, policy_version: str, score: float | None = None,
+           match_spans: list[tuple[int, int]] | None = None) -> RiskEvent:
     return RiskEvent.model_validate(dict(
         session_ref=seg.session_ref, event_type=event_type, source=source, rule_id=rule_id,
-        category=category, span_seq=span, confidence_class=confidence, policy_version=policy_version, score=score))
+        category=category, span_seq=span, confidence_class=confidence, policy_version=policy_version, score=score,
+        match_spans=match_spans or []))
 
 
 def _keyword(p: _Policy, segments: list[Segment], policy_version: str) -> list[RiskEvent]:
@@ -154,14 +159,21 @@ def _requests(p: _Policy, segments: list[Segment], i: int, policy_version: str) 
     split = [(n, c) for n, sentence in enumerate(p.sentence_split.split(seg.text))
              for c in p.clause_split.split(sentence) if c.strip()]
     clauses = [c for _, c in split]
+    offsets, pos = [], 0  # each clause's start in seg.text, so the console can highlight matched words
+    for c in clauses:
+        pos = seg.text.index(c, pos)
+        offsets.append(pos)
+        pos += len(c)
     # A pronoun refers back to the most recently mentioned category (this turn counts as latest).
     out = []
     for cat in p.categories:
         for k, clause in enumerate(clauses):
-            if not _is_request(p, cat, clause):
+            if not (req := _request(p, cat, clause)):
                 continue
-            if _mentioned(p, cat, [c for n, c in split if n <= split[k][0]]):
+            spans = [(offsets[k] + req[0], offsets[k] + req[1])]
+            if obj := _mentioned(p, cat, [(c, offsets[j]) for j, (n, c) in enumerate(split) if n <= split[k][0]]):
                 rid, conf, span = cat.cfg["b_rules"]["high"], "high", [seg.seq]
+                spans.append(obj)
             elif ((pron := p.context_object.search(clause))
                   and _antecedent(p, window, before := clauses[:k] + [clause[:pron.start()]]) == cat.name):
                 rid, conf = cat.cfg["b_rules"]["medium"], "medium"
@@ -169,7 +181,8 @@ def _requests(p: _Policy, segments: list[Segment], i: int, policy_version: str) 
                 span = [seg.seq] if any(cat.lexicon.search(c) for c in before) else [prior[-1], seg.seq]
             else:
                 continue
-            out.append(_event(seg, cat.cfg["b_event"], "rule", rid, cat.name, span, conf, policy_version))
+            out.append(_event(seg, cat.cfg["b_event"], "rule", rid, cat.name, span, conf, policy_version,
+                              match_spans=sorted(set(spans))))
             break
     return out
 

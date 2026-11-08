@@ -776,7 +776,7 @@ Audio is required only for `demo` scenarios; audio paths resolve relative to `au
 
 **Transcript segment:** `{"session_ref","seq","speaker","t_start_ms","t_end_ms","text","source":"asr|cached|script"}`
 
-**Risk Event:** `{"session_ref","event_type","source":"rule|intent","rule_id|null","category","span_seq":[int],"confidence_class":"high|medium|low","policy_version"}`. Category wording only, never quoted text.
+**Risk Event:** `{"session_ref","event_type","source":"rule|intent","rule_id|null","category","span_seq":[int],"confidence_class":"high|medium|low","policy_version","score":float|null,"match_spans":[[start,end]]}`. Category wording only, never quoted text. `match_spans` (rule events) are character offsets into the text of segment `span_seq[-1]` (request phrase and, when in the same turn, its object), so the console can highlight words it already shows (#95).
 
 **Decision:** `{"session_ref","level":"action_warning|none","template_id|null","followup_template_id|null","basis":[ids],"keyword_arm_would_fire":bool,"policy_version"}`
 

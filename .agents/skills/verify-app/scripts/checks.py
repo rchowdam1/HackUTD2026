@@ -32,6 +32,7 @@ UI_HANDLES = [
     "Operator password", "Log in", "Wrong password", "Run clinic", "Run bank", "Run grandson", "End call", "Reset",
     "SMS mode", "simulated SMS", "Live transcript", "cached transcript", "No call yet.",
     "Why this alert", "No alert - not a safety verdict", "Caller asked for a code", "Caught by", "CallSafe rules",
+    "Caller said", "Why it matters", "Whoever has the code can get into your account", "We texted", "Speed",
     "fixture replay", "call ended", "call running", "No texts yet.",
     "Opt in to call monitoring?", "Alert message sent to user", "Follow-up message sent to user",
     "Monitoring opt-in: No. No text sent", "Call monitoring is off.",
@@ -411,6 +412,20 @@ def replay_bank(ctx: Context):
     ui_assert(ctx, "Why panel headline 'Caller asked for a code'", lambda: pw_expect()(why).to_contain_text("Caller asked for a code"))
     ctx.expect(risk["source"] == "rule" and risk["score"] is None, "the cited risk event is a rule hit (no model score)", risk)
     ui_assert(ctx, "Why panel 'Caught by' = 'CallSafe rules'", lambda: pw_expect()(dd(why, "Caught by")).to_have_text("CallSafe rules"))
+    flagged = next(s["text"] for s in segs if s["seq"] == risk["span_seq"][-1])
+    ui_assert(ctx, "Why panel 'Caller said' quotes the flagged line",
+              lambda: pw_expect()(dd(why, "Caller said")).to_have_text(f"“{flagged}”"))
+    spans = [flagged[a:b] for a, b in risk["match_spans"]]
+    ctx.expect(bool(spans), "the cited rule event carries match_spans", risk)
+    ui_assert(ctx, f"Why panel highlights exactly the matched words {spans}",
+              lambda: pw_expect()(dd(why, "Caller said").locator("mark")).to_have_text(spans))
+    ui_assert(ctx, "Why panel 'Why it matters' explains the code risk",
+              lambda: pw_expect()(dd(why, "Why it matters")).to_contain_text("Whoever has the code can get into your account"))
+    told = re.sub(r"^CallSafe:\s*(\w)", lambda m: m.group(1).upper(), ctx.templates["ALERT-OTP-01"])
+    ui_assert(ctx, "Why panel 'We texted' = the ALERT-OTP-01 template text",
+              lambda: pw_expect()(dd(why, "We texted")).to_have_text(told))
+    ui_assert(ctx, "Why panel 'Speed' shows the measured ms",
+              lambda: pw_expect()(dd(why, "Speed")).to_have_text(re.compile(r"^Alert went out \d+ ms after the line came in$")))
     for tid in ("ALERT-OTP-01", "FU-OTP-01"):
         ui_assert(ctx, f"phone frame shows {tid} text", lambda: pw_expect()(phone).to_contain_text(ctx.templates[tid]))
     ui_assert(ctx, "transcript marker '* Alert message sent to user' right after the flagged line",

@@ -325,3 +325,15 @@ def test_pronoun_resolves_to_the_latest_mention_across_categories():
     # Within one turn too: the later mention is the referent.
     segs = call("You have AnyDesk. I just sent a code to your phone.", "Read it to me.")
     assert [e.rule_id for e in detect(segs, "B", V)] == ["B-OTP-CTX-01"]
+
+
+def test_match_spans_point_at_the_request_and_its_object():
+    text = "I just sent a code to your phone. Can you read it back to me?"
+    [ev] = detect(call(text), "B", V)
+    assert [text[a:b] for a, b in ev.match_spans] == ["code", "Can you read"]
+    # A pronoun request whose object was named in an earlier turn: only the request is in this turn.
+    segs = call("We sent you a verification code.", ("subscriber", "Okay."), "Read it back to me.")
+    [ev] = detect(segs, "B", V)
+    assert ev.span_seq[-1] == 3
+    assert [segs[2].text[a:b] for a, b in ev.match_spans] == ["Read"]
+    assert all(e.match_spans == [] for e in detect(call(text), "K", V))
