@@ -854,12 +854,12 @@ Every path has exactly one writing track. Inside a track, each agent owns one pa
 **Integration rules**
 - **Skeleton PR (A lead, merged by H+0:45), before any other PR:** all §19.4 models; `main.py` auto-discovers routers from `app.api` and `app.sms`, so nobody edits it to add routes; a stub in every backend package (cached transcript ASR, `decide` returns none, `SimulatedGateway`, fake events); all dependencies declared (fastapi, uvicorn, pydantic, faster-whisper, twilio, pyyaml, httpx, pytest; `[intent]` extra for transformers); `make smoke` = pytest + OTP replay through the stubs, using an A-owned fixture in `tests/fixtures/` until C's demo scenarios merge. With stubs, the full loop runs from H+1, and real pieces replace stubs one PR at a time. A writes stubs inside B's backend directories (`sms/`, `consent/`, `api/`, `storage/`) only in this PR, and ownership passes to B the moment it merges. The skeleton writes nothing under `scenarios/`, `eval/`, `results/` or `console/`; C owns demo scenarios and caches from H+0. `GET /results/latest` (B) reads `results/latest.json` (C).
 - **Bootstrap in parallel (first 45 min):** B scaffolds `console/` against A's event fixtures and starts the Twilio H+1 check; C commits the two demo scenarios (text + cached transcripts) and starts H1; B starts Qwen3-TTS setup and voices them as soon as the scripts land.
-- **Contract changes:** A only, PR titled `CONTRACT:`, additive fields with defaults, FYI on the board, thumbs-up from B and C before merge.
-- **Dependencies:** Python deps only via A (others post ASK; A adds within 15 min). Console deps only via B.
+- **Contract changes:** A only, PR titled `CONTRACT:`, additive fields with defaults, called out in the PR body, thumbs-up from B and C on the PR before merge.
+- **Dependencies:** Python deps only via A (others ask on A's task issue or PR). Console deps only via B.
 - **Late events after reset:** every queued task and event carries a session generation number; anything from an old generation is dropped and never sends SMS.
-- **Branches:** `<username>/<track>-<agent>` (e.g. `arnav/a-rules`, `ameya/b-sms`, `rithik/c-eval`), one worktree each, one PR per agent task, rebased on `origin/main` before merge.
+- **Branches:** `<username>/<agent-name>` (e.g. `arnavprabhu/a-rules`), one worktree each, one PR per agent task, rebased on `origin/main` before merge.
 - **Merging:** each developer reviews and merges their own track's PRs, in windows at :00 and :30, order CONTRACT -> A -> B -> C. A PR merges only if `make smoke` passes on the rebased branch, so main always runs.
-- **Board:** one track-level CLAIM per developer listing paths; each agent posts its own CLAIM (branch + subdirectory) and DONE with the PR link; LEARN for Twilio, whisper and tunnel quirks.
+- **Coordination:** no message board. Each task is a GitHub issue; an agent claims it there (branch + paths), asks owners on their issue or PR, and closes it with `Closes #<n>`. Gotchas go into code, tests or error messages (AGENTS.md).
 
 **Integration points**
 | When | Check |

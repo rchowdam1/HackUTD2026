@@ -146,7 +146,7 @@ def report(batch: str, policy_version: str, scenarios, results: Results, fired, 
     if c_failures is not None:
         lines += ["", f"C: {c_failures} TypeSafe calls failed and fell back to arm B."]
     lines += ["", "Percentages: estimates and lower bounds rounded down, upper bounds rounded up. "
-              f"Sample is small; this is not a production accuracy claim."]
+              "Sample is small; this is not a production accuracy claim."]
     return "\n".join(lines) + "\n"
 
 

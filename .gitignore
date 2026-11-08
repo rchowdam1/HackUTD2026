@@ -1,4 +1,4 @@
-data/
+/data/
 .env
 .env.*
 !.env.example
@@ -13,6 +13,5 @@ models/
 .cache/
 hf_cache/
 *.ct2/
-!tests/asr/data/
 # verification runs: evidence (runs/), scratch sandboxes, tools (verify-app skill)
 .verify/

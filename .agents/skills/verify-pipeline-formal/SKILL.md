@@ -61,7 +61,3 @@ The `broken-*` configs prove each property can fail: each flips one guard consta
 3. Update `model/Pipeline.tla` from the code first, keeping one action per await-free stretch, then rerun. Don't shape the model to make a check pass, and don't drop a property or shrink a bound without saying so.
 4. Judge each result. Pass → re-run the `broken-*` config that guards the changed code to show the check can still fail. Violation → replay the TLC trace (`.verify/formal/<ts>/<cfg>.log`, "State 1..n") against the code step by step. A step the code can't take = model bug (fix the model, say what was wrong). Every step possible = code bug (report the steps in code terms and the commit that introduced it; don't fix product code unless asked).
 5. Update the findings, coverage record and expectations, then move the sync commit to the commit you checked. Never move it for a check you couldn't run.
-
-The `maintain-verification` skill runs this procedure as part of its pass. If the pstack `statechart` skill is available in your harness, use it to read TLC traces as plain-language state paths.
-
-Human-facing overview (prerequisites, statuses, CI, troubleshooting): `docs/verification.md`. Keep it in step when this skill changes.
