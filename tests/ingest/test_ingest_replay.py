@@ -119,7 +119,8 @@ def test_realtime_asr_emits_each_turn_no_earlier_than_its_audio_end(demo):
     seg_events = [(e.payload, at) for e, at in events if e.type == "segment"]
     turn_of_seq = {1: 1, 2: 2, 3: 3, 4: 3, 5: 4, 6: 5}
     for payload, at in seg_events:
-        assert at - t0 >= turn_of_seq[payload["seq"]] * FAKE_DURATION_S - 0.005
+        # 30 ms slack: Windows timers tick at ~15.6 ms, so asyncio.sleep can wake a tick early.
+        assert at - t0 >= turn_of_seq[payload["seq"]] * FAKE_DURATION_S - 0.03
     assert seg_events[-1][1] - t0 < 5 * FAKE_DURATION_S + 0.5
 
 
