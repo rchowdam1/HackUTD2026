@@ -37,6 +37,9 @@ negation_blockers: [and, then, just, now, instead, so]
 negation_max_aside_words: 5
 # A negated recipient after the verb: "share it with no one".
 negated_object: '(with|to) (no ?one|nobody)'
+# Only within the request's own object: a comma, "and" or "then" starts another
+# action ("read me the code and share it with nobody else" is still a request).
+negated_object_end: ',|\b(and|then)\b'
 
 # Reported or hypothetical requests: "if anyone asks you to install ...".
 hedges:
