@@ -9,6 +9,7 @@ import { imessage } from "@spectrum-ts/imessage";
 const token = process.env.PHOTON_BRIDGE_TOKEN;
 if (!token) throw new Error("PHOTON_BRIDGE_TOKEN is not set");
 const backend = (process.env.BACKEND_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
+const line = process.env.PHOTON_LINE; // optional: pin sends to this line (dedicated lines; ignored on shared pool)
 
 const app = await Spectrum({
   projectId: process.env.PROJECT_ID!,
@@ -27,7 +28,8 @@ Bun.serve({
     if (req.headers.get("x-bridge-token") !== token) return new Response("forbidden", { status: 403 });
     const { to, text } = (await req.json()) as { to: string; text: string };
     try {
-      const space = await im.space.create(await im.user(to));
+      const user = await im.user(to);
+      const space = line ? await im.space.create(user, { phone: line }) : await im.space.create(user);
       const sent = await space.send(text);
       return Response.json({ id: sent?.id ?? `spectrum-${crypto.randomUUID()}` });
     } catch (err) {

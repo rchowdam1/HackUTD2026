@@ -17,7 +17,8 @@ or wrong. Inbound comes over the SDK's own connection, so messaging needs no pub
   That logs in to Spectrum Cloud and writes `hackutd/.env` (`PROJECT_ID`, `PROJECT_SECRET`; gitignored).
   On a new checkout, copy `hackutd/.env` across or rerun the command, then `cd hackutd && bun install`.
 - Root `.env`: set `PHOTON_BRIDGE_TOKEN` to any random string (`openssl rand -hex 16`), plus `DEMO_PHONE`,
-  `SPARE_PHONE` (E.164), `CONSENT_SALT`, `OPERATOR_PASSWORD`, `SESSION_SECRET`.
+  `SPARE_PHONE` (E.164), `PHOTON_LINE` (our Photon line, E.164; ask Ameya, never commit it),
+  `CONSENT_SALT`, `OPERATOR_PASSWORD`, `SESSION_SECRET`.
 - Free/Pro plans use a shared line pool. Each recipient must be registered as a project user in the Photon
   dashboard first, otherwise sends fail with `Target not allowed for this project`. Register both phones.
   Quotas: 50 new conversations per line per day.
@@ -32,7 +33,7 @@ To run the bridge alone: `cd hackutd && PHOTON_BRIDGE_TOKEN=... bun start`
 (it reads `hackutd/.env` for the Spectrum credentials).
 
 ## 3. Enroll phones
-Text `YES` (or `START`) from `DEMO_PHONE` and `SPARE_PHONE` to the line while the stack is up. Then flip
+Text `YES` (or `START`) from `DEMO_PHONE` and `SPARE_PHONE` to `PHOTON_LINE` while the stack is up. Then flip
 the console's SMS mode to **real**. Photon does no STOP handling of its own, so the app answers STOP with
 R-STOP itself. Spectrum sends no delivery receipts, so real-mode alerts stay `queued` in the console.
 
