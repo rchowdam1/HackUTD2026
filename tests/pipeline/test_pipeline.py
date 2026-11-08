@@ -292,10 +292,12 @@ def test_finish_during_arm_c_inference_sends_alert_before_followup(slow):
 
 @pytest.mark.parametrize("end", ["finish", "reset"])
 def test_intent_cache_cleared_when_session_ends(gw, monkeypatch, end):
-    monkeypatch.setattr(intent, "_scores", lambda premise: dict.fromkeys(intent.HYPOTHESES, 0.0))
+    monkeypatch.setenv("INTENT_MODEL", "on")
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
+    monkeypatch.setattr(intent, "_post", lambda body: {"answers": {q: {"noul": 0.0} for q in intent.QUESTIONS}})
 
     def detect(segments, arm, policy_version):
-        intent.evidence(segments)
+        intent.answers(segments)
         return fake_detect(segments, arm, policy_version)
 
     monkeypatch.setattr(rules, "detect", detect)
@@ -303,9 +305,9 @@ def test_intent_cache_cleared_when_session_ends(gw, monkeypatch, end):
     async def scenario():
         ref = await pipeline.start("C", "v1.0", "simulated")
         await pipeline.process(seg(ref, 1, "Read me the code."))
-        cached = intent._evidence.cache_info().currsize
+        cached = len(intent._cache)
         await (pipeline.finish(ref) if end == "finish" else pipeline.reset())
         return cached
 
     cached, _ = run(scenario)
-    assert cached > 0 and intent._evidence.cache_info().currsize == 0
+    assert cached > 0 and len(intent._cache) == 0

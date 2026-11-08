@@ -15,18 +15,6 @@ dependencies = [
     "pytest>=8.0",
 ]
 
-[project.optional-dependencies]
-# CPU-only torch (see [tool.uv.sources]); sentencepiece + protobuf for the DeBERTa-v3 tokenizer.
-intent = ["transformers>=4.44", "torch>=2.4", "sentencepiece>=0.2", "protobuf>=4.25"]
-
-[tool.uv.sources]
-torch = { index = "pytorch-cpu" }
-
-[[tool.uv.index]]
-name = "pytorch-cpu"
-url = "https://download.pytorch.org/whl/cpu"
-explicit = true
-
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

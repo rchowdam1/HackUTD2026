@@ -2,33 +2,48 @@
 #
 # Arm K: a lexicon.yaml term in any speaker's text fires that category.
 # Arm B: a caller clause must be a request in the caller's direction (frame + verb,
-#   imperative verb, or verb ... me/us), not negated or hedged, whose object is a
-#   lexicon term in the same turn (high) or, if the clause only has a pronoun
-#   ("read it to me"), in the previous `context_turns` turns of any speaker (medium).
-# Arm C: B, plus the intent model on caller turns with a lexicon hit that B didn't
-#   act on. The model only confirms a category the lexicon already saw; never alone.
+#   imperative verb, verb ... me/us, or a caller-acting form such as "I can take your
+#   card"), not negated, hedged or reported, whose object is a lexicon term in the
+#   same turn (high) or, if the clause only has a pronoun ("read it to me", "what
+#   does it say"), in the previous `context_turns` turns of any speaker (medium).
+# Arm C: B, plus the intent model (app.intent) on caller turns. The model confirms a
+#   category the lexicon saw (C-INTENT-*-01) or, above a stricter bar, detects alone
+#   (C-INTENT-*-SOLO). See backend/app/intent for the questions and thresholds.
 version: v1.0
 context_turns: 3
 negation_max_gap_words: 3
+# A lexicon object is void if a negation precedes it this closely in its clause.
+negation_max_object_gap: 8
 
-# Clauses are split on sentence punctuation and "but".
-clause_split: '[.!?;]+|\bbut\b'
+# Clauses are split on sentence punctuation, "but" and "then"/"and then" (a new step).
+clause_split: '[.!?;]+|\bbut\b|,?\s+(?:and\s+)?then\b'
 
 negation:
   - "don'?t"
   - 'do not'
+  - "doesn'?t"
+  - 'does not'
+  - "didn'?t"
+  - 'did not'
   - 'never'
   - 'not'
   - "won'?t(?! you)"
   - 'will not'
+  - "wouldn'?t(?! you)"
   - "shouldn'?t"
   - 'should not'
   - "mustn'?t"
   - 'must not'
   - 'no one'
   - 'nobody'
+  - 'no need'
+  - 'no reason'
+  - 'nothing'
+  - 'without'
   - "can'?t(?! you)"
   - 'cannot'
+  - "aren'?t"
+  - "isn'?t"
 # "won't you" / "can't you" open a request, not a negation.
 # A word in the gap that ends the negation's scope ("don't hang up, just read me").
 # A comma also ends it ("don't worry, read me"), unless the comma directly follows the
@@ -36,37 +51,67 @@ negation:
 negation_blockers: [and, then, just, now, instead, so]
 negation_max_aside_words: 5
 # A negated recipient after the verb: "share it with no one".
-negated_object: '(with|to) (no ?one|nobody)'
+negated_object: '(with|to) (no ?one|nobody|anyone|anybody)'
 # Only within the request's own object: a comma, "and" or "then" starts another
 # action ("read me the code and share it with nobody else" is still a request).
 negated_object_end: ',|\b(and|then)\b'
 
-# Reported or hypothetical requests: "if anyone asks you to install ...".
+# Reported, hypothetical or warning speech, anywhere before the verb in the clause:
+# "if anyone asks you to install ...", "he wanted me to buy gift cards".
 hedges:
-  - 'if (someone|anyone|somebody|anybody|a caller|they|a stranger)'
-  - '(anyone|someone|somebody|anybody|people|callers?) (who|that)'
-  - '(scammers?|fraudsters?|criminals?|crooks?|thieves|someone|somebody|anyone|anybody|people) (often |may |might |could |can |will |would |sometimes |usually |)(ask|tell|say|want|try|call|pretend)'
+  - 'if (someone|anyone|somebody|anybody|a caller|they|a stranger|people|a person|he|she|a guy)'
+  - 'if you (ever )?(get|receive|have|hear) (a|any|an) (call|text|message|email|voicemail)'
+  - 'ever (ask|asks|call|calls|request)'
+  - '(said|says|mentioned|told me) (that )?(you|they|he|she)'
+  - '(anyone|someone|somebody|anybody|people|callers?|scammers?|crooks?) (who|that|claiming|pretending|saying|asking|going around)'
+  - '(scammers?|fraudsters?|criminals?|crooks?|thieves|people|callers) (\w+ )?(ask|tell|say|want|try|call|pretend|claim|demand|get)'
+  - '(someone|somebody|anyone|anybody|they|he|she|a guy|the guy|the caller|the man|the woman|the lady|a man|a woman) (\w+ )?(asked|told|said|wanted|tried|called|pretended|claimed|kept|demanded|was asking|were asking|got)'
+  - '(someone|somebody|anyone|anybody|they|he|she) (may|might|could|can|will|would|sometimes|usually|often|always) (\w+ )?(ask|tell|say|want|try|call|pretend|claim)'
+  - '(asked|told|wanted|got|made|convinced|pressured|tricked|begged) (me|her|him|them|us|my \w+|people|folks|everyone|somebody|someone) (to|into)'
+  - '(pretending|claiming|posing) to be'
+  - "(it's|that's|this is|sounds like) (a|the) (scam|trick|fraud)"
+  - 'watch out for|beware|be careful'
+  # A policy statement about what the organisation never asks: "no one will ever ask you to".
+  - "(no one|nobody|never|not|won'?t|don'?t|do not|will not|doesn'?t)( [\\w']+){0,5}? (ask|asks|call|calls|request|require|requires|need|needs) (you|for|people|customers)"
+# Not a request even though it looks like one.
+exclusions:
+  - '(tell|show) (me|us) (when|if|once|after|about|how)'
+  - 'let (me|us) know(?! what)'
+  - "let'?s\\b(?! me)"
+  - 'give (me|us) (a|one) (call|ring|second|sec|minute|moment|chance)'
+  - 'give (it|that|them) (a )?(try|shot|go|minute|second)'
+  - '(wire|transfer|payment|gift card|money) (fraud|scams?)'
+# A clause that refers back to an earlier object.
+context_object: '\b(it|that|this|them|those|these|the (numbers?|digits|one|text|message)|what (it|the text|the message|that|this) (says?|said|shows?|reads?)|what you (got|get|received|see)|what came)\b'
 
 # Request frames: the subscriber is asked to act.
 frames:
-  - "(can|could|would|will|won't) you"
-  - '(need|want|like) you to'
-  - "you('ll| will)? (need|have|got) to"
-  - "you('re| are) (going|gonna) to"
-  - 'you (must|should|can)'
+  - "(can|could|would|will|won't|wouldn'?t) you"
+  - 'if you (could|can|would|will)'
+  - '(need|want|like|ask|require|expect|instruct|tell)s? you to'
+  - "(will|'ll|gonna|going to) (have|get) you( to)?"
+  - "you'?(ll| will)? (need|have|got|want|gotta) to"
+  - "you'?(d| would) (need|have) to"
+  - "you'?(re| are) (going|gonna) to"
+  - 'you (must|should|can|may)'
+  - 'all you (need to|have to|gotta|got to) do is'
+  - "why don'?t you"
+  - 'do you mind'
   - 'go ahead and'
   - 'please'
+  - 'kindly'
   - 'make sure (you|to)'
+  - 'be sure to'
+  - 'remember to'
+  - "it'?s (important|required|necessary|mandatory) (that you|to|you)"
+# Frames the verb must follow directly (optionally after one adverb): "you'll send ...",
+# but not "you'll get a text".
+direct_frames:
+  - "you'?(ll| will)"
 # Words allowed before an imperative verb at the start of a clause.
-fillers: "(ok|okay|yes|yeah|yep|no|so|now|just|please|alright|all right|right|and|then|first|well|great|sir|ma'am|go ahead and|quickly)"
+fillers: "(this time|right now|for now|today|again|once more|ok|okay|yes|yeah|ya|yep|no(?=,)|so|now|just|please|alright|all right|right|and|then|first|next|also|well|great|good|perfect|sir|ma'?am|maam|honey|sweetie|dear|grandma|grandpa|mom|dad|buddy|man|bro|um|uh|quickly|real quick|simply|kindly|go ahead and|you just|you)"
 # An introductory phrase ending in a comma before an imperative: "to unlock it, read me ...".
-intro: '(to|before|after|once|when|whenever|as soon as|if)'
-# Not a request even though it looks like one.
-exclusions:
-  - '(tell|let|show) (me|us) (when|if|once|after|about|how|know)'
-  - 'give (me|us) (a|one) (call|ring|second|sec|minute|moment)'
-# A clause that refers back to an earlier object.
-context_object: '\b(it|that|this|them|those|these|the (numbers?|digits|one))\b'
+intro: '(to|before|after|once|when|whenever|as soon as|if|for|in order to)'
 
 categories:
   otp:
@@ -74,33 +119,48 @@ categories:
     followup: FU-OTP-01
     k_rule: K-OTP-01
     b_rules: {high: B-OTP-REQ-01, medium: B-OTP-CTX-01}
-    c_rule: C-INTENT-OTP-01
+    c_rules: {confirm: C-INTENT-OTP-01, solo: C-INTENT-OTP-SOLO}
     k_event: code_mention
     b_event: code_request
-    verbs: 'read|tell|give|send|text|say|share|repeat|provide|forward|spell|recite|confirm'
+    verbs: 'read|tell|give|send|text|say|share|repeat|provide|forward|spell|recite|confirm|verify|call out|read off|read out|shoot|pass along|let me have'
     extra:
-      - "what('s| is| was| are| were)( \\w+){0,4}? (code|pin|password|passcode|digits)"
-      - "(i|we)('ll| will)?( (just|only|still|also|really))? (need|want|require)( [\\w'-]+){0,3}? (codes?|pins?|passwords?|passcodes?|otps?|digits?)"
-      - "what (does|did) (it|that|this|the (text|message|screen|code|number)) (say|read|show)"
+      - "what('?s| is| was| are| were)( [\\w']+){0,6}? (code|pin|password|passcode|digits|number|numbers|maiden name)"
+      - "what('?s| is| was| are| were) (it|that|this|they|them|showing|on there|on the screen)\\b"
+      - "(i|we)('ll| will)?( (just|only|still|also|really))? (need|want|require|need to get|need to have)( [\\w'-]+){0,3}? (codes?|pins?|passwords?|passcodes?|otps?|digits?|numbers?|maiden name|answers?)"
+      - "what (does|did|do) (it|that|this|they|the (text|message|screen|code|number)) (say|read|show)"
+      - "what (code|number|numbers|digits|pin)( \\w+){0,2} (did|do|does|have) you( \\w+)? (get|see|have|receive|got)"
+      - "let (me|us) know what"
+      - "(read|tell)( me| us)? what (it|the text|the message|that|this) (says|said|shows|reads)"
   payment:
     alert: ALERT-PAY-01
     followup: FU-PAY-01
     k_rule: K-PAY-01
     b_rules: {high: B-PAY-REQ-01, medium: B-PAY-CTX-01}
-    c_rule: C-INTENT-PAY-01
+    c_rules: {confirm: C-INTENT-PAY-01, solo: C-INTENT-PAY-SOLO}
     k_event: payment_mention
     b_event: payment_request
-    verbs: 'buy|purchase|send|wire|transfer|pay|settle|deposit|withdraw|move|load|mail|put|scratch|read'
-    extra: []
+    verbs: 'buy|purchase|send|wire|transfer|pay|repay|pay back|settle|deposit|withdraw|move|load|mail|put|scratch|read|give|hand|hand over|donate|cover|take out|pull out|cash out|convert|pick up|drop off|leave|feed|insert|scan|post|zelle|venmo'
+    extra:
+      - "(i|we)('ll| will)?( can| could| just)? (take|process|charge|run|accept|collect|need)( \\w+){0,3}? (card|payment|cards|number|money|cash|fee|deposit|donation|\\d[\\d,]*)"
+      - "(do|did) you have( \\w+){0,2} (debit|credit|bank|gift) card"
+      - "count on you for"
+      - "how (will|would|do|are|can|did) you (be )?(like to )?(pay|paying|send|sending|cover|covering)"
+      - "(help|chip in|contribute|pitch in)( me| us)?( out)? with( \\w+){0,2} (donation|money|cash|payment|fee|deposit|bail|\\d)"
+      - "(i|we)('ll| will)?( (just|only|still|also|really))? need( \\w+){0,3}? (money|cash|funds|payment|\\d[\\d,]* dollars|dollars|bail|gift cards?|(\\w+ )?(hundred|thousand|grand))"
+      - "(payment|money|it|transfer|deposit|fee|fees|tax|taxes|amount|balance|bail)( \\w+){0,4}? (needs to|has to|have to|must) (go|be (sent|paid|wired|made|transferred|deposited))"
+      - "(pay|payment|card)( \\w+){0,5}? over the phone"
+      - \"(if|once|when|as soon as) you( \\w+)? (pay|send|buy|wire|transfer|purchase)( \\w+){0,4}? (today|now|right now|immediately|tonight|within)\"
   remote:
     alert: ALERT-REMOTE-01
     followup: FU-REMOTE-01
     k_rule: K-REMOTE-01
     b_rules: {high: B-REMOTE-REQ-01, medium: B-REMOTE-CTX-01}
-    c_rule: C-INTENT-REMOTE-01
+    c_rules: {confirm: C-INTENT-REMOTE-01, solo: C-INTENT-REMOTE-SOLO}
     k_event: remote_access_mention
     b_event: remote_access_request
-    verbs: 'download|install|open|run|allow|accept|grant|click|go to|type|visit|connect|enable|turn on|start'
+    verbs: 'download|install|open|run|allow|accept|grant|click|go to|go on|go into|head to|navigate to|pull up|bring up|type|visit|connect|enable|turn on|start|join|share|tap|press|hit|launch|enter|trust|approve|give|let|sign in|log in|log on'
     extra:
-      - 'lets? (me|us)( \w+){0,2}? (connect|in|access|see|take|control|remote|fix|into)'
-      - '(give|grant) (me|us)( remote)? access'
+      - "lets? (me|us|him|her|them|my \\w+|our \\w+)( \\w+){0,2}? (connect|in|into|access|see|take|control|remote|fix|log|operate|install|handle|look|do|check|scan)"
+      - '(give|grant) (me|us|it|him|them)( remote| full)? (access|permission|control)'
+      - "(i|we)('ll| will)?( just)? (need|have|got|want|going|gonna) to (connect|access|log|get|remote|see|look at|take|install|scan|inspect|check|fix|do|configure|set)"
+      - "(i|we)('ll| will| can| could)( just)? (connect|access|log|remote|fix|do|take|install|set|renew|handle|process|operate|configure|clean|remove|walk)"
