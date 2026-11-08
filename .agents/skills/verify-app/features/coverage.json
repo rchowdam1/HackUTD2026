@@ -8,7 +8,7 @@
         "console/src/App.tsx",
         "console/src/api.ts"
       ],
-      "synced_commit": "c835ae501a37e910d7f062fd6ce861d98df22879"
+      "synced_commit": "8699795e49306a91b3a02c3cd500da3afdbb7bb8"
     },
     "call-replay": {
       "doc": "call-replay.md",
@@ -26,7 +26,7 @@
         "console/src/state.ts",
         "console/src/types.ts"
       ],
-      "synced_commit": "c835ae501a37e910d7f062fd6ce861d98df22879"
+      "synced_commit": "8699795e49306a91b3a02c3cd500da3afdbb7bb8"
     },
     "sms-replies": {
       "doc": "sms-replies.md",
@@ -40,7 +40,7 @@
         "console/src/App.tsx",
         "console/src/state.ts"
       ],
-      "synced_commit": "c835ae501a37e910d7f062fd6ce861d98df22879"
+      "synced_commit": "8699795e49306a91b3a02c3cd500da3afdbb7bb8"
     },
     "call-controls": {
       "doc": "call-controls.md",
@@ -63,7 +63,7 @@
         "console/src/App.tsx",
         "console/src/types.ts"
       ],
-      "synced_commit": "c835ae501a37e910d7f062fd6ce861d98df22879"
+      "synced_commit": "8699795e49306a91b3a02c3cd500da3afdbb7bb8"
     },
     "twilio-webhooks": {
       "doc": "twilio-webhooks.md",
@@ -71,7 +71,7 @@
         "backend/app/sms/webhooks.py",
         "backend/app/sms/__init__.py"
       ],
-      "synced_commit": "c835ae501a37e910d7f062fd6ce861d98df22879"
+      "synced_commit": "8699795e49306a91b3a02c3cd500da3afdbb7bb8"
     },
     "enrollment-invite": {
       "doc": "enrollment-invite.md",
@@ -81,7 +81,7 @@
         "backend/app/consent/**",
         "backend/app/storage/**"
       ],
-      "synced_commit": "c835ae501a37e910d7f062fd6ce861d98df22879"
+      "synced_commit": "8699795e49306a91b3a02c3cd500da3afdbb7bb8"
     },
     "fixture-replay": {
       "doc": "fixture-replay.md",
@@ -91,7 +91,7 @@
         "console/src/App.tsx",
         "console/src/state.ts"
       ],
-      "synced_commit": "c835ae501a37e910d7f062fd6ce861d98df22879"
+      "synced_commit": "8699795e49306a91b3a02c3cd500da3afdbb7bb8"
     },
     "asr-replay": {
       "doc": "asr-replay.md",
@@ -101,7 +101,7 @@
         "audio/demo/**",
         "scenarios/demo/*.json"
       ],
-      "synced_commit": "c835ae501a37e910d7f062fd6ce861d98df22879"
+      "synced_commit": "8699795e49306a91b3a02c3cd500da3afdbb7bb8"
     },
     "preflight": {
       "doc": "preflight.md",
@@ -109,7 +109,7 @@
         "scripts/preflight",
         "scripts/preflight_checks.py"
       ],
-      "synced_commit": "c835ae501a37e910d7f062fd6ce861d98df22879"
+      "synced_commit": "8699795e49306a91b3a02c3cd500da3afdbb7bb8"
     }
   },
   "global_paths": [
