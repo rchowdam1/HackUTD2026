@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+from app import consent
 from app.main import create_app
 from app.models import PAYLOAD_MODELS, Event, Scenario, SmsGateway
 from app.sms import SimulatedGateway
@@ -22,7 +23,9 @@ def test_otp_fixture_scenario_and_transcript(fixtures_dir):
     assert [l.seq for l in lines] == list(range(1, len(lines) + 1))
 
 
-def test_simulated_gateway_satisfies_protocol():
+def test_simulated_gateway_satisfies_protocol(monkeypatch):
+    # send() refuses unless consent is active (PRD §19.4, #17), so opt in for this check.
+    monkeypatch.setattr(consent, "is_active", lambda *a, **k: True)
     gw = SimulatedGateway()
     assert isinstance(gw, SmsGateway)
     assert gw.send("ALERT-OTP-01", "ref")
