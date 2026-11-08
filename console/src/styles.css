@@ -48,13 +48,14 @@ footer { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 .card { background: var(--card); border-radius: 12px; padding: 1rem 1.25rem; }
 .muted { color: var(--muted); }
 
-.transcript .line { font-size: 2.1rem; line-height: 1.3; margin: 0 0 0.8rem; }
-.transcript .who { display: inline-block; min-width: 5.5rem; font-size: 1rem; font-weight: 700; color: var(--muted); text-transform: uppercase; }
+/* The whole bank call (5 lines + 2 markers) must fit a 1366x768 browser window without scrolling. */
+.transcript .line { font-size: 1.4rem; line-height: 1.25; margin: 0 0 0.4rem; }
+.transcript .who { display: inline-block; min-width: 4.5rem; font-size: 0.8rem; font-weight: 700; color: var(--muted); text-transform: uppercase; }
 .transcript .caller .who { color: var(--accent); }
 .transcript .flagged { color: var(--alert); font-weight: 700; }
 .transcript .typing::after { content: "\258D"; margin-left: 0.1em; color: var(--muted); animation: blink 1s steps(1) infinite; }
 @keyframes blink { 50% { opacity: 0; } }
-.transcript .marker { font-size: 1.2rem; font-style: italic; font-weight: 700; color: var(--ok); padding-left: 5.5rem; }
+.transcript .marker { font-size: 1rem; font-style: italic; font-weight: 700; color: var(--ok); padding-left: 4.5rem; }
 
 .why .big-text { font-size: 1.8rem; font-weight: 700; margin: 0 0 0.6rem; }
 .why.alert { outline: 3px solid var(--alert); }
