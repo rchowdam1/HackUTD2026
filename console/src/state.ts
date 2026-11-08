@@ -41,8 +41,8 @@ export function reduce(s: State, a: Action): State {
       if (p.state === "running") {
         return { ...s, session: p, sessionRef: a.session_ref, smsMode: p.sms_mode ?? s.smsMode, ...cleared };
       }
-      if (p.state === "reset") return { ...s, session: p, ...cleared };
-      return { ...s, session: { ...p, sms_mode: p.sms_mode ?? s.session?.sms_mode ?? null } };
+      if (p.state === "reset") return { ...s, session: p, sessionRef: null, ...cleared };
+      return { ...s, session: { ...p, sms_mode: p.sms_mode ?? s.session?.sms_mode ?? null }, sessionRef: a.session_ref };
     }
     case "segment":
       return { ...s, segments: [...s.segments.filter((x) => x.seq !== a.payload.seq), a.payload].sort((x, y) => x.seq - y.seq) };

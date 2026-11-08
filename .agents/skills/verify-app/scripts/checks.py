@@ -35,7 +35,7 @@ UI_HANDLES = [
     "Start live conversation", "Caller", "tap to stop", "Live mic", "Transcribing...",
     "Caller said", "Why it matters", "Whoever has the code can get into your account", "We texted", "Speed",
     "fixture replay", "call ended", "call running", "No texts yet.",
-    "Opt in to call monitoring?", "Not now", "Monitoring on", "real SMS", "Alert message sent to user", "Follow-up message sent to user",
+    "Opt in to call monitoring?", "Not now", "Monitoring on", "real SMS", "Alert text", "Follow-up text",
     "Monitoring opt-in: No. No text sent", "Call monitoring is off.",
 ]
 # Routes the harness calls; lint checks each is still declared in backend/app.
@@ -446,10 +446,10 @@ def replay_bank(ctx: Context):
               lambda: pw_expect()(dd(why, "Speed")).to_have_text(re.compile(r"^Alert went out \d+ ms after the line came in$")))
     for tid in ("ALERT-OTP-01", "FU-OTP-01"):
         ui_assert(ctx, f"phone frame shows {tid} text", lambda: pw_expect()(phone).to_contain_text(ctx.templates[tid]))
-    ui_assert(ctx, "transcript marker '* Alert message sent to user' right after the flagged line",
-              lambda: pw_expect()(tr.locator("p.line.flagged + p.marker")).to_have_text("* Alert message sent to user"))
-    ui_assert(ctx, "exactly two markers: alert, then '* Follow-up message sent to user'",
-              lambda: pw_expect()(tr.locator("p.marker")).to_have_text(["* Alert message sent to user", "* Follow-up message sent to user"]))
+    ui_assert(ctx, "transcript marker '→ Alert text sent' right after the flagged line",
+              lambda: pw_expect()(tr.locator("p.line.flagged + p.marker")).to_have_text("→ Alert text sent"))
+    ui_assert(ctx, "exactly two markers: alert, then '→ Follow-up text sent'",
+              lambda: pw_expect()(tr.locator("p.marker")).to_have_text(["→ Alert text sent", "→ Follow-up text sent"]))
     ui_assert(ctx, "status shows 'call ended'", lambda: pw_expect()(page.get_by_role("banner")).to_contain_text("call ended"))
     ctx.rec["timing"] = {"replay_wall_s": round(time.monotonic() - t0, 1)}
     ctx.shot("bank-finished")

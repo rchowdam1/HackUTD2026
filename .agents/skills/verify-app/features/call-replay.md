@@ -24,7 +24,7 @@ Preconditions:
 - **Bank.** Reset, ensure opt-in, open the console, click `Run bank`. SSE: one `decision` with `template_id ALERT-OTP-01`, `followup_template_id FU-OTP-01`; ordered `session running → sms ALERT-OTP-01 → sms FU-OTP-01 → session finished`; both sms events `queued` with message ids; the decision `basis` is a subset of published risk-event `rule_id`s with category `otp`. Outbox gains exactly ALERT-OTP-01 then FU-OTP-01, texts equal to `policy/v1.0/templates.yaml`, ids equal to the SSE ids.
 - **Why panel.** In `Why this alert`: headline `Caller asked for a code`; `Caller said` = the flagged line (segment `span_seq[-1]` of the cited risk event) in curly quotes, with exactly the words at the event's `match_spans` in `<mark>`; `Why it matters` = the fixed otp sentence; `We texted` = the ALERT-OTP-01 template minus the `CallSafe:` prefix; `Speed` = `Alert went out N ms after the line came in` (console clock, from when the line and the sms event arrived); `Caught by` = `CallSafe rules` (the cited risk event has `source: rule` and `score: null`). A model detection reads `Perplexity Decider (AI): NN.N% sure` from the event's `score`; the keyless sandbox can't produce one.
 - **Grandson.** Reset, ensure opt-in, click `Run grandson`. SSE `session running` arm B; segments equal `scenarios/demo/family/transcript.json` (cached); `session finished`; no `decision`; outbox unchanged; `Why this alert` shows `No alert detected`.
-- **Transcript markers.** In `Live transcript`, the line right after the flagged line is `p.marker` `* Alert message sent to user`; the markers are exactly that and `* Follow-up message sent to user` (last, after the call ends).
+- **Transcript markers.** In `Live transcript`, the line right after the flagged line is `p.marker` `→ Alert text sent` (shown upper-case; `delivered` / `not delivered` once a status callback says so); the markers are exactly that and `→ Follow-up text sent` (last, after the call ends).
 - **Proof.** `screenshots/replay.*--*-finished.png` + `.aria.txt`, `artifacts/replay.bank-alert--event-order.json`, `artifacts/replay.bank-alert--outbox-new.json`, and the run's `events-cached.jsonl`.
 
 ## Gotchas
@@ -32,7 +32,7 @@ Preconditions:
 - Every journey starts from `ctx.api_reset()`, which also sets SMS mode to simulated: reset never changes the mode, and a leftover real mode would hide the phone frame.
 - Replays are paced for the console's word-by-word typing (`WORD_MS` per word plus `TURN_GAP_MS` per line in `backend/app/ingest`): clinic ≈5.5 s, bank ≈8 s, grandson ≈11 s. Wait for the `session finished` event, not a sleep.
 - Open the console before clicking Run: the reducer clears on `session running`, so a page loaded mid-call shows a partial transcript.
-- Markers come from `sms` events (not failed), placed after the transcript line that was last when the event arrived; they are console-only, there is no marker event.
+- Markers come from `sms` events (a failed one reads `not delivered`), placed after the transcript line that was last when the event arrived; they are console-only, there is no marker event.
 - The follow-up is only sent if consent is still active when the call finishes; a STOP during the call suppresses it by design.
 - Starting a replay finishes the previous session first (a follow-up can be sent for it). Reset before each replay for a clean event window.
 - The cached transcript texts are the contract here. With `REPLAY_SOURCE=asr` the text comes from whisper; that is `asr-replay`, not this feature.
