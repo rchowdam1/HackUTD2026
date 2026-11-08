@@ -1,0 +1,34 @@
+{
+  "id": "family",
+  "set": "demo",
+  "label": "scam",
+  "hard_benign": false,
+  "category": "payment",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "Grandma? It's me, Danny. I'm in trouble and I don't know who else to call.",
+      "audio": "family/t01.wav"
+    },
+    {
+      "speaker": "subscriber",
+      "text": "Danny? Oh my goodness, what happened?",
+      "audio": "family/t02.wav"
+    },
+    {
+      "speaker": "caller",
+      "text": "I hit another car and the police are holding me. The lawyer says I can go home today if we sort it out.",
+      "audio": "family/t03.wav"
+    },
+    {
+      "speaker": "caller",
+      "text": "Could you go to the bank, take out whatever you can spare, and hand it to the man he sends to your house? Please don't tell Mom.",
+      "audio": "family/t04.wav"
+    },
+    {
+      "speaker": "subscriber",
+      "text": "Oh, sweetheart. Okay, let me find my purse.",
+      "audio": "family/t05.wav"
+    }
+  ]
+}

@@ -9,7 +9,7 @@ import time
 
 import pytest
 
-from app import asr, ingest, pipeline
+from app import asr, ingest, intent, pipeline
 from app.events import hub
 
 SCENARIO_ID = "fixture_otp"
@@ -97,6 +97,14 @@ def test_env_switch_picks_default_source(demo, monkeypatch, env, expected):
         monkeypatch.setenv("REPLAY_SOURCE", env)
     _, events, _ = replay(realtime=False)
     assert {s["source"] for s in segments(events)} == {expected}
+
+
+@pytest.mark.parametrize("model_on, arm", [(False, "B"), (True, "C")])
+def test_demo_runs_arm_c_when_the_intent_model_is_on(demo, monkeypatch, model_on, arm):
+    monkeypatch.setattr(intent, "enabled", lambda: model_on)
+    monkeypatch.setattr(intent, "answers", lambda window: None)  # no live calls; C falls back to B per turn
+    _, events, _ = replay(source="cached", realtime=False)
+    assert {e.payload["arm"] for e, _ in events if e.type == "session"} == {arm}
 
 
 def test_falls_back_to_cached_when_model_fails_to_load(demo, monkeypatch):

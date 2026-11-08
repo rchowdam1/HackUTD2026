@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useReducer, useRef, useState } from "
 import * as api from "./api";
 import OptInPrompt from "./OptInPrompt";
 import { initial, reduce, type Action, type Bubble, type State } from "./state";
-import type { ArmCounts, Event, Results, RiskEvent, Segment, SmsPayload } from "./types";
+import type { Event, RiskEvent, Segment, SmsPayload } from "./types";
 
 const FIXTURES = new URLSearchParams(location.search).has("fixtures");
 // Live transcript typing speed. Must match WORD_MS in backend/app/ingest/__init__.py (cached replay pacing).
@@ -21,16 +21,13 @@ const DISPATCH_WORDS: Record<SmsPayload["status"], string> = {
   delivered: "Alert text delivered",
   failed: "Warning detected but the alert text was NOT sent (failed)",
 };
-const ARM_NAMES: Record<string, string> = { K: "Keyword only (K)", B: "CallSafe rules (B)", C: "Rules + intent model (C)" };
 const MARKER_WORDS: [string, string][] = [
   ["ALERT-", "Alert message sent to user"],
   ["FU-", "Follow-up message sent to user"],
 ];
-const CONFIDENCE_WORDS: Record<RiskEvent["confidence_class"], string> = {
-  high: "High confidence",
-  medium: "Medium confidence",
-  low: "Low confidence",
-};
+// The intent model behind arm C: app.intent.MODEL (perplexity/pplx-decider-v1.2-20261016).
+const MODEL_NAME = "Perplexity Decider";
+const ARM_WORDS: Record<string, string> = { K: "keywords only", B: "rules only", C: `rules + AI (${MODEL_NAME})` };
 
 export default function App() {
   const [authed, setAuthed] = useState<boolean | null>(FIXTURES ? true : null);
@@ -85,7 +82,6 @@ function Login({ note, onLogin }: { note: string | null; onLogin: () => void }) 
 
 function Console({ onLoggedOut }: { onLoggedOut: (why: string | null) => void }) {
   const [state, dispatch] = useReducer(reduce, initial);
-  const [results, setResults] = useState<Results>({ status: "pending" });
   const [stream, setStream] = useState<"connecting" | "live" | "stale">(FIXTURES ? "live" : "connecting");
   const [error, setError] = useState<string | null>(null);
   const live = useRef(new Set<string>()); // segments that arrived over the stream type out; hydrated ones don't
@@ -99,8 +95,6 @@ function Console({ onLoggedOut }: { onLoggedOut: (why: string | null) => void })
   useEffect(() => {
     if (FIXTURES) return api.replayFixtures(dispatch);
     api.onFailure({ unauthorized: () => onLoggedOut("Session expired, log in again"), error: setError });
-    api.results().then(setResults);
-    const timer = setInterval(() => api.results().then(setResults), 30_000);
     // On every (re)open: buffer live events, rebuild from GET /state, then replay the buffer (deduped).
     let buffer: Event[] | null = null;
     let generation = 0;
@@ -151,7 +145,6 @@ function Console({ onLoggedOut }: { onLoggedOut: (why: string | null) => void })
       generation++;
       clearTimeout(retry);
       held.forEach(clearTimeout);
-      clearInterval(timer);
       unsubscribe();
     };
   }, [onLoggedOut]);
@@ -160,7 +153,6 @@ function Console({ onLoggedOut }: { onLoggedOut: (why: string | null) => void })
     <div className="console">
       <header>
         <h1>CallSafe</h1>
-        <span className="tag">replayed call through the live ingestion path</span>
         {FIXTURES && <span className="tag warn">fixture replay</span>}
         {stream === "connecting" && <span className="tag">connecting…</span>}
         {stream === "stale" && <span className="tag stale">disconnected / reconnecting — view may be stale</span>}
@@ -179,24 +171,16 @@ function Console({ onLoggedOut }: { onLoggedOut: (why: string | null) => void })
         <Transcript state={state} live={live.current} />
         <aside>
           <WhyPanel state={state} />
-          <div className="card counter">
-            <h2>WRONG replies</h2>
-            <div className="big">{state.wrongCount}</div>
-          </div>
           <Phone bubbles={state.bubbles} simulated={state.smsMode === "simulated"} off={monitoringOff(state)} />
         </aside>
       </main>
-      <footer>
-        <ResultsCard results={results} />
-        <WhereWeFail results={results} />
-      </footer>
     </div>
   );
 }
 
 function sessionLabel(s: State): string {
   if (!s.session) return "idle";
-  if (s.session.state === "running") return `call running · arm ${s.session.arm}`;
+  if (s.session.state === "running") return `call running · ${ARM_WORDS[s.session.arm ?? ""] ?? s.session.arm}`;
   return s.session.state === "finished" ? "call ended" : "reset";
 }
 
@@ -206,6 +190,7 @@ function Controls({ state, dispatch }: { state: State; dispatch: (a: Action) => 
     <nav className="controls">
       <button disabled={FIXTURES} onClick={() => api.runScenario("clinic")}>Run clinic</button>
       <button disabled={FIXTURES} onClick={() => api.runScenario("bank")}>Run bank</button>
+      <button disabled={FIXTURES} onClick={() => api.runScenario("family")}>Run grandson</button>
       <button disabled={FIXTURES} onClick={() => api.endCall()}>End call</button>
       <button disabled={FIXTURES} className="danger" onClick={() => api.reset()}>Reset</button>
       <span className="spacer" />
@@ -294,20 +279,20 @@ function WhyPanel({ state }: { state: State }) {
       <h2>Why this alert</h2>
       <p className="big-text">{risk ? CATEGORY_WORDS[risk.category] : alert.template_id}</p>
       <dl>
-        <dt>Rule</dt>
-        <dd>{alert.basis.join(", ") || "-"}</dd>
-        <dt>Confidence</dt>
-        <dd>{risk ? CONFIDENCE_WORDS[risk.confidence_class] : "-"}</dd>
-        <dt>Keyword-only would have fired</dt>
-        <dd>{alert.keyword_arm_would_fire ? "Yes" : "No"}</dd>
-        <dt>Policy</dt>
-        <dd>{alert.policy_version}</dd>
+        <dt>Caught by</dt>
+        <dd>{risk ? caughtBy(risk) : "-"}</dd>
       </dl>
       <p className={`dispatch ${status ?? ""}`}>
         {optedOut ? "Monitoring opt-in: No. No text sent" : status ? DISPATCH_WORDS[status] : "Alert text not dispatched yet"}
       </p>
     </section>
   );
+}
+
+function caughtBy(r: RiskEvent): string {
+  if (r.source === "rule") return "CallSafe rules";
+  const sure = r.score === null ? "" : `: ${(Math.floor(r.score * 1000) / 10).toFixed(1)}% sure`;
+  return `${MODEL_NAME} (AI)${sure}`;
 }
 
 // Consent known and not active: alerts are skipped, not failed. null = not loaded yet (or fixture replay).
@@ -349,56 +334,5 @@ function OutBubble({ b }: { b: Extract<Bubble, { kind: "out" }> }) {
       {text ?? b.sms.template_id}
       <small>{b.sms.status}</small>
     </div>
-  );
-}
-
-function ResultsCard({ results }: { results: Results }) {
-  if ("status" in results) {
-    return (
-      <section className="card results">
-        <h2>Held-out results</h2>
-        <p className="muted">Results pending</p>
-      </section>
-    );
-  }
-  const arm = (name: string, c?: ArmCounts) =>
-    c && (
-      <div className="arm" key={name}>
-        <h3>{ARM_NAMES[name] ?? name}</h3>
-        <p>
-          Hard-benign false alerts: <b>{c.hard_benign_fp} of {c.hard_benign_n}</b>
-        </p>
-        <p>
-          Scam calls caught: <b>{c.TP} of {c.TP + c.FN}</b>
-        </p>
-      </div>
-    );
-  return (
-    <section className="card results">
-      <h2>Held-out results · {results.batch}</h2>
-      <div className="arms">{Object.entries(results.arms).map(([n, c]) => arm(n, c))}</div>
-      {results.discordant && (
-        <p>
-          Correct only under K: {results.discordant.K_only} · correct only under B: {results.discordant.B_only}
-        </p>
-      )}
-      <p className="muted">Scripted transcripts, not ASR.</p>
-    </section>
-  );
-}
-
-function WhereWeFail({ results }: { results: Results }) {
-  const b = "status" in results ? undefined : results.arms.B;
-  return (
-    <section className="card fail">
-      <h2>Where we fail</h2>
-      <ul>
-        {b && <li>Missed {b.FN} of {b.TP + b.FN} scam calls on the held-out set.</li>}
-        {b && <li>False alerts on {b.FP} of {b.FP + b.TN} benign calls.</li>}
-        <li>A request paraphrased with no trigger phrase can slip past the rules.</li>
-        <li>Held-out calls are scripted text; speech recognition is only checked on the demo clips.</li>
-        <li>Too few calls for a production accuracy claim.</li>
-      </ul>
-    </section>
   );
 }

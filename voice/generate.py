@@ -2,9 +2,9 @@
 
 Setup (once, from the repo root):
     uv venv -p 3.12 voice/.venv && uv pip install -p voice/.venv/bin/python -r voice/requirements.txt
-Run:
-    voice/.venv/bin/python voice/generate.py
-Needs ffmpeg on PATH. Reads scenarios/demo/{clinic,bank}.json and writes each turn
+Run (all scenarios, or only the ids given):
+    voice/.venv/bin/python voice/generate.py [family ...]
+Needs ffmpeg on PATH. Reads scenarios/demo/<id>.json and writes each turn
 to audio/demo/<turn.audio> after an 8 kHz mu-law round trip (telephone quality).
 Prints per-clip durations; exits non-zero if a scenario exceeds its length limit.
 """
@@ -23,7 +23,8 @@ from qwen_tts import Qwen3TTSModel
 ROOT = Path(__file__).resolve().parents[1]
 MODEL = "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice"
 VOICES = {"caller": "Ryan", "subscriber": "Aiden"}  # distinct preset English voices
-LIMITS_S = {"clinic": 15.0, "bank": 25.0}
+SCENARIO_VOICES = {"family": {"caller": "Aiden", "subscriber": "Serena"}}  # grandson and his grandmother
+LIMITS_S = {"clinic": 15.0, "bank": 25.0, "family": 30.0}
 
 
 def mulaw_roundtrip(src: Path, dst: Path) -> None:
@@ -39,12 +40,14 @@ def main() -> int:
     model = Qwen3TTSModel.from_pretrained(MODEL, device_map=device, dtype=torch.float32)
     ok = True
     for scenario_id, limit in LIMITS_S.items():
+        if sys.argv[1:] and scenario_id not in sys.argv[1:]:
+            continue
         scenario = json.loads((ROOT / "scenarios" / "demo" / f"{scenario_id}.json").read_text())
         total = 0.0
         for turn in scenario["turns"]:
             torch.manual_seed(0)
             wavs, sr = model.generate_custom_voice(text=turn["text"], language="English",
-                                                   speaker=VOICES[turn["speaker"]])
+                                                   speaker=SCENARIO_VOICES.get(scenario_id, VOICES)[turn["speaker"]])
             out = ROOT / "audio" / "demo" / turn["audio"]
             out.parent.mkdir(parents=True, exist_ok=True)
             with tempfile.TemporaryDirectory() as tmp:

@@ -8,15 +8,15 @@ This directory is the maintained source for verifying what CallSafe's users can 
 - Each run snapshots the working tree into `.verify/sandbox/<run_id>/` (minus `scenarios/H1/`), so the app's `data/safesignal.db` and `results/` are the sandbox's, not the checkout's.
 - The sandbox environment is generated: random `OPERATOR_PASSWORD`, `SESSION_SECRET`, `CONSENT_SALT`, a random `TWILIO_AUTH_TOKEN` (signing only), `PUBLIC_BASE_URL=http://127.0.0.1:<port>`, `DEMO_PHONE=+15550100001`, `SPARE_PHONE=+15550100002`, `REPLAY_SOURCE=cached` (profile `cached`) or `asr` (profile `asr`), `HF_HUB_OFFLINE=1`. `.env` is never read. There is no `TWILIO_ACCOUNT_SID`/`TWILIO_FROM`, so real-mode sends fail closed.
 - A fresh sandbox has no consent row (state `invited`) and no reply counts. Checks that need an opted-in phone reply YES first.
-- `results/latest.json` is committed (H1 numbers). `results.pending` moves the sandbox copy aside; `results.eval-cli-to-card` regenerates it from the dev batch.
+- `results/latest.json` is committed (H1 numbers). `results.pending` moves the sandbox copy aside; `results.eval-cli-to-api` regenerates it from the dev batch.
 
 ## Driving conventions
 
 - Start every recipe from the baseline. Checks that change shared state (consent, SMS mode) restore it before they end.
-- Prefer roles and accessible names: buttons by exact name (`Run bank`, `WRONG`), cards (`.card`, a `<section>` or, for the WRONG counter, a `<div>`) by their H2 (`Live transcript`, `Why this alert`, `Phone`, `WRONG replies`, `Held-out results`, `Where we fail`). The password input has no label; use its placeholder `Operator password`.
+- Prefer roles and accessible names: buttons by exact name (`Run bank`, `WRONG`), cards (`.card` `<section>`s) by their H2 (`Live transcript`, `Why this alert`, `Phone`). The password input has no label; use its placeholder `Operator password`.
 - Every UI string a check depends on is listed in `UI_HANDLES` in `../scripts/checks.py`; `verify.py lint` fails when one disappears from `console/src`.
 - Wait on events, never on sleeps: the harness's own SSE subscriber (`events-<profile>.jsonl`) is the clock. The only fixed waits are "wait past the replay's natural end" to prove that nothing late arrives.
-- Replays are paced for the console's word-by-word typing: clinic ≈5.5 s, bank ≈8 s.
+- Replays are paced for the console's word-by-word typing: clinic ≈5.5 s, bank ≈8 s, grandson ≈11 s.
 
 ## Proof and skip reporting
 
@@ -38,10 +38,10 @@ Each feature file starts with an H1 title and one paragraph describing the user-
 ## Features
 
 - [Operator login](./operator-login.md) covers the password form, the signed server-side session cookie, and the 401 wall on every operator route.
-- [Call replay](./call-replay.md) covers Run clinic (silent, "not a safety verdict") and Run bank (alert, Why panel, auto end-call, one follow-up).
-- [SMS replies](./sms-replies.md) covers the simulated phone's YES / WRONG / SHARED / STOP buttons, keyword normalisation, the WRONG counter, and consent gating of alerts.
+- [Call replay](./call-replay.md) covers Run clinic (silent, "not a safety verdict"), Run bank (alert, Why panel, auto end-call, one follow-up) and Run grandson (rules alone stay silent; the model catches it).
+- [SMS replies](./sms-replies.md) covers the simulated phone's YES / WRONG / SHARED / STOP buttons, keyword normalisation, WRONG counting, and consent gating of alerts.
 - [Call controls](./call-controls.md) covers End call and Reset mid-replay and the real / simulated SMS-mode toggle.
-- [Results card](./results-card.md) covers the pending state and `python -m eval.run` feeding the results and "Where we fail" cards.
+- [Results card](./results-card.md) covers `GET /results/latest` (pending, and `python -m eval.run` output served byte-for-byte); the console no longer shows results.
 - [Twilio webhooks](./twilio-webhooks.md) covers `X-Twilio-Signature` on `/sms/inbound` and `/sms/status`, sender binding, MessageSid dedupe and status callbacks.
 - [Enrollment invite](./enrollment-invite.md) covers `POST /sms/invite` for the demo and spare phones and hashed-only storage.
 - [Fixture replay](./fixture-replay.md) covers the console's backend-free `?fixtures` mode.

@@ -29,10 +29,9 @@ from harness import Blocked, DEFAULT_HF_HOME, WHISPER_MODEL_DIR, sandbox_env
 # Accessible names / visible strings the UI checks depend on. `verify.py lint` greps
 # console/src for each one, so a renamed button shows up as verification drift.
 UI_HANDLES = [
-    "Operator password", "Log in", "Wrong password", "Run clinic", "Run bank", "End call", "Reset",
+    "Operator password", "Log in", "Wrong password", "Run clinic", "Run bank", "Run grandson", "End call", "Reset",
     "SMS mode", "simulated SMS", "Live transcript", "cached transcript", "No call yet.",
-    "Why this alert", "No alert - not a safety verdict", "Caller asked for a code", "Keyword-only would have fired",
-    "WRONG replies", "Held-out results", "Results pending", "Where we fail", "Scam calls caught:",
+    "Why this alert", "No alert - not a safety verdict", "Caller asked for a code", "Caught by", "CallSafe rules",
     "fixture replay", "call ended", "call running", "No texts yet.",
     "Opt in to call monitoring?", "Alert message sent to user", "Follow-up message sent to user",
     "Monitoring opt-in: No. No text sent", "Call monitoring is off.",
@@ -281,7 +280,7 @@ def fixtures_replay(ctx: Context):
 
 # --- results-card -----------------------------------------------------------------------------
 
-@check("results.pending", "results-card", ui=True)
+@check("results.pending", "results-card")
 def results_pending(ctx: Context):
     f = ctx.sandbox / "results/latest.json"
     if f.exists():
@@ -289,15 +288,9 @@ def results_pending(ctx: Context):
         f.rename(f.with_suffix(".json.verify-aside"))
     r = ctx.api.get("/results/latest")
     ctx.expect(r.status_code == 200 and r.json() == {"status": "pending"}, "GET /results/latest -> 200 {status: pending}", r.text)
-    page = open_console(ctx)
-    res = card(page, "^Held-out results")
-    ui_assert(ctx, "results card says 'Results pending'", lambda: pw_expect()(res).to_contain_text("Results pending"))
-    ui_assert(ctx, "'Where we fail' shows no measured misses yet",
-              lambda: pw_expect()(card(page, "^Where we fail")).not_to_contain_text("Missed"))
-    ctx.shot("pending")
 
 
-@check("results.eval-cli-to-card", "results-card", profile="cached", ui=True)
+@check("results.eval-cli-to-api", "results-card", profile="cached")
 def results_eval(ctx: Context):
     cmd = [sys.executable, "-m", "eval.run", "--arms", "K,B", "--batch", "dev"]
     ctx.action("$ " + " ".join(cmd[1:]) + "  (cwd sandbox)")
@@ -315,21 +308,6 @@ def results_eval(ctx: Context):
     ctx.expect(data.get("batch") == "dev" and {"K", "B"} <= set(data.get("arms", {})), "results cover batch dev, arms K and B", data)
     r = ctx.api.get("/results/latest")
     ctx.expect(r.content == raw, "GET /results/latest returns the file byte-for-byte", r.text[:200])
-    page = open_console(ctx)
-    res = card(page, "^Held-out results")
-    ui_assert(ctx, "results card heading names batch dev",
-              lambda: pw_expect()(res.get_by_role("heading", level=2)).to_have_text("Held-out results · dev"))
-    for arm, title in (("K", "Keyword only (K)"), ("B", "CallSafe rules (B)")):
-        c = data["arms"][arm]
-        block = res.locator("div.arm").filter(has=page.get_by_role("heading", name=title))
-        ui_assert(ctx, f"arm {arm} shows 'Scam calls caught: {c['TP']} of {c['TP'] + c['FN']}'",
-                  lambda: pw_expect()(block).to_contain_text(f"Scam calls caught: {c['TP']} of {c['TP'] + c['FN']}"))
-        ui_assert(ctx, f"arm {arm} shows hard-benign false alerts {c['hard_benign_fp']} of {c['hard_benign_n']}",
-                  lambda: pw_expect()(block).to_contain_text(f"{c['hard_benign_fp']} of {c['hard_benign_n']}"))
-    b = data["arms"]["B"]
-    ui_assert(ctx, "'Where we fail' reports arm B misses from the file",
-              lambda: pw_expect()(card(page, "^Where we fail")).to_contain_text(f"Missed {b['FN']} of {b['TP'] + b['FN']} scam calls"))
-    ctx.shot("results")
 
 
 # --- call-replay ------------------------------------------------------------------------------
@@ -344,7 +322,8 @@ def replay_clinic(ctx: Context):
     ref, _ = start_replay_ui(ctx, page, "Run clinic", mark)
     run = events_for(ctx, mark, ref, "session")[0]["payload"]
     ctx.expect(run["arm"] == "B" and run["sms_mode"] == "simulated", "session runs arm B in simulated SMS mode", run)
-    ui_assert(ctx, "status shows 'call running · arm B'", lambda: pw_expect()(page.get_by_role("banner")).to_contain_text("call running · arm B"))
+    ui_assert(ctx, "status shows 'call running · rules only'",
+              lambda: pw_expect()(page.get_by_role("banner")).to_contain_text("call running · rules only"))
     ctx.wait_event(lambda e: e["session_ref"] == ref and e["type"] == "session" and e["payload"]["state"] == "finished",
                    mark, 40, "session finished (auto end-call after last turn)")
     segs = [e["payload"] for e in events_for(ctx, mark, ref, "segment")]
@@ -363,6 +342,32 @@ def replay_clinic(ctx: Context):
     ui_assert(ctx, "phone frame shows no texts", lambda: pw_expect()(card(page, "^Phone")).to_contain_text("No texts yet."))
     ui_assert(ctx, "no SMS marker in the transcript", lambda: pw_expect()(tr.locator("p.marker")).to_have_count(0))
     ctx.shot("clinic-finished")
+
+
+@check("replay.grandson-rules-only", "call-replay", ui=True)
+def replay_grandson(ctx: Context):
+    ctx.api_reset()
+    ctx.ensure_opted_in()
+    page = open_console(ctx)
+    expected = transcript_lines(ctx, "family")
+    out0, mark = len(ctx.outbox()), ctx.tap.mark()
+    ref, _ = start_replay_ui(ctx, page, "Run grandson", mark)
+    run = events_for(ctx, mark, ref, "session")[0]["payload"]
+    ctx.expect(run["arm"] == "B", "no OpenRouter key in the sandbox: the session runs arm B (rules only)", run)
+    ctx.wait_event(lambda e: e["session_ref"] == ref and e["type"] == "session" and e["payload"]["state"] == "finished",
+                   mark, 45, "session finished (auto end-call after last turn)")
+    segs = [e["payload"] for e in events_for(ctx, mark, ref, "segment")]
+    ctx.expect([(s["seq"], s["text"], s["source"]) for s in segs] == [(x["seq"], x["text"], "cached") for x in expected],
+               "SSE segments equal scenarios/demo/family/transcript.json, source cached", segs)
+    ctx.expect(not events_for(ctx, mark, ref, "decision"), "the rules alone raise no decision (the model is what catches it)",
+               events_for(ctx, mark, ref, "decision"))
+    ctx.expect(len(ctx.outbox()) == out0, "simulated outbox unchanged", len(ctx.outbox()) - out0)
+    tr = card(page, "^Live transcript")
+    for x in expected:
+        ui_assert(ctx, f"transcript shows turn {x['seq']}", lambda: pw_expect()(tr).to_contain_text(x["text"]))
+    ui_assert(ctx, "Why panel: 'No alert - not a safety verdict'",
+              lambda: pw_expect()(card(page, "^Why this alert")).to_contain_text("No alert - not a safety verdict"))
+    ctx.shot("grandson-finished")
 
 
 @check("replay.bank-alert", "call-replay", ui=True)
@@ -404,12 +409,8 @@ def replay_bank(ctx: Context):
     for x in expected:
         ui_assert(ctx, f"transcript shows turn {x['seq']}", lambda: pw_expect()(tr).to_contain_text(x["text"]))
     ui_assert(ctx, "Why panel headline 'Caller asked for a code'", lambda: pw_expect()(why).to_contain_text("Caller asked for a code"))
-    ui_assert(ctx, "Why panel Rule = decision basis", lambda: pw_expect()(dd(why, "Rule")).to_have_text(", ".join(dec["basis"])))
-    conf = {"high": "High confidence", "medium": "Medium confidence", "low": "Low confidence"}[risk["confidence_class"]]
-    ui_assert(ctx, f"Why panel Confidence = {conf}", lambda: pw_expect()(dd(why, "Confidence")).to_have_text(conf))
-    kw = "Yes" if dec["keyword_arm_would_fire"] else "No"
-    ui_assert(ctx, f"Why panel keyword-only = {kw}", lambda: pw_expect()(dd(why, "Keyword-only would have fired")).to_have_text(kw))
-    ui_assert(ctx, "Why panel Policy = v1.0", lambda: pw_expect()(dd(why, "Policy")).to_have_text(dec["policy_version"]))
+    ctx.expect(risk["source"] == "rule" and risk["score"] is None, "the cited risk event is a rule hit (no model score)", risk)
+    ui_assert(ctx, "Why panel 'Caught by' = 'CallSafe rules'", lambda: pw_expect()(dd(why, "Caught by")).to_have_text("CallSafe rules"))
     for tid in ("ALERT-OTP-01", "FU-OTP-01"):
         ui_assert(ctx, f"phone frame shows {tid} text", lambda: pw_expect()(phone).to_contain_text(ctx.templates[tid]))
     ui_assert(ctx, "transcript marker '* Alert message sent to user' right after the flagged line",
@@ -445,22 +446,18 @@ def replies_yes(ctx: Context):
 @check("replies.wrong-counter", "sms-replies", ui=True, requires=["replay.bank-alert"])
 def replies_wrong(ctx: Context):
     page = open_console(ctx)
-    counter = card(page, "^WRONG replies").locator(".big")
     n = ctx.reply_count("WRONG")
-    ui_assert(ctx, f"counter starts at the stored count {n}", lambda: pw_expect()(counter).to_have_text(str(n)))
     mark = ctx.tap.mark()
     click(ctx, page, "WRONG", card(page, "^Phone"))
     rep = ctx.wait_event(lambda e: e["type"] == "reply", mark, 10, "reply event")["payload"]
     ctx.expect(rep == {"keyword": "WRONG", "counted": True, "wrong_count": n + 1}, "reply WRONG counted, wrong_count n+1", rep)
-    ui_assert(ctx, f"counter shows {n + 1}", lambda: pw_expect()(counter).to_have_text(str(n + 1)))
     ctx.expect(ctx.reply_count("WRONG") == n + 1, "SQLite reply_counts WRONG total is n+1", ctx.reply_count("WRONG"))
     rows = ctx.db_rows("SELECT template_id, count FROM reply_counts WHERE keyword='WRONG'")
     ctx.expect(any(t == "ALERT-OTP-01" for t, _ in rows), "count attributed to the latest alert ALERT-OTP-01", rows)
     agg = ctx.api.get("/aggregates").json()
     ctx.expect(sum(r["count"] for r in agg["replies"] if r["keyword"] == "WRONG") == n + 1, "GET /aggregates agrees", agg)
     ctx.expect(ctx.outbox()[-1]["template_id"] == "R-WRONG", "outbox last message is R-WRONG", ctx.outbox()[-1])
-    page.reload()
-    ui_assert(ctx, "counter survives a page reload", lambda: pw_expect()(card(page, "^WRONG replies").locator(".big")).to_have_text(str(n + 1)))
+    ui_assert(ctx, "phone frame shows the WRONG reply bubble", lambda: pw_expect()(card(page, "^Phone").locator(".bubble.in").last).to_have_text("WRONG"))
     ctx.shot("wrong-counted")
 
 

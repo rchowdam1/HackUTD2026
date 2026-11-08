@@ -1,4 +1,4 @@
-import type { ConsentState, Event, Results, SmsMode } from "./types";
+import type { ConsentState, Event, SmsMode } from "./types";
 
 // What GET /state returns: current values plus every event since the latest session running/reset.
 export interface Snapshot {
@@ -45,7 +45,7 @@ export async function login(password: string): Promise<string | null> {
 }
 export const loggedIn = async () => (await fetch("/aggregates")).ok;
 export const logout = () => call("Log out", "/logout");
-export const runScenario = (id: "clinic" | "bank") => call(`Run ${id}`, `/demo/run/${id}`);
+export const runScenario = (id: "clinic" | "bank" | "family") => call(`Run ${id}`, `/demo/run/${id}`);
 export const endCall = () => call("End call", "/demo/end-call");
 export const reset = () => call("Reset", "/demo/reset");
 export const setSmsMode = (mode: SmsMode) => call("SMS mode change", "/demo/sms-mode", { mode });
@@ -58,7 +58,6 @@ async function read<T>(path: string): Promise<T | null> {
   if (r?.status === 401) handlers.unauthorized();
   return r?.ok ? r.json() : null;
 }
-export const results = async (): Promise<Results> => (await read<Results>("/results/latest")) ?? { status: "pending" };
 export const snapshot = () => read<Snapshot>("/state");
 
 const textCache = new Map<string, Promise<string | null>>();

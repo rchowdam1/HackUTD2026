@@ -134,10 +134,10 @@ def _antecedent(p: _Policy, window: list[Segment], before: list[str]) -> str | N
 
 
 def _event(seg: Segment, event_type: str, source: str, rule_id: str, category: str,
-           span: list[int], confidence: str, policy_version: str) -> RiskEvent:
+           span: list[int], confidence: str, policy_version: str, score: float | None = None) -> RiskEvent:
     return RiskEvent.model_validate(dict(
         session_ref=seg.session_ref, event_type=event_type, source=source, rule_id=rule_id,
-        category=category, span_seq=span, confidence_class=confidence, policy_version=policy_version))
+        category=category, span_seq=span, confidence_class=confidence, policy_version=policy_version, score=score))
 
 
 def _keyword(p: _Policy, segments: list[Segment], policy_version: str) -> list[RiskEvent]:
@@ -196,7 +196,8 @@ def _intent(p: _Policy, segments: list[Segment], i: int, rule_events: list[RiskE
         judgment = intent.judge(ans, cat.name, any(cat.lexicon.search(s.text) for s in window))
         if judgment in ("confirm", "solo"):
             out.append(_event(seg, cat.cfg["b_event"], "intent", cat.cfg["c_rules"][judgment], cat.name, [seg.seq],
-                              "medium" if judgment == "confirm" else "low", policy_version))
+                              "medium" if judgment == "confirm" else "low", policy_version,
+                              intent.request_score(ans, cat.name)))
     return out
 
 

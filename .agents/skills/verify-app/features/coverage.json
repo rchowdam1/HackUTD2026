@@ -172,11 +172,11 @@
     },
     {
       "item": "Arm C (rules + Perplexity Decider via OpenRouter) in a live call",
-      "reason": "no user path selects arm C: the console and /demo/run always replay arm B. Arm C needs INTENT_MODEL=on and OPENROUTER_API_KEY and sends caller turns to openrouter.ai. Unit-tested with mocked HTTP in tests/intent."
+      "reason": "the demo replays run arm C when INTENT_MODEL=on and OPENROUTER_API_KEY are set, but the verify sandbox never reads .env, so it has no key and runs arm B (replay.grandson-rules-only proves the rules alone miss that call). The model path is unit-tested with mocked HTTP in tests/intent; a live run needs a key and sends caller turns to openrouter.ai."
     },
     {
       "item": "Held-out H1 scoring (eval.run --batch H1)",
-      "reason": "Track A agents must not read scenarios/H1 (PRD 19.10); the snapshot excludes it. The results card is verified with --batch dev."
+      "reason": "Track A agents must not read scenarios/H1 (PRD 19.10); the snapshot excludes it. The results API is verified with --batch dev."
     },
     {
       "item": "Demo audio generation (voice/generate.py, Qwen3-TTS)",

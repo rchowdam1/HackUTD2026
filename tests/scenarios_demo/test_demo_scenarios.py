@@ -7,7 +7,7 @@ from app.ingest import load_transcript
 from app.models import Scenario
 
 DEMO = Path(__file__).resolve().parents[2] / "scenarios" / "demo"
-MAX_MS = {"clinic": 15_000, "bank": 25_000}
+MAX_MS = {"clinic": 15_000, "bank": 25_000, "family": 30_000}
 
 
 @pytest.mark.parametrize("sid", sorted(MAX_MS))
@@ -26,3 +26,5 @@ def test_labels():
     bank = Scenario.model_validate_json((DEMO / "bank.json").read_text())
     assert (clinic.label, clinic.hard_benign, clinic.category) == ("benign", True, "none")
     assert (bank.label, bank.category) == ("scam", "otp")
+    family = Scenario.model_validate_json((DEMO / "family.json").read_text())
+    assert (family.label, family.category) == ("scam", "payment")
