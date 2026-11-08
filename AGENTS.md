@@ -1,6 +1,6 @@
 # AGENTS.md
 
-CallSafe texts you during a call when the caller asks for a code, money or access. `PRD.md` §19 is the spec. Stack: Python 3.11 FastAPI (`backend/app`), React/Vite console (`console/`), SQLite, uv.
+CallSafe texts you during a call when the caller asks for a code, money or access. `PRD.md` §19 is the spec. Stack: Python 3.11 FastAPI (`backend/app`), faster-whisper, Twilio SMS or the simulated gateway, React/Vite console (`console/`), SQLite, uv.
 
 ## Scope
 

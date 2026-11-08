@@ -30,6 +30,10 @@ Each run copies the working tree, minus `scenarios/H1/`, into `.verify/sandbox/<
 
 Real Twilio SMS to a phone, Twilio webhooks through the cloudflared tunnel, `scripts/demo_up`, Twilio's own STOP handling, arm C in a live call, H1 scoring, voice generation and the physical demo setup. Check those by hand with `scripts/preflight` and `docs/twilio-live.md`.
 
+## Last full run
+
+Main `ebcb159`, 2026-11-08 01:45 CST, run `20261108T074456Z-61bc` with `--negative-control`: 24 PASS, 0 BLOCKED, 0 KNOWN-GAP; the only FAIL is `control.invalid-assertion`, as designed. `make verify-formal`: FORMAL OK (all 7 configs as expected).
+
 ## Open finding
 
 PRD §19.10 says a reset call "never sends SMS". The formal model shows the code can't promise that: if Reset lands after the worker thread's live check, the alert still goes out. Details are in `.agents/skills/verify-pipeline-formal/SKILL.md`.

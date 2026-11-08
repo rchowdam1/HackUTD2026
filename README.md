@@ -2,14 +2,16 @@
 
 CallSafe texts you during a call when the caller asks for a code, money or access to your device. The text names the request and gives one safe step. The demo replays two calls through the live pipeline: a clinic call that must stay silent, and a bank call that turns into a request for a one-time passcode (OTP). An operator console shows the transcript, why an alert fired, and the held-out results. `PRD.md` §19 is the build spec.
 
+The demo runs arm B (rules + policy) in simulated SMS mode: the console's phone frame shows the texts and has on-screen reply buttons. The Twilio account is still a trial (no number, can't send our message bodies), and real SMS needs an upgraded account plus 10DLC or toll-free registration, which takes days.
+
 ## Stack
 
 - Backend: Python 3.11, FastAPI and uvicorn in one process (`backend/app`).
 - Speech to text: faster-whisper `small.en` on CPU, with a cached transcript as fallback.
 - Rules and SMS templates: YAML files in `policy/v1.0`.
-- Storage: SQLite in `data/`, which holds only hashed phone numbers.
+- Storage: SQLite in `data/`. Phone numbers are stored only as HMACs keyed by `CONSENT_SALT`; no audio or transcripts.
 - SMS: Twilio Programmable Messaging, or a simulated phone.
-- Arm C adds the TypeSafe Jev API (an external call, so call text leaves the machine). It needs `INTENT_MODEL=on` and `TYPESAFE_API_KEY`; without them C equals B and the app logs a warning.
+- Arm C adds the TypeSafe Jev API (an external call, so call text leaves the machine). It needs `INTENT_MODEL=on` and `TYPESAFE_API_KEY`; without them C equals B. A failed TypeSafe call falls back to arm B for that turn. The API currently returns HTTP 402 (out of credit), so C equals B until credit is added.
 - Operator console: React + TypeScript + Vite (`console/`).
 - Evaluation scripts: `eval/`.
 - Tooling: `uv` and pytest.
@@ -31,7 +33,7 @@ python -m eval.run --arms K,B --batch dev   # writes results/latest.json and .md
 
 ```bash
 make test            # pytest
-make smoke           # pytest + OTP fixture replay (required before merging)
+make smoke           # ruff + pytest + OTP fixture replay (required before merging)
 make verify-changed  # live verification of the features your branch touched
 make verify          # live verification of everything (~4 min)
 make verify-lint     # check that the verification docs and checks still match the code
