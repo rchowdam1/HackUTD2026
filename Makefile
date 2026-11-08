@@ -1,6 +1,6 @@
 UV := env -u PYTHONPATH -u PYTHONHOME -u VIRTUAL_ENV uv
 
-.PHONY: install lint smoke test run preflight verify verify-changed verify-lint verify-formal demo-up
+.PHONY: install lint smoke test run preflight verify verify-changed verify-lint verify-formal demo-up demo
 
 install:
 	$(UV) sync
@@ -23,6 +23,10 @@ preflight: install
 
 demo-up: install
 	scripts/demo_up
+
+# Whole demo on one laptop; flags: make demo ARGS="--no-twilio" or ARGS="--tailnet"
+demo: install
+	scripts/demo $(ARGS)
 
 # Verification (docs/verification.md): real app, isolated sandbox, evidence in .verify/runs/
 VERIFY := $(UV) run --with playwright==1.64.1 python .agents/skills/verify-app/scripts/verify.py

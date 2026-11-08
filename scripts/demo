@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# One command for the demo laptop: backend + console + tunnel + Twilio webhooks + preflight. Usage: scripts/demo [--no-twilio] [--tailnet]
+cd "$(dirname "$0")/.." || exit 1
+exec env -u PYTHONPATH -u PYTHONHOME -u VIRTUAL_ENV uv run python scripts/demo.py "$@"

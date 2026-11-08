@@ -1,0 +1,122 @@
+"""scripts/demo.py (`make demo`) with fakes: no Twilio CLI, cloudflared, uvicorn, vite or whisper is started."""
+
+import json
+import socket
+import subprocess
+
+import pytest
+
+from conftest import load_script
+
+demo = load_script("demo")
+
+SECRETS = {
+    "TWILIO_ACCOUNT_SID": "AC" + "1" * 32, "TWILIO_AUTH_TOKEN": "tok-secret-123", "TWILIO_FROM": "+14132883877",
+    "DEMO_PHONE": "+15550001111", "SPARE_PHONE": "+15550002222", "OPERATOR_PASSWORD": "pw-secret-456",
+    "SESSION_SECRET": "sess-secret-789", "CONSENT_SALT": "salt-secret-000", "OPENROUTER_API_KEY": "sk-or-secret",
+}
+
+
+@pytest.fixture
+def env(monkeypatch):
+    for k in demo.KEYS + ("TWILIO_CLI_PROFILE", "DEMO_PORT", "CONSOLE_PORT", "REPLAY_SOURCE"):
+        monkeypatch.setenv(k, "")  # records the original, so what main() sets is undone after the test
+        monkeypatch.delenv(k)
+    for k, v in SECRETS.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setattr(demo, "load_env", lambda path: None)
+    monkeypatch.setattr(demo.signal, "signal", lambda sig, handler: None)  # keep pytest's own handlers
+
+
+def test_key_table_says_set_or_empty_never_values(env):
+    table = demo.key_table(dict(demo.os.environ))
+    for value in SECRETS.values():
+        assert value not in table
+    assert "TWILIO_AUTH_TOKEN" in table and " set" in table
+    assert [line.split()[-1] for line in table.splitlines() if "INTENT_MODEL" in line] == ["EMPTY"]
+
+
+@pytest.mark.parametrize("unset, twilio", [("SESSION_SECRET", False), ("DEMO_PHONE", True)])
+def test_missing_key_aborts_before_anything_starts(env, monkeypatch, unset, twilio):
+    monkeypatch.delenv(unset)
+    monkeypatch.setattr(demo.subprocess, "run", lambda *a, **k: pytest.fail("nothing may run"))
+    with pytest.raises(SystemExit, match=unset):
+        demo.main([] if twilio else ["--no-twilio"])
+
+
+def test_no_twilio_does_not_need_twilio_keys(env, monkeypatch):
+    monkeypatch.delenv("DEMO_PHONE")
+    demo.check_keys(dict(demo.os.environ), twilio=False)
+
+
+def test_busy_port_falls_back_to_first_free():
+    with socket.socket() as busy:
+        busy.bind(("127.0.0.1", 0))
+        taken = busy.getsockname()[1]
+        assert not demo.port_free(taken)
+        got = demo.pick_port(taken, taken + 1)
+    assert got > taken and demo.port_free(got)
+
+
+def test_webhook_update_argv_and_read_back(monkeypatch):
+    base, number = "https://brave-otter.trycloudflare.com", "+14132883877"
+    calls = []
+
+    def run(argv, **kw):
+        calls.append(argv)
+        out = json.dumps([{"phoneNumber": number, "voiceUrl": f"{base}/voice/incoming",
+                           "smsUrl": f"{base}/sms/inbound"}])
+        return subprocess.CompletedProcess(argv, 0, stdout=out if "phone-numbers:list" in argv else "", stderr="")
+    monkeypatch.setattr(demo.subprocess, "run", run)
+    demo.point_webhooks(number, base)
+    assert calls == [
+        ["twilio", "phone-numbers:update", number, f"--voice-url={base}/voice/incoming", "--voice-method=POST",
+         f"--sms-url={base}/sms/inbound", "--sms-method=POST"],
+        ["twilio", "phone-numbers:list", "-o", "json"],
+    ]
+
+
+def test_webhook_read_back_mismatch_aborts(monkeypatch):
+    stale = json.dumps([{"phoneNumber": "+14132883877", "voiceUrl": "https://old.example/voice/incoming",
+                         "smsUrl": "https://old.example/sms/inbound"}])
+    monkeypatch.setattr(demo.subprocess, "run",
+                        lambda argv, **kw: subprocess.CompletedProcess(argv, 0, stdout=stale, stderr=""))
+    with pytest.raises(SystemExit, match="voiceUrl, smsUrl"):
+        demo.point_webhooks("+14132883877", "https://new.trycloudflare.com")
+
+
+class FakeProc:
+    pid = 0
+
+    def __init__(self, cmd, **kw):
+        self.cmd = cmd
+
+    def poll(self):
+        raise KeyboardInterrupt  # presenter presses Ctrl-C once the stack is up
+
+
+def test_no_twilio_skips_tunnel_and_twilio_cli(env, monkeypatch, capsys):
+    ran, spawned, stopped = [], [], []
+    monkeypatch.setattr(demo.shutil, "which", lambda name: pytest.fail(f"looked up {name}"))
+    monkeypatch.setattr(demo.demo_up, "start_tunnel", lambda: pytest.fail("tunnel started"))
+    monkeypatch.setattr(demo.subprocess, "run",
+                        lambda argv, **kw: ran.append(argv) or subprocess.CompletedProcess(argv, 0))
+    monkeypatch.setattr(demo, "spawn", lambda cmd, **kw: spawned.append(FakeProc(cmd, **kw)) or spawned[-1])
+    monkeypatch.setattr(demo.demo_up, "wait_healthy", lambda proc, url, timeout_s=120: True)
+    monkeypatch.setattr(demo, "port_free", lambda port: port not in (8000, 5173))
+    monkeypatch.setattr(demo, "stop", lambda procs: stopped.extend(procs))
+
+    assert demo.main(["--no-twilio"]) == 0
+
+    assert not any(argv[0] in ("twilio", "tailscale", "cloudflared") for argv in ran)
+    assert [p.cmd[0] for p in spawned] == ["uvicorn", "npx"]
+    assert spawned[0].cmd[spawned[0].cmd.index("--port") + 1] == "8010"
+    assert spawned[1].cmd[spawned[1].cmd.index("--port") + 1] == "5180"
+    assert stopped == spawned
+    assert demo.os.environ["REPLAY_SOURCE"] == "asr" and demo.os.environ["INTENT_MODEL"] == "on"
+    out = capsys.readouterr().out
+    assert "port 8000 is busy: backend on 8010" in out and "http://127.0.0.1:5180" in out
+    assert "Arm:      C (rules + AI)" in out
+    for value in SECRETS.values():
+        assert value not in out
+    assert "(413) 288-3877" not in out  # no live-call line without Twilio
