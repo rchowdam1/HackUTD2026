@@ -1,0 +1,19 @@
+{
+  "id": "dev_scam_13",
+  "set": "dev",
+  "label": "scam",
+  "hard_benign": false,
+  "category": "payment",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "This is your bank's fraud unit. Your savings are at risk from a hacker.",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "Move your money into a safe account. I'll give you the account number to send it to.",
+      "audio": null
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "id": "dev_scam_20",
+  "set": "dev",
+  "label": "scam",
+  "hard_benign": false,
+  "category": "remote",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "Install the TeamViewer app on your laptop.",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "Then read me the ID and password it shows so I can log in and help.",
+      "audio": null
+    }
+  ]
+}

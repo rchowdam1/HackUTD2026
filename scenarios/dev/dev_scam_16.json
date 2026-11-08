@@ -1,0 +1,19 @@
+{
+  "id": "dev_scam_16",
+  "set": "dev",
+  "label": "scam",
+  "hard_benign": false,
+  "category": "remote",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "This is tech support. Your computer is sending us virus alerts.",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "Please download AnyDesk so I can connect and fix it for you.",
+      "audio": null
+    }
+  ]
+}

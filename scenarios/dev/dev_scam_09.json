@@ -1,0 +1,19 @@
+{
+  "id": "dev_scam_09",
+  "set": "dev",
+  "label": "scam",
+  "hard_benign": false,
+  "category": "payment",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "This is the tax agency. You owe back taxes and a warrant will be issued today.",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "You can settle it right now with gift cards from any store. Stay on the line while you buy them.",
+      "audio": null
+    }
+  ]
+}

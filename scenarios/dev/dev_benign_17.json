@@ -1,0 +1,19 @@
+{
+  "id": "dev_benign_17",
+  "set": "dev",
+  "label": "benign",
+  "hard_benign": false,
+  "category": "none",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "Hi, we're running a short survey about your local library. Do you have two minutes?",
+      "audio": null
+    },
+    {
+      "speaker": "subscriber",
+      "text": "Sorry, not right now.",
+      "audio": null
+    }
+  ]
+}

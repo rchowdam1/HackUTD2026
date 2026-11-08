@@ -1,0 +1,24 @@
+{
+  "id": "dev_benign_11",
+  "set": "dev",
+  "label": "benign",
+  "hard_benign": true,
+  "category": "none",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "Hi Grandma, I passed my driving test!",
+      "audio": null
+    },
+    {
+      "speaker": "subscriber",
+      "text": "Oh, congratulations!",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "And don't worry, I don't need any money, I'm just calling to tell you.",
+      "audio": null
+    }
+  ]
+}

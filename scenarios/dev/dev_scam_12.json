@@ -1,0 +1,19 @@
+{
+  "id": "dev_scam_12",
+  "set": "dev",
+  "label": "scam",
+  "hard_benign": false,
+  "category": "payment",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "Grandpa, it's me. I got in an accident and I'm in jail.",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "I need you to send bail money today. Please don't tell Mom.",
+      "audio": null
+    }
+  ]
+}

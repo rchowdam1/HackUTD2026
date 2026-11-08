@@ -1,0 +1,24 @@
+{
+  "id": "dev_scam_02",
+  "set": "dev",
+  "label": "scam",
+  "hard_benign": false,
+  "category": "otp",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "Hi, this is your mobile carrier calling about a plan upgrade.",
+      "audio": null
+    },
+    {
+      "speaker": "subscriber",
+      "text": "Sure, what is it?",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "There's a loyalty discount on your line. To apply it I sent you a six digit number by text. What does it say?",
+      "audio": null
+    }
+  ]
+}

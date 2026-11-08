@@ -1,0 +1,19 @@
+{
+  "id": "dev_benign_16",
+  "set": "dev",
+  "label": "benign",
+  "hard_benign": false,
+  "category": "none",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "Your delivery is scheduled between noon and four tomorrow.",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "Someone needs to be home to receive it.",
+      "audio": null
+    }
+  ]
+}

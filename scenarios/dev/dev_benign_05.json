@@ -1,0 +1,19 @@
+{
+  "id": "dev_benign_05",
+  "set": "dev",
+  "label": "benign",
+  "hard_benign": true,
+  "category": "none",
+  "turns": [
+    {
+      "speaker": "subscriber",
+      "text": "I have to pay the plumber today and I'm not sure how much.",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "Just pay him when he finishes the job. He'll give you a receipt.",
+      "audio": null
+    }
+  ]
+}

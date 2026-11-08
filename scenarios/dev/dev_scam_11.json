@@ -1,0 +1,24 @@
+{
+  "id": "dev_scam_11",
+  "set": "dev",
+  "label": "scam",
+  "hard_benign": false,
+  "category": "payment",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "Hello, I'm calling from the county clerk about jury duty.",
+      "audio": null
+    },
+    {
+      "speaker": "subscriber",
+      "text": "Okay?",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "You missed your date. To clear the warrant you need to pay the fine today by wire transfer.",
+      "audio": null
+    }
+  ]
+}

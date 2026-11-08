@@ -1,0 +1,19 @@
+{
+  "id": "dev_benign_07",
+  "set": "dev",
+  "label": "benign",
+  "hard_benign": true,
+  "category": "none",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "Hi, this is the billing office at your doctor's. Your insurance covered the whole visit.",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "You owe nothing, so please ignore the bill you got in the mail.",
+      "audio": null
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "id": "dev_scam_04",
+  "set": "dev",
+  "label": "scam",
+  "hard_benign": false,
+  "category": "otp",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "Your account was accessed from another state an hour ago.",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "We're sending a verification code now. Please tell me the code when it arrives.",
+      "audio": null
+    },
+    {
+      "speaker": "subscriber",
+      "text": "Okay, it just came in.",
+      "audio": null
+    }
+  ]
+}

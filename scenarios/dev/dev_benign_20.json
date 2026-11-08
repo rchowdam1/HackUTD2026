@@ -1,0 +1,19 @@
+{
+  "id": "dev_benign_20",
+  "set": "dev",
+  "label": "benign",
+  "hard_benign": false,
+  "category": "none",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "Hi, it's your neighbor. Your dog got out again, he's in my yard.",
+      "audio": null
+    },
+    {
+      "speaker": "subscriber",
+      "text": "Oh no, I'll come get him right now.",
+      "audio": null
+    }
+  ]
+}

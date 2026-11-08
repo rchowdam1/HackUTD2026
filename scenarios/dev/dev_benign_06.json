@@ -1,0 +1,19 @@
+{
+  "id": "dev_benign_06",
+  "set": "dev",
+  "label": "benign",
+  "hard_benign": true,
+  "category": "none",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "Mom, the streaming password is on the fridge.",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "You don't need to tell me it, just type it into the TV.",
+      "audio": null
+    }
+  ]
+}

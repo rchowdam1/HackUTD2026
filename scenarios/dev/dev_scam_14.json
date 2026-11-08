@@ -1,0 +1,19 @@
+{
+  "id": "dev_scam_14",
+  "set": "dev",
+  "label": "scam",
+  "hard_benign": false,
+  "category": "payment",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "We refunded you nine hundred dollars instead of ninety by mistake.",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "Please send back the difference with a Zelle payment before we close the case.",
+      "audio": null
+    }
+  ]
+}

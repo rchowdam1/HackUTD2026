@@ -1,0 +1,19 @@
+{
+  "id": "dev_scam_10",
+  "set": "dev",
+  "label": "scam",
+  "hard_benign": false,
+  "category": "payment",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "This is the electric company. Your power will be shut off in one hour.",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "Pay the overdue balance now over the phone to avoid disconnection.",
+      "audio": null
+    }
+  ]
+}

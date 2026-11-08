@@ -1,0 +1,24 @@
+{
+  "id": "dev_benign_18",
+  "set": "dev",
+  "label": "benign",
+  "hard_benign": false,
+  "category": "none",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "Hello, is this Maria?",
+      "audio": null
+    },
+    {
+      "speaker": "subscriber",
+      "text": "No, I think you have the wrong number.",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "Oh, sorry about that.",
+      "audio": null
+    }
+  ]
+}

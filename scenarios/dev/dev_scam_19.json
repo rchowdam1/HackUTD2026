@@ -1,0 +1,19 @@
+{
+  "id": "dev_scam_19",
+  "set": "dev",
+  "label": "scam",
+  "hard_benign": false,
+  "category": "remote",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "Your home router has been hacked and someone is on your network.",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "Give me remote access to your computer and I'll lock it down.",
+      "audio": null
+    }
+  ]
+}

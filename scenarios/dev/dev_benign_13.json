@@ -1,0 +1,19 @@
+{
+  "id": "dev_benign_13",
+  "set": "dev",
+  "label": "benign",
+  "hard_benign": true,
+  "category": "none",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "Thanks for calling us back about your login. Your verification code expired.",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "Just request a new one in the app when you're ready. You don't need to share it with us.",
+      "audio": null
+    }
+  ]
+}

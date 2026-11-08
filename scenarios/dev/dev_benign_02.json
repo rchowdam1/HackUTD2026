@@ -1,0 +1,19 @@
+{
+  "id": "dev_benign_02",
+  "set": "dev",
+  "label": "benign",
+  "hard_benign": true,
+  "category": "none",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "Hi, this is the water utility. Your payment of forty dollars went through.",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "No further action is needed. Have a good day.",
+      "audio": null
+    }
+  ]
+}
