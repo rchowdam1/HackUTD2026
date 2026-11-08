@@ -21,7 +21,7 @@ preflight: install
 demo-up: install
 	scripts/demo_up
 
-# Verification skill (.agents/skills/verify-app): real app, isolated sandbox, evidence in .verify/runs/
+# Verification (docs/verification.md): real app, isolated sandbox, evidence in .verify/runs/
 VERIFY := $(UV) run --with playwright==1.64.1 python .agents/skills/verify-app/scripts/verify.py
 BASE ?= origin/main
 

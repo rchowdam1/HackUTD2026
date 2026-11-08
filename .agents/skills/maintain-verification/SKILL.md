@@ -53,3 +53,5 @@ State: the outcome; features covered (source + live) and their final status; the
 
 - Every PR touching mapped paths: CI runs `make verify-lint` and `make verify-changed` (`.github/workflows/verify.yml`, path-filtered, so docs-only PRs cost nothing).
 - After a merge window or before judging: run this skill with `--base` set to the last synced commit or `--all`.
+
+Human-facing overview (prerequisites, statuses, CI, troubleshooting): `docs/verification.md`. Keep it in step when this skill changes.
