@@ -19,7 +19,7 @@ SECRETS = {
 
 @pytest.fixture
 def env(monkeypatch):
-    for k in demo.KEYS + ("TWILIO_CLI_PROFILE", "DEMO_PORT", "CONSOLE_PORT", "REPLAY_SOURCE"):
+    for k in demo.KEYS + ("DEMO_PORT", "CONSOLE_PORT", "REPLAY_SOURCE"):
         monkeypatch.setenv(k, "")  # records the original, so what main() sets is undone after the test
         monkeypatch.delenv(k)
     for k, v in SECRETS.items():
@@ -120,3 +120,35 @@ def test_no_twilio_skips_tunnel_and_twilio_cli(env, monkeypatch, capsys):
     for value in SECRETS.values():
         assert value not in out
     assert "(413) 288-3877" not in out  # no live-call line without Twilio
+
+
+def test_twilio_mode_uses_env_account_not_a_cli_profile(env, monkeypatch, capsys):
+    # .env credentials outrank any CLI profile, so `profiles:list` shows the env profile active and a named one
+    # inactive; the old profile check aborted here before the tunnel or backend started.
+    base, number = "https://brave-otter.trycloudflare.com", SECRETS["TWILIO_FROM"]
+    ran = []
+
+    def run(argv, **kw):
+        ran.append(argv)
+        out = ""
+        if argv[:2] == ["twilio", "profiles:list"]:
+            out = "ID      Account SID  Active\n[env]   AC111        true\nAmeya   AC222        false\n"
+        elif argv[:2] == ["twilio", "phone-numbers:list"]:
+            out = json.dumps([{"phoneNumber": number, "voiceUrl": f"{base}/voice/incoming",
+                               "smsUrl": f"{base}/sms/inbound"}])
+        return subprocess.CompletedProcess(argv, 0, stdout=out, stderr="")
+    monkeypatch.setattr(demo.subprocess, "run", run)
+    monkeypatch.setattr(demo.shutil, "which", lambda name: f"/usr/local/bin/{name}")
+    monkeypatch.setattr(demo.demo_up, "start_tunnel", lambda: (FakeProc(["cloudflared"]), base))
+    monkeypatch.setattr(demo, "spawn", lambda cmd, **kw: FakeProc(cmd, **kw))
+    monkeypatch.setattr(demo.demo_up, "wait_healthy", lambda proc, url, timeout_s=120: True)
+    monkeypatch.setattr(demo, "tunnel_answers", lambda b: True)
+    monkeypatch.setattr(demo, "stop", lambda procs: None)
+
+    assert demo.main([]) == 0
+
+    assert not any(argv[:2] == ["twilio", "profiles:use"] or argv[:2] == ["twilio", "profiles:list"] for argv in ran)
+    assert demo.webhook_argv(number, base) in ran
+    out = capsys.readouterr().out
+    assert "Call (413) 288-3877 to start a live call" in out
+    assert demo.os.environ["PUBLIC_BASE_URL"] == base

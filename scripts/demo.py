@@ -1,6 +1,6 @@
 """`make demo`: bring the whole demo up on one laptop and print what the presenter needs.
 
-Order: .env key table -> Twilio CLI profile -> warm whisper -> ports -> cloudflared tunnel -> backend
+Order: .env key table -> Twilio CLI installed -> warm whisper -> ports -> cloudflared tunnel -> backend
 (REPLAY_SOURCE=asr) + console -> Twilio number webhooks (Twilio CLI) -> preflight --no-sms -> summary.
 Flags: --no-twilio (mic + replay only, simulated SMS), --tailnet (tailscale serve the console).
 Ctrl-C stops every child it started. Never prints secrets, DEMO_PHONE or SPARE_PHONE.
@@ -74,17 +74,10 @@ def twilio(*args: str) -> subprocess.CompletedProcess:
     return subprocess.run(["twilio", *args], capture_output=True, text=True)
 
 
-def use_profile(profile: str) -> None:
+def require_twilio_cli() -> None:
     if shutil.which("twilio") is None:
         sys.exit("demo: the Twilio CLI is not installed (brew install twilio/brew/twilio), "
                  "or run `make demo ARGS=--no-twilio`")
-    if twilio("profiles:use", profile).returncode != 0:
-        sys.exit(f"demo: Twilio CLI profile {profile!r} not found: `twilio profiles:create`, "
-                 f"or set TWILIO_CLI_PROFILE in .env")
-    listing = twilio("profiles:list").stdout
-    if not any(line.split()[:1] == [profile] and "true" in line.split() for line in listing.splitlines()):
-        sys.exit(f"demo: Twilio CLI profile {profile!r} is not active after `twilio profiles:use`")
-    say(f"Twilio CLI profile {profile} active")
 
 
 def webhook_argv(number: str, base: str) -> list[str]:
@@ -179,7 +172,9 @@ def main(argv: list[str]) -> int:
         say("notice: arm C sends each caller turn (and the turns before it) to OpenRouter")
 
     if use_twilio:
-        use_profile(os.environ.get("TWILIO_CLI_PROFILE", "").strip() or "Ameya")
+        # No named CLI profile: the CLI gives TWILIO_ACCOUNT_SID/AUTH_TOKEN from .env (inherited) priority over
+        # any profile, which is the account the app sends from and that owns TWILIO_FROM.
+        require_twilio_cli()
 
     say("warming faster-whisper small.en (downloads once)")
     subprocess.run([sys.executable, "-c", "from app import asr; asr.load_model()"], check=True, cwd=REPO_ROOT)
