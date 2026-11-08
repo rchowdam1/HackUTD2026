@@ -65,13 +65,13 @@
       ],
       "synced_commit": "35ed336647808a5fbe43a9567b383e5663e50c2f"
     },
-    "bridge-inbound": {
-      "doc": "bridge-inbound.md",
+    "twilio-webhooks": {
+      "doc": "twilio-webhooks.md",
       "paths": [
         "backend/app/sms/webhooks.py",
         "backend/app/sms/__init__.py"
       ],
-      "synced_commit": "35ed336647808a5fbe43a9567b383e5663e50c2f"
+      "synced_commit": null
     },
     "enrollment-invite": {
       "doc": "enrollment-invite.md",
@@ -150,17 +150,24 @@
     ".agents/skills/verify-pipeline-formal/**",
     "scripts/demo_up",
     "scripts/demo_up.py",
-    "results/**",
-    "hackutd/**"
+    "results/**"
   ],
   "external": [
     {
-      "item": "Real iMessage through PhotonGateway and the Spectrum bridge (hackutd/) to a registered phone",
-      "reason": "needs the Spectrum project secret and a phone registered on the project; automated verification never texts a real number. Human check: docs/photon-live.md."
+      "item": "Real SMS through TwilioGateway to an enrolled phone",
+      "reason": "needs the Twilio account, sender and a real opted-in phone; automated verification never texts a real number. Human check: scripts/preflight (sms) on the demo laptop."
     },
     {
-      "item": "Live demo bring-up (scripts/demo_up starting the bridge)",
-      "reason": "starts the Bun bridge against Photon Spectrum Cloud; operator-run on the demo laptop (docs/photon-live.md)."
+      "item": "Twilio-originated webhooks through the cloudflared tunnel",
+      "reason": "needs the tunnel and the Twilio number's webhook config; locally the signature path is verified by signing requests with Twilio's documented scheme, and the tunnel path filter by unit tests (tests/sms)."
+    },
+    {
+      "item": "Live demo bring-up (scripts/demo_up)",
+      "reason": "starts a cloudflared tunnel and rewrites the Twilio webhook; operator-run on the demo laptop (docs/twilio-live.md)."
+    },
+    {
+      "item": "Twilio carrier-level STOP handling and its own auto-reply",
+      "reason": "happens inside Twilio, outside this app."
     },
     {
       "item": "Arm C (intent model) in a live call",

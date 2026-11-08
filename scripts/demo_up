@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
-# Start the app on 127.0.0.1:8000, then the Photon bridge (PRD §19.3). Nothing is made public. Usage: scripts/demo_up  (see docs/photon-live.md)
+# Start tunnel + app on 127.0.0.1:8000 + Twilio webhook (PRD §19.3). Usage: scripts/demo_up  (see docs/twilio-live.md)
 cd "$(dirname "$0")/.." || exit 1
 exec env -u PYTHONPATH -u PYTHONHOME -u VIRTUAL_ENV uv run python scripts/demo_up.py "$@"

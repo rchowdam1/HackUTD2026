@@ -1,6 +1,6 @@
 # Call controls
 
-The operator can cut a replay short with End call, wipe the screen and cancel everything pending with Reset (consent and counts survive), and flip SMS delivery between real (Photon iMessage) and the simulated phone.
+The operator can cut a replay short with End call, wipe the screen and cancel everything pending with Reset (consent and counts survive), and flip SMS delivery between real (Twilio) and the simulated phone.
 
 ## Sub-features
 
@@ -28,7 +28,7 @@ Preconditions:
 
 ## Gotchas
 
-- Real mode is safe to toggle in the sandbox: `PHOTON_BRIDGE_URL` points at the discard port, the clinic call never alerts, and each real-mode call is reset immediately. Never run the bank call in real mode against a configured Photon bridge.
+- Real mode is safe to toggle in the sandbox: there is no Twilio account (sends fail closed), the clinic call never alerts, and each real-mode call is reset immediately. Never run the bank call in real mode against a configured Twilio account.
 - On every (re)connect the console loads `GET /state`, which carries the backend's SMS mode, so `controls.sms-mode-after-reload` holds after a reload (the #64 gap is fixed; the check no longer carries `known_gap`). In real mode the Phone card becomes an outgoing-texts list without reply keys.
 - End call and Reset both cancel the replay task; Reset additionally invalidates the generation so late SMS tasks drop. Only Reset clears the transcript.
 - Reset emits `session reset` with the old `session_ref` (or null when idle). Filter late events by events *after* the reset event.

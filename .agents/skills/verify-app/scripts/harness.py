@@ -138,7 +138,7 @@ def snapshot(run_id: str) -> tuple[Path, str]:
 
 def sandbox_env(sandbox: Path, profile: str, port: int | None) -> dict:
     """Clean environment for app processes: nothing inherited from the user's shell but
-    PATH/HOME/locale, so a stray PHOTON_* or PYTHONPATH can't leak in."""
+    PATH/HOME/locale, so a stray TWILIO_* or PYTHONPATH can't leak in."""
     env = {k: os.environ[k] for k in ("PATH", "HOME", "LANG", "LC_ALL", "USER", "TMPDIR") if k in os.environ}
     hf_home = os.environ.get("VERIFY_HF_HOME") or str(DEFAULT_HF_HOME)
     env.update({
@@ -152,10 +152,9 @@ def sandbox_env(sandbox: Path, profile: str, port: int | None) -> dict:
         "CONSENT_SALT": "verify-salt-" + secrets.token_hex(4),
         "DEMO_PHONE": DEMO_PHONE,
         "SPARE_PHONE": SPARE_PHONE,
-        # Shared token for posting bridge-style inbound texts. The bridge URL points at the discard
-        # port, so real-mode sends fail closed instead of reaching a local Photon bridge.
-        "PHOTON_BRIDGE_TOKEN": "verify-" + secrets.token_hex(16),
-        "PHOTON_BRIDGE_URL": "http://127.0.0.1:9",
+        # A token only for *signing* webhook requests locally. No TWILIO_ACCOUNT_SID/TWILIO_FROM:
+        # real-mode sends fail closed inside the app instead of reaching Twilio.
+        "TWILIO_AUTH_TOKEN": "verify-" + secrets.token_hex(16),
     })
     if port:
         env["PUBLIC_BASE_URL"] = f"http://127.0.0.1:{port}"

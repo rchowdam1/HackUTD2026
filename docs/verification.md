@@ -1,6 +1,6 @@
 # Verification guide
 
-CallSafe has an agent-driven verification system modeled on pstack's `create-verification-skill` and `maintain-verification-skill` (plus the formal pair). It launches the real app, operates it the way the operator, the subscriber's phone and the Photon bridge do, and reports for each check whether the feature actually works, with evidence a reviewer can open.
+CallSafe has an agent-driven verification system modeled on pstack's `create-verification-skill` and `maintain-verification-skill` (plus the formal pair). It launches the real app, operates it the way the operator, the subscriber's phone and Twilio do, and reports for each check whether the feature actually works, with evidence a reviewer can open.
 
 This guide is for people. Agents should read the skills directly; they are the source of truth and are kept in sync by lint:
 
@@ -41,7 +41,7 @@ If something is missing, the affected checks come back BLOCKED with the exact re
 ## What it does to your machine
 
 - **It never runs the app from your checkout.** The app writes `data/safesignal.db` and `results/` relative to its own source path. So each run copies the working tree, including uncommitted edits but not ignored files or `scenarios/H1/`, into `.verify/sandbox/<run_id>/` and runs from the copy. Before and after each run the harness fingerprints your `data/` and `results/`; any change fails the run as an isolation breach.
-- **It never reads `.env` and never texts anyone.** The sandbox gets random operator, session and salt secrets, a random bridge token, and fictional numbers (`+15550100001` and `+15550100002`). The bridge URL points at the discard port, so even "real" SMS mode fails closed.
+- **It never reads `.env` and never texts anyone.** The sandbox gets random operator, session and salt secrets, a Twilio auth token used only to sign webhook posts, and fictional numbers (`+15550100001` and `+15550100002`). There is no Twilio account SID or sender, so even "real" SMS mode fails closed.
 - **It uses free ports, never 8000 or 5173.** Your own `make run` or demo instance keeps running untouched.
 - **One run at a time.** `.verify/lock` makes a second run report BLOCKED instead of sharing an instance.
 - **It only kills what it started.** Cleanup kills a process group only if its PID and command line point at this run's sandbox, then deletes the sandbox. Evidence in `.verify/runs/` is kept; delete old runs by hand.
@@ -56,7 +56,7 @@ If something is missing, the affected checks come back BLOCKED with the exact re
 | SMS replies | `replies.opt-in-yes`, `replies.wrong-counter`, `replies.shared`, `replies.keyword-normalise`, `replies.stop-blocks-alerts` | phone frame YES / WRONG / SHARED / STOP, `/sms/simulate-inbound` | SQLite consent (recomputed salted hash), `reply_counts`, `/aggregates`, outbox |
 | Call controls | `controls.end-call-midway`, `controls.reset-midway`, `controls.sms-mode-toggle`, `controls.sms-mode-after-reload` | End call / Reset mid-replay, SMS mode toggle | no late events or SMS after reset, consent and counts unchanged in SQLite, mode in the next `session running` event |
 | Results card | `results.pending`, `results.eval-cli-to-card` | `python -m eval.run --arms K,B --batch dev` | file bytes equal `GET /results/latest`; card numbers equal the file |
-| Bridge inbound | `webhooks.token-required`, `webhooks.inbound-dedupe` | JSON posts with `x-bridge-token`, shaped like `hackutd/src/index.ts` | 403s, reply/sms events, SQLite counts, id dedupe |
+| Twilio webhooks | `webhooks.signature-required`, `webhooks.signed-inbound-dedupe`, `webhooks.status-callback` | form posts signed with Twilio's algorithm (written independently of the app) | 403s, unenrolled senders dropped, reply/sms events, SQLite counts, MessageSid dedupe |
 | Enrollment invite | `invite.demo-and-spare` | `POST /sms/invite` | SQLite `invited` rows by hash, no raw number anywhere in the DB file |
 | Fixture replay | `fixtures.console-replay` | console `?fixtures` | transcript from `tests/fixtures/events`, no backend calls |
 | ASR replay | `asr.bank-replay` | separate instance with `REPLAY_SOURCE=asr` | every segment `source: asr` (no silent cached fallback), ALERT-OTP-01 |
@@ -64,7 +64,7 @@ If something is missing, the affected checks come back BLOCKED with the exact re
 
 The step-by-step recipe for each feature (preconditions, handles, expected results, gotchas) is in `.agents/skills/verify-app/features/<feature>.md`. Source-to-feature mapping, paths that force a full run, ignored paths and sync commits are in `features/coverage.json`.
 
-**Not verified by automation** (listed in every report): real iMessage through the Photon Spectrum bridge to a phone, plus `scripts/demo_up`; arm C in a live call (no user path selects it); H1 scoring (agents may not read `scenarios/H1/`); voice generation; physical demo setup. Those remain human checks (`docs/photon-live.md`, `scripts/preflight`).
+**Not verified by automation** (listed in every report): real Twilio SMS to a phone; Twilio webhooks through the cloudflared tunnel, plus `scripts/demo_up`; Twilio's own STOP handling; arm C in a live call (no user path selects it); H1 scoring (agents may not read `scenarios/H1/`); voice generation; physical demo setup. Those remain human checks (`docs/twilio-live.md`, `scripts/preflight`).
 
 ## Reading a report
 
@@ -132,14 +132,14 @@ FAIL fails the job. BLOCKED and KNOWN-GAP show in the job summary, and the evide
 
 - **Proved within those bounds on the real code:** at most one follow-up per call, one "finished" per call, no events after a call goes stale, the follow-up goes out after the alert, no alert after "finished", and a send reaches the gateway only if its call was live when the thread checked.
 - **Shown to be able to fail:** each property breaks on a variant with one guard removed (`broken-*` configs).
-- **Finding:** PRD §19.10 says stale sessions "never send SMS". The code can't guarantee that. If Reset lands after the worker thread's `_live()` check, that alert still goes out (the window covers the consent read plus the bridge request). See the formal skill for the counterexample.
+- **Finding:** PRD §19.10 says stale sessions "never send SMS". The code can't guarantee that. If Reset lands after the worker thread's `_live()` check, that alert still goes out (the window covers the consent read plus the Twilio HTTP request). See the formal skill for the counterexample.
 
 ## Current status
 
 - **Status at merge** (main `2b92a74`, 2026-11-07 CST, run `20261108T023128Z-1b38`): 23 PASS, 0 FAIL, 0 BLOCKED, 1 KNOWN-GAP. With `--negative-control`, `control.invalid-assertion` FAILed as designed. The checkout's data was untouched and no processes were left behind. `make verify-formal`: FORMAL OK (all 7 configs as expected). Reproduce with `make verify ARGS="--negative-control"` and `make verify-formal`.
 - **Known product gaps:**
   - (fixed on `arnavprabhu/security-review`) [#64](https://github.com/rchowdam1/HackUTD2026/issues/64): after a reload the console showed `simulated` while the backend was `real`; it now reads the mode from `GET /state`.
-  - (fixed by #69) `/sms/inbound` used to fail open with an empty Twilio token; it now fails closed when `PHOTON_BRIDGE_TOKEN` is unset.
+  - (fixed by #78) `/sms/inbound` and `/sms/status` used to fail open with an empty Twilio token; they now return 403 when `TWILIO_AUTH_TOKEN` or `PUBLIC_BASE_URL` is unset.
 - **Pipeline finding:** reset versus an in-flight send, as described above (Track A to decide: change the PRD wording or the design).
 
 ## Troubleshooting
