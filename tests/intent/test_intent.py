@@ -1,7 +1,7 @@
-"""app.intent (TypeSafe Jev) and arm C, with mocked HTTP: no live calls in pytest.
+"""app.intent (decision model via OpenRouter) and arm C, with mocked HTTP: no live calls in pytest.
 
 Calls are minimal pairs written for these tests, not taken from any scenario file.
-Fake answers stand in for Jev; they check the decision table and the plumbing, not accuracy.
+Fake answers stand in for the model; they check the decision table and the plumbing, not accuracy.
 """
 import json
 import logging
@@ -29,7 +29,7 @@ def call(*turns):
 @pytest.fixture
 def on(monkeypatch):
     monkeypatch.setenv("INTENT_MODEL", "on")
-    monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
     intent.clear_cache()
     yield
     intent.clear_cache()
@@ -46,7 +46,7 @@ def use_post(monkeypatch, post):
 
 
 @pytest.fixture
-def jev(on, monkeypatch):
+def model(on, monkeypatch):
     """Fake client: answers from `script(caller_turn) -> {question: noul}`; records requests."""
     sent = []
 
@@ -70,10 +70,10 @@ def rules_of(segs, arm="C"):
 
 def test_off_without_flag_or_key(monkeypatch):
     monkeypatch.delenv("INTENT_MODEL", raising=False)
-    monkeypatch.setenv("TYPESAFE_API_KEY", "k")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
     assert not intent.enabled()
     monkeypatch.setenv("INTENT_MODEL", "on")
-    monkeypatch.delenv("TYPESAFE_API_KEY")
+    monkeypatch.delenv("OPENROUTER_API_KEY")
     assert not intent.enabled()
     use_post(monkeypatch, lambda *a, **k: pytest.fail("no call when off"))
     segs = call("Grandma, the lawyer says it's a lot.")
@@ -97,8 +97,8 @@ def test_failed_call_is_an_error_and_falls_back_to_b(on, monkeypatch, caplog, fa
     assert any("falls back to arm B" in r.message for r in caplog.records)
 
 
-def test_connect_failure_is_retried_once_within_the_turn_budget(jev, monkeypatch, caplog):
-    sent = jev(lambda turn: {"otp_code": 0.99})
+def test_connect_failure_is_retried_once_within_the_turn_budget(model, monkeypatch, caplog):
+    sent = model(lambda turn: {"otp_code": 0.99})
     ok = intent._client().post
     tries = []
 
@@ -122,19 +122,19 @@ def test_connect_failure_is_retried_once_within_the_turn_budget(jev, monkeypatch
     assert intent.answers(call("Read me the PIN.")) is None and len(tries) == 2
 
 
-def test_request_shape_auth_timeout_and_cache(jev):
-    sent = jev(lambda turn: {})
+def test_request_shape_auth_timeout_and_cache(model):
+    sent = model(lambda turn: {})
     segs = call("Hello.", ("subscriber", "Hi, who is this?"), "It's your nephew.", ("subscriber", "Oh!"),
                 "I'm in a bit of trouble.")
     detect(segs, "C", V)  # rules send each caller turn with the context_turns before it
     req = sent[-1]
     intent.answers(segs[1:])  # the same window: cached, no new request
     assert len(sent) == 3
-    assert req["url"] == "https://api.typesafe.ai/v1/systemone"
+    assert req["url"] == "https://openrouter.ai/api/alpha/decisions"
     assert req["headers"] == {"Authorization": "Bearer test-key"}
     assert req["timeout"].read == intent.TIMEOUT_S <= 1.5 and req["timeout"].connect == intent.CONNECT_S
     body = req["json"]
-    assert body["model"].startswith("jev-")
+    assert body["model"] == intent.MODEL
     assert body["state"] == {
         "earlier_turns": [{"speaker": "listener", "text": "Hi, who is this?"},
                           {"speaker": "caller", "text": "It's your nephew."},
@@ -148,8 +148,8 @@ def test_request_shape_auth_timeout_and_cache(jev):
                for q in body["questions"].values())
 
 
-def test_request_logged_only_in_debug_and_never_the_text_or_key(jev, caplog):
-    jev(lambda turn: {})
+def test_request_logged_only_in_debug_and_never_the_text_or_key(model, caplog):
+    model(lambda turn: {})
     with caplog.at_level(logging.INFO, logger="app.intent"):
         intent.answers(call("First."))
     assert not caplog.records
@@ -195,9 +195,9 @@ def test_judge(category, nouls, lexicon_seen, expected):
     ({"otp": 0.96, "warning": 0.5}, None),  # a near-certain request: the rules stand
     ({"otp": 0.99, "warning": 0.9}, "veto"),  # ... unless the caller is surely warning
     ({"otp": 0.9, "reported": 0.6, "pressure": 0.9}, None),  # a pressed request: the rules stand
-    ({"otp": 0.1}, None),  # no guard raised: the rules stand even if Jev sees no request
-    ({"otp": 0.1, "self_service": 0.9}, "veto"),  # Jev sees no request, only "do it yourself"
-    ({"otp": 0.5, "self_service": 0.9}, None),  # ... only when Jev sees no request
+    ({"otp": 0.1}, None),  # no guard raised: the rules stand even if the model sees no request
+    ({"otp": 0.1, "self_service": 0.9}, "veto"),  # the model sees no request, only "do it yourself"
+    ({"otp": 0.5, "self_service": 0.9}, None),  # ... only when the model sees no request
 ])
 def test_judge_veto_of_rule_requests(nouls, expected):
     assert intent.judge({**NO, **nouls}, "otp", True, rule_fired=True) == expected
@@ -205,8 +205,8 @@ def test_judge_veto_of_rule_requests(nouls, expected):
 
 # --- arm C through app.rules ----------------------------------------------------
 
-def test_solo_detection_has_its_own_rule_id(jev):
-    jev(lambda turn: {"payment": 0.97} if "help me out" in turn else {})
+def test_solo_detection_has_its_own_rule_id(model):
+    model(lambda turn: {"payment": 0.97} if "help me out" in turn else {})
     segs = call("Grandpa, it's me. I'm in trouble and I didn't know who else to call.",
                 ("subscriber", "Oh no."), "Can you help me out, quick?")
     assert decide(segs, "B", V) == []
@@ -216,9 +216,9 @@ def test_solo_detection_has_its_own_rule_id(jev):
     assert (e.source, e.confidence_class, e.span_seq) == ("intent", "low", [3])
 
 
-def test_confirmation_needs_the_lexicon(jev):
-    # "code" is in the window, the request isn't one B can parse, Jev is sure.
-    jev(lambda turn: {"otp": 0.95} if "need that" in turn else {})
+def test_confirmation_needs_the_lexicon(model):
+    # "code" is in the window, the request isn't one B can parse, the model is sure.
+    model(lambda turn: {"otp": 0.95} if "need that" in turn else {})
     segs = call("The system will text you a code.", "I'm going to need that from you to verify.")
     assert decide(segs, "B", V) == []
     assert rules_of(segs) == ["C-INTENT-OTP-01"]
@@ -226,16 +226,16 @@ def test_confirmation_needs_the_lexicon(jev):
     assert rules_of(call("I'm going to need that from you to verify.")) == ["C-INTENT-OTP-SOLO"]
 
 
-def test_guards_block_model_detections(jev):
-    jev(lambda turn: {"otp": 0.9, "warning": 0.95})
+def test_guards_block_model_detections(model):
+    model(lambda turn: {"otp": 0.9, "warning": 0.95})
     assert rules_of(call("We'd never want that from you, remember.")) == []
 
 
-def test_guards_veto_b_requests_on_their_turn_only(jev):
-    jev(lambda turn: {"otp": 0.01})
+def test_guards_veto_b_requests_on_their_turn_only(model):
+    model(lambda turn: {"otp": 0.01})
     assert rules_of(call("Read me the code now.")) == ["B-OTP-REQ-01"]  # no guard raised: B stands
-    # "Do it yourself" reads to the rules as a request to install; Jev's guard vetoes it.
-    jev(lambda turn: {"rem_install": 0.9, "self_service": 0.9} if "yourself" in turn else {})
+    # "Do it yourself" reads to the rules as a request to install; the model's guard vetoes it.
+    model(lambda turn: {"rem_install": 0.9, "self_service": 0.9} if "yourself" in turn else {})
     diy = "You can install the new captions update yourself, no remote session needed."
     assert rules_of(call(diy), "B") == ["B-REMOTE-REQ-01"]
     assert rules_of(call(diy)) == []
@@ -243,22 +243,22 @@ def test_guards_veto_b_requests_on_their_turn_only(jev):
     assert rules_of(call(diy, "Now install AnyDesk.")) == ["B-REMOTE-REQ-01"]
 
 
-def test_categories_with_evidence_are_not_asked_again(jev):
-    sent = jev(lambda turn: {})
+def test_categories_with_evidence_are_not_asked_again(model):
+    sent = model(lambda turn: {})
     assert rules_of(call("Read me the code, then send the gift cards, then install AnyDesk.",
                          "Thanks.")) == ["B-OTP-REQ-01", "B-PAY-REQ-01", "B-REMOTE-REQ-01"]
     assert len(sent) == 1  # asked on the first turn (to check for a veto), not after every category fired
 
 
-def test_only_caller_turns_are_sent(jev):
-    sent = jev(lambda turn: {})
+def test_only_caller_turns_are_sent(model):
+    sent = model(lambda turn: {})
     detect(call(("subscriber", "Read me the code."), "Okay."), "C", V)
     assert [r["json"]["state"]["caller_turn"] for r in sent] == ["Okay."]
 
 
 @pytest.mark.parametrize("scenario_id, expected", [("clinic", []), ("bank", ["ALERT-OTP-01"])])
-def test_demo_replays_with_the_model_on(jev, scenario_id, expected):
-    jev(lambda turn: {})
+def test_demo_replays_with_the_model_on(model, scenario_id, expected):
+    model(lambda turn: {})
     sc = Scenario.model_validate(json.loads((DEMO / f"{scenario_id}.json").read_text()))
     segs = call(*[t.text if t.speaker == "caller" else ("subscriber", t.text) for t in sc.turns])
     assert [d.template_id for d in decide(segs, "C", V)] == expected
@@ -278,4 +278,4 @@ def test_failures_are_counted(on, monkeypatch):
 def test_preload_records_the_data_flow_when_on(on, caplog):
     with caplog.at_level(logging.INFO, logger="app.intent"):
         intent.preload()
-    assert any("api.typesafe.ai" in r.getMessage() for r in caplog.records)
+    assert any("openrouter.ai" in r.getMessage() for r in caplog.records)

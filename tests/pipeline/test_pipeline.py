@@ -296,7 +296,7 @@ def test_finish_during_arm_c_inference_sends_alert_before_followup(slow):
 @pytest.mark.parametrize("end", ["finish", "reset"])
 def test_intent_cache_cleared_when_session_ends(gw, monkeypatch, end):
     monkeypatch.setenv("INTENT_MODEL", "on")
-    monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
     monkeypatch.setattr(intent, "_post", lambda body: {"answers": {q: {"noul": 0.0} for q in intent.QUESTIONS}})
 
     def evaluate(segments, arm, policy_version):

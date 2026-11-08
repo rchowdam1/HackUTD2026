@@ -105,7 +105,7 @@ def test_refuses_arm_c_without_the_intent_model(scen_dir, tmp_path, monkeypatch)
 
 def test_intent_cache_cleared_per_scenario_and_c_failures_reported(scen_dir, tmp_path, monkeypatch):
     monkeypatch.setenv("INTENT_MODEL", "on")
-    monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
     monkeypatch.setattr(intent, "_post", lambda body: (_ for _ in ()).throw(httpx.ConnectTimeout("down")))
     seen = []
 
@@ -119,7 +119,7 @@ def test_intent_cache_cleared_per_scenario_and_c_failures_reported(scen_dir, tmp
     intent.clear_cache()
     assert seen == [0] * 5 and res.arms["C"] == res.arms["B"]
     md = (tmp_path / "out" / "latest.md").read_text()
-    assert "C: 5 TypeSafe calls failed and fell back to arm B" in md
+    assert "C: 5 intent model calls failed and fell back to arm B" in md
 
 
 def test_report_header_states_revision_arms_and_policy(scen_dir, tmp_path, monkeypatch):

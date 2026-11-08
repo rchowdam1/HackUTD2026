@@ -11,7 +11,7 @@ The demo runs arm B (rules + policy) in simulated SMS mode: the console's phone 
 - Rules and SMS templates: YAML files in `policy/v1.0`.
 - Storage: SQLite in `data/`. Phone numbers are stored only as HMACs keyed by `CONSENT_SALT`; no audio or transcripts.
 - SMS: Twilio Programmable Messaging, or a simulated phone.
-- Arm C adds the TypeSafe Jev API (an external call, so call text leaves the machine). It needs `INTENT_MODEL=on` and `TYPESAFE_API_KEY`; without them C equals B. A failed TypeSafe call falls back to arm B for that turn. The API currently returns HTTP 402 (out of credit), so C equals B until credit is added.
+- Arm C adds Perplexity Decider V1.2, a decision model called through OpenRouter's Decisions API (an external call, so call text leaves the machine). It needs `INTENT_MODEL=on` and `OPENROUTER_API_KEY`; without them C equals B. A failed call falls back to arm B for that turn.
 - Operator console: React + TypeScript + Vite (`console/`).
 - Evaluation scripts: `eval/`.
 - Tooling: `uv` and pytest.

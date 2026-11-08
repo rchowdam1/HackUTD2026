@@ -8,9 +8,9 @@ Arms (tables in policy/<version>/rules.yaml and lexicon.yaml):
 - K: a lexicon term in any speaker's text.
 - B: a caller request, in the caller's direction, not negated or hedged, whose
   object is a lexicon term in the same turn or (for "read it to me") a recent turn.
-- C: B plus TypeSafe Jev judgments (app.intent) on caller turns, for categories without
-  evidence yet: Jev's guards can veto a turn's B request (a warning, a report, a done deal, do it yourself),
-  and Jev adds C-INTENT-*-01 when it finds a request in a category the lexicon saw, or the
+- C: B plus intent-model judgments (app.intent) on caller turns, for categories without
+  evidence yet: the model's guards can veto a turn's B request (a warning, a report, a done deal, do it yourself),
+  and the model adds C-INTENT-*-01 when it finds a request in a category the lexicon saw, or the
   model-only C-INTENT-*-SOLO when the lexicon didn't. If the model is off or a call fails, C = B.
 Evidence is category wording and rule ids only, never call text.
 """
@@ -177,7 +177,7 @@ def _requests(p: _Policy, segments: list[Segment], i: int, policy_version: str) 
 def _intent(p: _Policy, segments: list[Segment], i: int, rule_events: list[RiskEvent], accepted: set[str],
             policy_version: str) -> list[RiskEvent]:
     """Arm C on caller turn i (app.intent.judge), for categories without evidence yet (`accepted`):
-    Jev can veto this turn's B request ("veto"), or add evidence B lacks: "confirm" when the
+    The intent model can veto this turn's B request ("veto"), or add evidence B lacks: "confirm" when the
     lexicon saw the category in this turn or the context window, "solo" for the model alone
     (distinct rule id, low confidence). No answer (model off or call failed) = arm B."""
     if all(c.name in accepted for c in p.categories):
