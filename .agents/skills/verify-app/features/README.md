@@ -37,7 +37,7 @@ Each feature file starts with an H1 title and one paragraph describing the user-
 
 ## Features
 
-- [Operator login](./operator-login.md) covers the password form, the signed session cookie, and the 401 wall on every operator route.
+- [Operator login](./operator-login.md) covers the password form, the signed server-side session cookie, and the 401 wall on every operator route.
 - [Call replay](./call-replay.md) covers Run clinic (silent, "not a safety verdict") and Run bank (alert, Why panel, auto end-call, one follow-up).
 - [SMS replies](./sms-replies.md) covers the simulated phone's YES / WRONG / SHARED / STOP buttons, keyword normalisation, the WRONG counter, and consent gating of alerts.
 - [Call controls](./call-controls.md) covers End call and Reset mid-replay and the real / simulated SMS-mode toggle.

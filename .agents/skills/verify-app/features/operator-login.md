@@ -1,6 +1,6 @@
 # Operator login
 
-The console is locked behind one operator password. A correct password sets an HttpOnly, SameSite=Strict signed session cookie; every operator route answers 401 without it, and `/health` stays public.
+The console is locked behind one operator password. A correct password sets an HttpOnly, SameSite=Strict signed session cookie backed by a server-side session (12 h expiry, revoked by `POST /logout`); every operator route answers 401 without it, and `/health` stays public.
 
 ## Sub-features
 
@@ -30,4 +30,4 @@ Preconditions:
 - The password input has no label or role; Playwright cannot find it by role `textbox`. Use the placeholder.
 - The console decides "logged in" by probing `/aggregates`, so a backend that is down also shows the login form. Run doctor before blaming auth.
 - `SESSION_SECRET` must be set or `/login` returns 500; the sandbox always sets it. A 500 here means the launch env drifted.
-- Sessions never expire and any number are valid at once; there is no logout to verify.
+- Sessions are server-side (hashed id) and expire after 12 h; `POST /logout` (the console's `Log out` button) revokes one, and 5 failed logins from one client within 5 min get 429. No check here covers expiry, logout or the throttle (`tests/api` does); repeated wrong-password runs against one instance can hit the 429.
