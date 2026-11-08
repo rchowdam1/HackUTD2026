@@ -1,0 +1,1 @@
+{"id": "h1_scam_02", "set": "H1", "label": "scam", "hard_benign": false, "category": "otp", "turns": [{"speaker": "caller", "text": "Look, I'm not asking for your password. Nobody should ever ask you for that.", "audio": null}, {"speaker": "caller", "text": "I just need the code that popped up on your screen a second ago so I can match it on my end.", "audio": null}]}
