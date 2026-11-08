@@ -1,5 +1,5 @@
 import type { Snapshot } from "./api";
-import type { Decision, Event, RiskEvent, Segment, SessionPayload, SmsMode, SmsPayload } from "./types";
+import type { ConsentState, Decision, Event, RiskEvent, Segment, SessionPayload, SmsMode, SmsPayload } from "./types";
 
 // One phone-frame bubble: a text we sent, or a keyword the phone sent back.
 export type Bubble = { kind: "out"; sms: SmsPayload } | { kind: "in"; keyword: string; id: string };
@@ -12,7 +12,7 @@ export interface State {
   decisions: Decision[];
   bubbles: Bubble[];
   wrongCount: number;
-  consent: "invited" | "active" | "stopped" | null;
+  consent: ConsentState | null;
 }
 
 export const initial: State = {

@@ -1,6 +1,6 @@
 """Score scenario batches through Track A's decide (PRD §19.6).
 
-    python -m eval.run --arms K,B --batch dev|H1 [--policy v1.0]
+    python -m eval.run --arms K,B --batch dev|H1 [--policy <version>]
 
 Writes results/latest.json (app.models.Results) and results/latest.md.
 Scripted transcripts only (source "script"): no audio, no ASR, no pipeline.
@@ -18,10 +18,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-from app import intent
+from app import ROOT, intent, policy
 from app.models import ArmCounts, Discordant, Results, Scenario, Segment
 
-ROOT = Path(__file__).resolve().parents[1]
 SCENARIOS = ROOT / "scenarios"
 RESULTS = ROOT / "results"
 Z = 1.96
@@ -181,7 +180,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m eval.run")
     ap.add_argument("--arms", default="K,B")
     ap.add_argument("--batch", required=True, choices=["dev", "H1"])
-    ap.add_argument("--policy", default="v1.0")
+    ap.add_argument("--policy", default=policy.VERSION)
     args = ap.parse_args(argv)
     from app.rules import decide
     run(args.arms.split(","), args.batch, args.policy, decide)

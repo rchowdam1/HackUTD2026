@@ -1,10 +1,10 @@
-import type { Event, Results, SmsMode } from "./types";
+import type { ConsentState, Event, Results, SmsMode } from "./types";
 
 // What GET /state returns: current values plus every event since the latest session running/reset.
 export interface Snapshot {
   sms_mode: SmsMode;
   wrong_count: number;
-  consent: "invited" | "active" | "stopped" | null;
+  consent: ConsentState | null;
   events: Event[];
 }
 
@@ -51,25 +51,21 @@ export const reset = () => call("Reset", "/demo/reset");
 export const setSmsMode = (mode: SmsMode) => call("SMS mode change", "/demo/sms-mode", { mode });
 export const simulateReply = (body: string) => call(`Simulated ${body} reply`, "/sms/simulate-inbound", { body });
 
-export async function results(): Promise<Results> {
-  const r = await fetch("/results/latest").catch(() => null);
-  if (r?.status === 401) handlers.unauthorized();
-  return r?.ok ? r.json() : { status: "pending" };
-}
-
-// Snapshot for reconciliation; null on any failure (401 also returns to login).
-export async function snapshot(): Promise<Snapshot | null> {
-  const r = await fetch("/state").catch(() => null);
+// Background read: null on any failure, without an error banner (401 still returns to login).
+async function read<T>(path: string): Promise<T | null> {
+  const r = await fetch(path).catch(() => null);
   if (r?.status === 401) handlers.unauthorized();
   return r?.ok ? r.json() : null;
 }
+export const results = async (): Promise<Results> => (await read<Results>("/results/latest")) ?? { status: "pending" };
+export const snapshot = () => read<Snapshot>("/state");
 
 const textCache = new Map<string, Promise<string | null>>();
 export function templateText(id: string): Promise<string | null> {
   if (!textCache.has(id)) {
     const text = fetch(`/sms/templates/${encodeURIComponent(id)}`).then((r) => (r.ok ? r.json().then((j) => j.text) : null));
     textCache.set(id, text);
-    text.then((t) => t === null && textCache.delete(id), () => textCache.delete(id)); // don't cache failures
+    text.then((t) => t === null && textCache.delete(id), () => textCache.delete(id));
   }
   return textCache.get(id)!;
 }

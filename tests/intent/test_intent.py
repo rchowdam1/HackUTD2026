@@ -126,9 +126,10 @@ def test_request_shape_auth_timeout_and_cache(jev):
     sent = jev(lambda turn: {})
     segs = call("Hello.", ("subscriber", "Hi, who is this?"), "It's your nephew.", ("subscriber", "Oh!"),
                 "I'm in a bit of trouble.")
-    intent.answers(segs)
-    intent.answers(segs)  # cached: one request
-    (req,) = sent
+    detect(segs, "C", V)  # rules send each caller turn with the context_turns before it
+    req = sent[-1]
+    intent.answers(segs[1:])  # the same window: cached, no new request
+    assert len(sent) == 3
     assert req["url"] == "https://api.typesafe.ai/v1/systemone"
     assert req["headers"] == {"Authorization": "Bearer test-key"}
     assert req["timeout"].read == intent.TIMEOUT_S <= 1.5 and req["timeout"].connect == intent.CONNECT_S
@@ -266,7 +267,7 @@ def test_demo_replays_with_the_model_on(jev, scenario_id, expected):
 def test_failures_are_counted(on, monkeypatch):
     def post(*a, **k):
         raise httpx.ConnectTimeout("down")
-    monkeypatch.setattr(httpx, "post", post)
+    use_post(monkeypatch, post)
     before = intent.failures
     intent.answers(call("One."))
     intent.answers(call("One."))  # cached failure: not a second call
@@ -277,4 +278,4 @@ def test_failures_are_counted(on, monkeypatch):
 def test_preload_records_the_data_flow_when_on(on, caplog):
     with caplog.at_level(logging.INFO, logger="app.intent"):
         intent.preload()
-    assert any("api.typesafe.ai" in r.getMessage() and "3 prior turns" in r.getMessage() for r in caplog.records)
+    assert any("api.typesafe.ai" in r.getMessage() for r in caplog.records)

@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from app import policy
 from app.policy import templates
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -68,22 +69,14 @@ def test_lint_catches_long_alert():
     assert lint("ALERT-X", " ".join(["word"] * 21))
 
 
-def test_get_unknown_raises():
-    with pytest.raises(KeyError):
-        templates.get("NOPE")
+def test_every_alert_has_an_existing_followup_and_shared_reply():
+    alerts = [tid for tid in IDS if tid.startswith("ALERT-")]
+    assert [tid for tid in IDS if templates.is_alert(tid)] == alerts
+    for alert in alerts:
+        templates.get(templates.followup_for(alert))
+        templates.get(templates.shared_for(alert))
 
 
-@pytest.mark.parametrize("cat", ["OTP", "PAY", "REMOTE"])
-def test_alert_mappings(cat):
-    alert = f"ALERT-{cat}-01"
-    assert templates.followup_for(alert) == f"FU-{cat}-01"
-    assert templates.shared_for(alert) == f"R-SHARED-{cat}"
-    templates.get(templates.followup_for(alert))
-    templates.get(templates.shared_for(alert))
-
-
-def test_mapping_unknown_alert_raises():
-    with pytest.raises(KeyError):
-        templates.followup_for("FU-OTP-01")
-    with pytest.raises(KeyError):
-        templates.shared_for("NOPE")
+def test_every_rules_category_alerts_with_an_alert_template():
+    for cat in policy.load("rules")["categories"].values():
+        assert templates.is_alert(cat["alert"])

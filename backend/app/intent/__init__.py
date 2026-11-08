@@ -24,7 +24,7 @@ import logging
 import os
 import threading
 import time
-from typing import Literal
+from typing import Literal, get_args
 
 import httpx
 
@@ -38,7 +38,6 @@ RETRY_MIN_S = 0.3  # ... if at least this much of the turn's budget is left
 KEEPALIVE_S = 120  # keep the connection warm between turns of a call
 _RETRYABLE = (httpx.ConnectError, httpx.ConnectTimeout, httpx.RemoteProtocolError, httpx.ReadError,
               httpx.WriteError)
-CONTEXT_TURNS = 3  # earlier turns sent with the caller turn
 
 # Who is who, in plain words; every question refers to the state by these paths.
 _WHO = "The caller phoned the listener. "
@@ -161,7 +160,7 @@ QUESTIONS: dict[str, dict] = {
         "Is the caller pushing the listener to act right away, or warning of a bad outcome such as arrest, a "
         "frozen account, lost money or harm to someone if they don't?"),
 }
-CATEGORIES: tuple[Category, ...] = ("otp", "payment", "remote")
+CATEGORIES: tuple[Category, ...] = get_args(Category)
 # Per category, request groups: (request Nouls combined with OR, the guards that block them).
 # Each guard only where it separates the classes on training data (all three writer sets):
 # - "done" never separated codes (it fires on "read it and you're all set"), so codes don't use it;
@@ -208,24 +207,27 @@ _http: httpx.Client | None = None
 
 def enabled() -> bool:
     """INTENT_MODEL=on and TYPESAFE_API_KEY is set."""
-    return (os.environ.get("INTENT_MODEL", "").strip().lower() == "on"
-            and bool(os.environ.get("TYPESAFE_API_KEY", "").strip()))
+    return _flag_on() and bool(os.environ.get("TYPESAFE_API_KEY", "").strip())
+
+
+def _flag_on() -> bool:
+    return os.environ.get("INTENT_MODEL", "").strip().lower() == "on"
 
 
 def preload() -> None:
     """Nothing to load for a hosted model; log whether arm C can call it."""
-    if os.environ.get("INTENT_MODEL", "").strip().lower() == "on" and not enabled():
+    if enabled():
+        log.info("arm C on: each caller turn and the turns before it (rules.yaml context_turns) are sent to %s", URL)
+    elif _flag_on():
         log.warning("INTENT_MODEL=on but TYPESAFE_API_KEY is not set; arm C will equal arm B")
-    elif enabled():
-        log.info("arm C on: each caller turn and the %d prior turns are sent to %s", CONTEXT_TURNS, URL)
 
 
 def state(window: list[Segment]) -> dict:
-    """Request state: the last turn (a caller turn) and the turns just before it."""
+    """Request state: the last turn (a caller turn) and the turns before it in the window."""
     *earlier, current = window
     return {
         "earlier_turns": [{"speaker": "caller" if s.speaker == "caller" else "listener", "text": s.text}
-                          for s in earlier[-CONTEXT_TURNS:]],
+                          for s in earlier],
         "caller_turn": current.text,
     }
 

@@ -1,24 +1,23 @@
-"""SMS templates (PRD 19.5), loaded once from policy/v1.0/templates.yaml.
+"""SMS templates (PRD 19.5) from policy/<VERSION>/templates.yaml.
 
 Usage: `from app.policy import templates; templates.get("ALERT-OTP-01")`.
 Unknown ids raise KeyError.
 """
 from __future__ import annotations
 
-from pathlib import Path
+from app import policy
 
-import yaml
-
-POLICY_VERSION = "v1.0"
-PATH = Path(__file__).resolve().parents[3] / "policy" / POLICY_VERSION / "templates.yaml"
-
-_data = yaml.safe_load(PATH.read_text(encoding="utf-8"))
+_data = policy.load("templates")
 TEMPLATES: dict[str, str] = _data["templates"]
 _ALERTS: dict[str, dict[str, str]] = _data["alerts"]
 
 
 def get(template_id: str) -> str:
     return TEMPLATES[template_id]
+
+
+def is_alert(template_id: str) -> bool:
+    return template_id in _ALERTS
 
 
 def followup_for(alert_id: str) -> str:

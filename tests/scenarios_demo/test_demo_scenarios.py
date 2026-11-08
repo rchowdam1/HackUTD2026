@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from app.asr import load_transcript
+from app.ingest import load_transcript
 from app.models import Scenario
 
 DEMO = Path(__file__).resolve().parents[2] / "scenarios" / "demo"

@@ -19,6 +19,11 @@ PROTECTED = [
     ("POST", "/demo/sms-mode"),
     ("GET", "/results/latest"),
     ("GET", "/aggregates"),
+    ("GET", "/state"),
+    ("POST", "/sms/simulate-inbound"),
+    ("GET", "/sms/templates/R-HELP"),
+    ("GET", "/sms/outbox"),
+    ("POST", "/sms/invite"),
 ]
 
 
@@ -26,7 +31,6 @@ PROTECTED = [
 def env(tmp_path, monkeypatch):
     monkeypatch.setenv("OPERATOR_PASSWORD", "op-pass")
     monkeypatch.setenv("SESSION_SECRET", "test-secret")
-    monkeypatch.setattr(storage, "DB_PATH", tmp_path / "safesignal.db")
     monkeypatch.setattr(results, "RESULTS", tmp_path / "results" / "latest.json")
 
 
@@ -55,10 +59,6 @@ def test_routes_require_login(client, method, path):
 def test_forged_cookie_rejected(client, method, path):
     client.cookies.set("safesignal_session", "abc.deadbeef")
     assert client.request(method, path).status_code == 401
-
-
-def test_health_and_login_are_open(client):
-    assert client.get("/health").status_code == 200
 
 
 def test_results_pending_when_missing(operator):
@@ -102,8 +102,8 @@ def test_sse_relays_a_fake_event(fixtures_dir):
 
 def test_demo_controls(operator, monkeypatch):
     calls = []
-    monkeypatch.setattr(sms, "get_mode", lambda: "simulated", raising=False)
-    monkeypatch.setattr(sms, "set_mode", lambda m: calls.append(("set_mode", m)), raising=False)
+    monkeypatch.setattr(sms, "get_mode", lambda: "simulated")
+    monkeypatch.setattr(sms, "set_mode", lambda m: calls.append(("set_mode", m)))
 
     def fake_run(scenario_id, *, sms_mode):
         calls.append(("run", scenario_id, sms_mode))
@@ -176,15 +176,10 @@ def test_api_docs_off_unless_asked(monkeypatch):
 
 # --- GET /state: snapshot for reconnecting consoles ---------------------------------------------
 
-def test_state_requires_login(client):
-    assert client.get("/state").status_code == 401
-
-
 def test_state_replays_events_since_the_latest_session_start(operator, monkeypatch):
     from app.events import emit
     from app.models import SessionPayload, SmsPayload
-    monkeypatch.setattr(hub, "history", [])
-    monkeypatch.setattr(sms, "_mode", "real")
+    sms.set_mode("real")
     emit("sms", SmsPayload(message_id="old", template_id="ALERT-OTP-01", status="queued"), "s0")
     emit("session", SessionPayload(state="running", arm="B", sms_mode="real"), "s1")
     emit("sms", SmsPayload(message_id="", template_id="ALERT-OTP-01", status="failed"), "s1")

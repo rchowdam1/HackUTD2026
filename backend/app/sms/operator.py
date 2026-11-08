@@ -1,14 +1,13 @@
 """Operator-only SMS routes for the console (cookie required)."""
 from __future__ import annotations
 
-import os
 import uuid
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from app import sms
+from app import consent, sms
 from app.api.auth import require_operator
 from app.policy import templates
 
@@ -37,7 +36,7 @@ def template_text(template_id: str) -> dict:
 @router.get("/outbox")
 def outbox() -> list[dict]:
     """Messages the simulated gateway has 'sent', oldest first."""
-    return sms._simulated.outbox
+    return sms.simulated.outbox
 
 
 class Invite(BaseModel):
@@ -47,7 +46,7 @@ class Invite(BaseModel):
 @router.post("/invite")
 async def invite(body: Invite) -> dict:
     """Send ENROLL to DEMO_PHONE or SPARE_PHONE (chosen by name, so no number crosses the API)."""
-    number = os.environ.get("SPARE_PHONE" if body.phone == "spare" else "DEMO_PHONE")
+    number = consent.configured(body.phone)
     if not number:
         raise HTTPException(400, f"{body.phone.upper()}_PHONE is not set")
     return {"message_id": await sms.invite(number)}

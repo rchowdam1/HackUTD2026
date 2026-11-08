@@ -1,14 +1,12 @@
 """GET /results/latest (Track C's file, served unchanged) and GET /aggregates."""
 from __future__ import annotations
 
-from pathlib import Path
-
 from fastapi import APIRouter, Depends, Response
 
-from app import storage
+from app import ROOT, storage
 from app.api.auth import require_operator
 
-RESULTS = Path(__file__).resolve().parents[3] / "results" / "latest.json"
+RESULTS = ROOT / "results" / "latest.json"
 
 router = APIRouter(dependencies=[Depends(require_operator)])
 
