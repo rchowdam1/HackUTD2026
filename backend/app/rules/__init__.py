@@ -45,6 +45,7 @@ class _Policy:
     exclusions: re.Pattern
     context_object: re.Pattern
     negated_object: re.Pattern
+    negated_object_end: re.Pattern
 
 
 def _rx(pattern: str) -> re.Pattern:
@@ -73,11 +74,13 @@ def load_policy(policy_version: str) -> _Policy:
         categories.append(_Category(name, c, _any(lexicon[name]), requests))
     return _Policy(cfg, tuple(categories), _rx(cfg["clause_split"]), _any(cfg["negation"]),
                    _any(cfg["hedges"]), _rx(r"(?:" + "|".join(cfg["exclusions"]) + r")\b"),
-                   _rx(cfg["context_object"]), _rx(rf"\b{cfg['negated_object']}\b"))
+                   _rx(cfg["context_object"]), _rx(rf"\b{cfg['negated_object']}\b"),
+                   _rx(cfg["negated_object_end"]))
 
 
 def _negated(p: _Policy, clause: str, anchor: int) -> bool:
-    if p.negated_object.search(clause, anchor):  # share it with no one
+    end = p.negated_object_end.search(clause, anchor)
+    if p.negated_object.search(clause, anchor, end.start() if end else len(clause)):  # share it with no one
         return True
     for m in p.negation.finditer(clause, 0, anchor):
         gap = clause[m.end():anchor]
