@@ -1,127 +1,173 @@
-"""Intent Evidence for arm C (PRD §4.3 contract, §19.4): zero-shot NLI on CPU.
+"""Intent evidence for arm C (PRD §4.3, §19.4) from TypeSafe's Jev (System One API).
 
-`evidence(window)` scores the rolling transcript window (the last few turns plus
-the triggering turn) against one hypothesis per category with
-MoritzLaurer/deberta-v3-base-zeroshot-v2.0 and returns one label plus a
-confidence_class. In-process only; the window never leaves the machine.
+Jev makes atomic judgments; code decides. For each caller turn we send one request
+whose state is the current caller turn plus the few turns before it (speaker-labelled)
+and ask one Noul per alert category plus Nouls for the known false-positive patterns.
+`judge` combines those answers with thresholds into "confirm" (the lexicon saw the
+category, the model agrees), "solo" (the model alone, stricter bar) or nothing.
+All question wording and thresholds live in this module.
 
-`classify(window)` is what app.rules calls: the alert Category for an action label
-(always medium or high confidence), else None (abstain). The rules only accept it
-when the lexicon already saw that category, so the model never acts alone. The
-authority/urgency label has no alert of its own and classifies as None.
-
-Off unless env INTENT_MODEL=on and the `[intent]` extra is installed
-(`uv sync --extra intent`). When off, classify abstains and arm C equals arm B.
+Only on when env INTENT_MODEL=on and TYPESAFE_API_KEY is set. A failed call is an
+error, never a "no": it is logged and arm C falls back to arm B for that turn.
+The window leaves the machine only when arm C is on; it is never stored.
 """
 from __future__ import annotations
 
-import importlib.util
+import json
 import logging
 import os
 import threading
-from functools import lru_cache
-from typing import Literal, NamedTuple
+from typing import Literal
 
-from app.models import Category, ConfidenceClass, Segment
+import httpx
 
-MODEL = "MoritzLaurer/deberta-v3-base-zeroshot-v2.0"
-Label = Literal["credential_or_code_request", "payment_or_transfer_request", "remote_access_request",
-                "authority_or_relationship_claim_with_urgency", "none", "abstain"]
-# One hypothesis per category.
-HYPOTHESES = {
-    "credential_or_code_request": "The caller asks the listener to share a verification code, PIN or password.",
-    "payment_or_transfer_request": "The caller is asking for money.",
-    "remote_access_request": "The caller asks the listener to install software or let them control a device.",
-    "authority_or_relationship_claim_with_urgency":
-        "The caller claims to be a relative or an official and says it is urgent.",
+from app.models import Category, Segment
+
+URL = "https://api.typesafe.ai/v1/systemone"
+MODEL = "jev-1.14.0"  # pinned: thresholds below were tuned on this version
+TIMEOUT_S = 1.5  # per caller turn (PRD 19.7 latency budget)
+CONTEXT_TURNS = 3  # earlier turns sent with the caller turn
+
+# Who is who, in plain words; every question refers to the state by these paths.
+_WHO = "The caller phoned the listener. "
+QUESTIONS: dict[str, dict] = {
+    # One request Noul per alert category.
+    "otp": {
+        "type": "noul",
+        "instructions": _WHO + "In `caller_turn`, does the caller ask the listener to tell, read out or send "
+                               "them a code, PIN, password or other secret number? `earlier_turns` shows what "
+                               "was said just before.",
+        "criteria": {
+            "true": "The caller wants to hear or receive the secret, e.g. a verification code that was just "
+                    "texted, the numbers on the screen, or what the text message says.",
+            "false": "The caller only mentions a code, or wants it typed into an app or website by the "
+                     "listener without the caller learning it.",
+        },
+    },
+    "payment": {
+        "type": "noul",
+        "instructions": _WHO + "In `caller_turn`, does the caller ask the listener to pay, send or transfer "
+                               "money? `earlier_turns` shows what was said just before.",
+        "criteria": {
+            "true": "The caller wants money from the listener now, in any form: a payment, card details, gift "
+                    "cards or vouchers, cash handed to a courier, crypto, a wire or a payment app.",
+            "false": "The caller says nothing is owed, a bill is already paid, or the caller is sending money "
+                     "to the listener.",
+        },
+    },
+    "remote": {
+        "type": "noul",
+        "instructions": _WHO + "In `caller_turn`, does the caller ask the listener to install software, open "
+                               "a website or link, or let the caller access or control their device? "
+                               "`earlier_turns` shows what was said just before.",
+        "criteria": {
+            "true": "The caller wants the listener to take a step on their computer or phone that the caller "
+                    "directs, e.g. download an app, go to a site, click allow, or share the screen.",
+            "false": "The caller only talks about a device or an app, or says no access or install is needed.",
+        },
+    },
+    # False-positive patterns (one judgment each).
+    "warning": {
+        "type": "noul",
+        "instructions": _WHO + "In `caller_turn`, is the caller warning the listener about scams or saying "
+                               "what they or their organisation will never ask for?",
+    },
+    "reported": {
+        "type": "noul",
+        "instructions": _WHO + "In `caller_turn`, is the caller describing a request that someone else made, "
+                               "rather than asking the listener for something themselves?",
+    },
+    "self_service": {
+        "type": "noul",
+        "instructions": _WHO + "In `caller_turn`, does the caller tell the listener to do it themselves, "
+                               "without giving the code, money or access to the caller?",
+    },
 }
-CATEGORY: dict[str, Category] = {"credential_or_code_request": "otp", "payment_or_transfer_request": "payment",
-                                 "remote_access_request": "remote"}
-# Entailment-probability bands (uncalibrated). A label needs MEDIUM (action labels
-# are tried before the authority claim); "none" needs every score at or below
-# NONE_MAX; anything in between abstains.
-HIGH, MEDIUM, NONE_MAX = 0.9, 0.7, 0.3
+CATEGORIES: tuple[Category, ...] = ("otp", "payment", "remote")
+GUARDS = ("warning", "reported", "self_service")
+
+# Noul thresholds (skill defaults 0.7 / 0.3, then tuned on training data t1).
+CONFIRM = 0.7  # the category's request Noul, when the lexicon saw the category
+SOLO = 0.9  # the category's request Noul, with no lexicon support
+GUARD_MAX = 0.3  # every guard Noul must be below this for a solo detection
+GUARD_CONFIRM_MAX = 0.7  # ... and below this for a confirmation
+
+Judgment = Literal["confirm", "solo"]
 
 log = logging.getLogger(__name__)
-_model = None
-_failed = False
+_cache: dict[str, dict[str, float] | None] = {}
 _lock = threading.Lock()
 
 
-class Evidence(NamedTuple):
-    label: Label
-    confidence_class: ConfidenceClass
-
-
 def enabled() -> bool:
-    """INTENT_MODEL=on and the [intent] extra is installed."""
+    """INTENT_MODEL=on and TYPESAFE_API_KEY is set."""
     return (os.environ.get("INTENT_MODEL", "").strip().lower() == "on"
-            and all(importlib.util.find_spec(m) for m in ("torch", "transformers")))
-
-
-def load_model():
-    """Load (once) and return (tokenizer, model). Raises if it can't be loaded."""
-    global _model
-    with _lock:
-        if _model is None:
-            import torch
-            from transformers import AutoModelForSequenceClassification, AutoTokenizer
-            # transformers 5 keeps the checkpoint dtype (fp16 here), which is ~6x slower on CPU.
-            model = AutoModelForSequenceClassification.from_pretrained(MODEL, dtype=torch.float32).eval()
-            _model = AutoTokenizer.from_pretrained(MODEL), model
-    return _model
+            and bool(os.environ.get("TYPESAFE_API_KEY", "").strip()))
 
 
 def preload() -> None:
-    """Load and warm the model at startup when enabled. Never raises."""
-    if not enabled():
-        return
+    """Nothing to load for a hosted model; log whether arm C can call it."""
+    if os.environ.get("INTENT_MODEL", "").strip().lower() == "on" and not enabled():
+        log.warning("INTENT_MODEL=on but TYPESAFE_API_KEY is not set; arm C will equal arm B")
+
+
+def state(window: list[Segment]) -> dict:
+    """Request state: the last turn (a caller turn) and the turns just before it."""
+    *earlier, current = window
+    return {
+        "earlier_turns": [{"speaker": "caller" if s.speaker == "caller" else "listener", "text": s.text}
+                          for s in earlier[-CONTEXT_TURNS:]],
+        "caller_turn": current.text,
+    }
+
+
+def payload(window: list[Segment]) -> dict:
+    return {"model": MODEL, "state": state(window), "questions": QUESTIONS}
+
+
+def _post(body: dict) -> dict:
+    """POST one System One request. Raises on any transport or HTTP error."""
+    r = httpx.post(URL, json=body, timeout=TIMEOUT_S,
+                   headers={"Authorization": f"Bearer {os.environ['TYPESAFE_API_KEY'].strip()}"})
+    r.raise_for_status()
+    return r.json()
+
+
+def answers(window: list[Segment]) -> dict[str, float] | None:
+    """Noul per question id for a window ending in a caller turn, or None if the model is off
+    or the call failed (the failure is logged as an error). Cached per window text."""
+    if not window or not enabled():
+        return None
+    body = payload(window)
+    key = json.dumps(body["state"], sort_keys=True)
+    with _lock:
+        if key in _cache:
+            return _cache[key]
+    if log.isEnabledFor(logging.DEBUG):
+        log.debug("typesafe request %s", json.dumps(body))
     try:
-        _scores("Caller: Hello, how are you today?")
-    except Exception:
-        log.exception("Intent model failed to load; arm C will equal arm B")
+        resp = _post(body)
+        result = {q: float(resp["answers"][q]["noul"]) for q in QUESTIONS}
+    except Exception as e:  # an error, never a "no": arm C falls back to arm B for this turn
+        log.error("TypeSafe call failed (%s: %s); arm C falls back to arm B for this turn", type(e).__name__, e)
+        result = None
+    with _lock:
+        _cache[key] = result
+    return result
 
 
-def _scores(premise: str) -> dict[str, float]:
-    import torch
-    tokenizer, model = load_model()
-    enc = tokenizer([premise] * len(HYPOTHESES), list(HYPOTHESES.values()),
-                    return_tensors="pt", padding=True, truncation=True)
-    with torch.inference_mode():
-        probs = model(**enc).logits.softmax(-1)[:, model.config.label2id["entailment"]]
-    return dict(zip(HYPOTHESES, probs.tolist()))
-
-
-@lru_cache(maxsize=4096)
-def _evidence(premise: str) -> Evidence:
-    scores = _scores(premise)
-    for label, p in sorted(scores.items(), key=lambda kv: (kv[0] not in CATEGORY, -kv[1])):
-        if p >= MEDIUM:
-            return Evidence(label, "high" if p >= HIGH else "medium")
-    top = max(scores.values())
-    if top <= NONE_MAX:
-        return Evidence("none", "high" if top <= 1 - HIGH else "medium")
-    return Evidence("abstain", "low")
-
-
-def evidence(window: list[Segment]) -> Evidence:
-    """Intent Evidence for a window (cached by text). Raises if the model can't be loaded."""
-    return _evidence("\n".join(f"{s.speaker.capitalize()}: {s.text}" for s in window))
+def judge(ans: dict[str, float], category: Category, lexicon_seen: bool) -> Judgment | None:
+    """The decision table. A confirmation needs the lexicon to have seen the category."""
+    p = ans[category]
+    guard = max(ans[g] for g in GUARDS)
+    if p >= SOLO and guard < GUARD_MAX:
+        return "confirm" if lexicon_seen else "solo"
+    if lexicon_seen and p >= CONFIRM and guard < GUARD_CONFIRM_MAX:
+        return "confirm"
+    return None
 
 
 def clear_cache() -> None:
     """Drop cached windows (call text) when a session ends (PRD §12 transient content)."""
-    _evidence.cache_clear()
-
-
-def classify(window: list[Segment]) -> Category | None:
-    """The window's alert category, or None to abstain (also when the model is off or broken)."""
-    global _failed
-    if _failed or not enabled():
-        return None
-    try:
-        return CATEGORY.get(evidence(window).label)
-    except Exception:
-        _failed = True
-        log.exception("Intent model unavailable; arm C will equal arm B")
-        return None
+    with _lock:
+        _cache.clear()

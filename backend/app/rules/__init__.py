@@ -1,4 +1,4 @@
-"""Decision engine (§19.4). Pure: no SMS, DB, network or asyncio.
+"""Decision engine (§19.4). Pure: no SMS, DB or asyncio (arm C may call app.intent).
 
 Both functions take every segment of the session so far and return the
 session's cumulative results; the pipeline diffs against what it already
@@ -8,8 +8,9 @@ Arms (tables in policy/<version>/rules.yaml and lexicon.yaml):
 - K: a lexicon term in any speaker's text.
 - B: a caller request, in the caller's direction, not negated or hedged, whose
   object is a lexicon term in the same turn or (for "read it to me") a recent turn.
-- C: B plus app.intent.classify on caller turns with a lexicon hit B didn't act on;
-  the model only confirms the category the lexicon saw (it never acts alone).
+- C: B plus TypeSafe Jev judgments (app.intent) on caller turns, for categories B didn't
+  act on: C-INTENT-*-01 when the model confirms a category the lexicon saw, and the
+  model-only C-INTENT-*-SOLO above a stricter bar. If the model is off or a call fails, C = B.
 Evidence is category wording and rule ids only, never call text.
 """
 from __future__ import annotations
@@ -65,9 +66,11 @@ def load_policy(policy_version: str) -> _Policy:
     categories = []
     for name, c in cfg["categories"].items():
         v = rf"(?P<v>{c['verbs']})\b"
+        imperative = rf"(?:{cfg['fillers']}\b[\s,]*)*{v}"
         requests = (
             _rx(rf"\b(?:{frames})(?:\s+[\w']+){{0,2}}?\s+{v}"),  # can you (just) read
-            _rx(rf"^\s*(?:{cfg['intro']}\b[^,]*,\s*)?(?:{cfg['fillers']}\b[\s,]*)*{v}"),  # imperative: read me / buy
+            _rx(rf"^\s*(?:{cfg['intro']}\b[^,]*,\s*)?{imperative}"),  # imperative: read me / buy
+            _rx(rf"(?:,|\b(?:and|so)\b)\s+{imperative}"),  # a second step: install it and allow ...
             _rx(rf"\b{v}(?:\s+[\w']+){{0,4}}?\s+(?:me|us)\b"),  # read it back to me
             *(_rx(rf"\b(?:{p})\b") for p in c["extra"]),
         )
@@ -78,10 +81,10 @@ def load_policy(policy_version: str) -> _Policy:
                    _rx(cfg["negated_object_end"]))
 
 
-def _negated(p: _Policy, clause: str, anchor: int) -> bool:
+def _negated(p: _Policy, clause: str, anchor: int, max_gap: int | None = None) -> bool:
     end = p.negated_object_end.search(clause, anchor)
-    if p.negated_object.search(clause, anchor, end.start() if end else len(clause)):  # share it with no one
-        return True
+    if max_gap is None and p.negated_object.search(clause, anchor, end.start() if end else len(clause)):
+        return True  # share it with no one
     for m in p.negation.finditer(clause, 0, anchor):
         gap = clause[m.end():anchor]
         aside = ""
@@ -92,7 +95,7 @@ def _negated(p: _Policy, clause: str, anchor: int) -> bool:
         elif "," in gap:  # "don't worry, read me": the comma ends the negated clause
             continue
         words = re.findall(r"[\w']+", gap.lower())
-        if (len(words) <= p.cfg["negation_max_gap_words"]
+        if (len(words) <= (max_gap or p.cfg["negation_max_gap_words"])
                 and not set(words + aside.lower().split()) & set(p.cfg["negation_blockers"])):
             return True
     return False
@@ -108,6 +111,23 @@ def _is_request(p: _Policy, cat: _Category, clause: str) -> bool:
                 continue
             return True
     return False
+
+
+def _mentioned(p: _Policy, cat: _Category, clauses: list[str]) -> bool:
+    """A lexicon term the turn doesn't negate or hedge ("you don't need to share your screen")."""
+    return any(not (p.hedges.search(c, 0, m.start()) or _negated(p, c, m.start(), p.cfg["negation_max_object_gap"]))
+               for c in clauses for m in cat.lexicon.finditer(c))
+
+
+def _antecedent(p: _Policy, window: list[Segment], before: list[str]) -> str | None:
+    """The category a pronoun refers back to: the most recent lexicon mention, counting the
+    current turn's text before the pronoun as the most recent (even negated: "never share your code, but
+    you can read it to me")."""
+    for texts in [before] + [[s.text] for s in reversed(window)]:
+        for cat in p.categories:
+            if any(cat.lexicon.search(t) for t in texts):
+                return cat.name
+    return None
 
 
 def _event(seg: Segment, event_type: str, source: str, rule_id: str, category: str,
@@ -127,15 +147,19 @@ def _requests(p: _Policy, segments: list[Segment], i: int, policy_version: str) 
     seg = segments[i]
     window = segments[max(0, i - p.cfg["context_turns"]):i]
     clauses = [c for c in p.clause_split.split(seg.text) if c.strip()]
+    # A pronoun refers back to the most recently mentioned category (this turn counts as latest).
     out = []
     for cat in p.categories:
-        for clause in clauses:
+        for k, clause in enumerate(clauses):
             if not _is_request(p, cat, clause):
                 continue
-            if cat.lexicon.search(seg.text):
+            if _mentioned(p, cat, clauses):
                 rid, conf, span = cat.cfg["b_rules"]["high"], "high", [seg.seq]
-            elif p.context_object.search(clause) and (prior := [s for s in window if cat.lexicon.search(s.text)]):
-                rid, conf, span = cat.cfg["b_rules"]["medium"], "medium", [prior[-1].seq, seg.seq]
+            elif ((pron := p.context_object.search(clause))
+                  and _antecedent(p, window, before := clauses[:k] + [clause[:pron.start()]]) == cat.name):
+                rid, conf = cat.cfg["b_rules"]["medium"], "medium"
+                prior = [s.seq for s in window if cat.lexicon.search(s.text)]
+                span = [seg.seq] if any(cat.lexicon.search(c) for c in before) else [prior[-1], seg.seq]
             else:
                 continue
             out.append(_event(seg, cat.cfg["b_event"], "rule", rid, cat.name, span, conf, policy_version))
@@ -145,17 +169,24 @@ def _requests(p: _Policy, segments: list[Segment], i: int, policy_version: str) 
 
 def _intent(p: _Policy, segments: list[Segment], i: int, fired: set[str],
             policy_version: str) -> list[RiskEvent]:
-    """Arm C hook: the model confirms a lexicon category B didn't act on."""
-    seg = segments[i]
-    seen = {c.name: c for c in p.categories if c.name not in fired and c.lexicon.search(seg.text)}
-    if not seen:
+    """Arm C: Jev's judgments on caller turn i for categories B didn't act on (app.intent.judge).
+    "confirm" needs the lexicon to have seen the category in this turn or the context window;
+    "solo" is the model alone (distinct rule id, low confidence). No answer = arm B."""
+    if all(c.name in fired for c in p.categories):
         return []
-    label = intent.classify(segments[max(0, i - p.cfg["context_turns"]):i + 1])
-    if label not in seen:
+    window = segments[max(0, i - p.cfg["context_turns"]):i + 1]
+    ans = intent.answers(window)
+    if ans is None:
         return []
-    cat = seen[label]
-    return [_event(seg, cat.cfg["b_event"], "intent", cat.cfg["c_rule"], cat.name, [seg.seq],
-                   "medium", policy_version)]
+    seg, out = segments[i], []
+    for cat in p.categories:
+        if cat.name in fired:
+            continue
+        judgment = intent.judge(ans, cat.name, any(cat.lexicon.search(s.text) for s in window))
+        if judgment:
+            out.append(_event(seg, cat.cfg["b_event"], "intent", cat.cfg["c_rules"][judgment], cat.name, [seg.seq],
+                              "medium" if judgment == "confirm" else "low", policy_version))
+    return out
 
 
 def detect(segments: list[Segment], arm: Arm, policy_version: str) -> list[RiskEvent]:

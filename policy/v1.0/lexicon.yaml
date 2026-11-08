@@ -1,43 +1,72 @@
 # Shared category lexicon (policy v1.0). Arm K fires on any match in any speaker's
 # text; arm B uses the same terms as the object of a caller's request.
 # Entries are case-insensitive Python regexes, matched on word boundaries.
+# Terms are grouped by semantic class (what is being handed over), not by phrasing.
 version: v1.0
 categories:
   otp:
-    - '(?<!zip )(?<!area )(?<!postal )(?<!promo )(?<!discount )(?<!coupon )(?<!dress )codes?'
+    # One-time codes and secrets.
+    - '(?<!zip )(?<!area )(?<!postal )(?<!promo )(?<!discount )(?<!coupon )(?<!dress )(?<!bar )(?<!qr )(?<!key )codes?'
     - 'passcodes?'
     - 'otps?'
     - 'pins?'
     - 'passwords?'
+    - 'pass ?phrases?'
     - 'digits?'
+    - '2fa'
+    - 'one[- ]time (numbers?|keys?|links?)'
+    # A number that arrives by text or proves who you are.
+    - '(verification|confirmation|security|authentication|authori[sz]ation|activation|lookup|reference|reset|login|log-in|sign-in|access|validation) (numbers?|texts?|messages?|keys?|words?|answers?|questions?)'
+    - '(number|numbers|digits)( \w+){0,4} (by|in|via|through|from) (a |the |that |your )?(text|texts|sms|message)'
+    - '(text|texting|texted|sms|message)( \w+){0,3} (a |the |that |your )?(number|numbers)'
+    # Other secrets that unlock an account.
+    - "(mother'?s )?maiden name"
+    - 'security questions?'
+    - 'social security numbers?'
+    - '(seed|recovery) (phrase|words)'
+    - 'cvv|cvc|cvv2'
+    - '(login|log-in|sign-in|account) (details|credentials|info)'
   payment:
-    - 'gift ?cards?'
+    # Payment vehicles that are hard to reverse.
+    - '(gift|steam|google ?play|apple|itunes|amazon|target|walmart|ebay|best ?buy|sephora|razer|green ?dot|vanilla|visa|prepaid|reload(able)?|store|cash|money ?pak|paysafe|netspend) ?cards?'
+    - 'vouchers?'
     - 'wire( transfer)?'
     - 'wiring'
-    - 'bitcoin'
-    - 'crypto(currency)?'
-    - 'zelle'
-    - 'venmo'
-    - 'cash ?app'
-    - 'western union'
-    - 'moneygram'
-    - 'money orders?'
-    - 'prepaid cards?'
-    - '(credit|debit|card|account|routing) numbers?'
-    - '(safe|secure|protected|holding) account'
-    - 'bail'
+    - 'bitcoin|btc|usdt|tether|ethereum|crypto(currency)?|coinbase'
+    - '(bitcoin|crypto|btc|coin) (atm|machine|kiosk)s?'
+    - '(crypto |digital |bitcoin )?wallet( address)?'
+    - 'zelle|venmo|cash ?app|paypal|apple ?pay|google ?pay|western union|moneygram|remitly'
+    - "money orders?|cashier'?s checks?|certified checks?"
+    - '(credit|debit|card|account|routing|bank) (card )?numbers?'
+    - '(debit|credit|bank) cards?'
+    - '(safe|secure|protected|holding|escrow|new|federal|reserve) accounts?'
+    - 'bail|bond'
+    # Money and amounts.
+    - 'money|cash|funds|savings'
+    - '(processing|release|shipping|delivery|enrollment|activation|transfer|service|late|court|customs|registration|handling|clearance|admin(istrative)?) fees?'
+    - '(security |protective |good faith |holding )?deposit'
+    - 'donations?'
+    - 'payments?'
+    - '(overdue|past[- ]due|outstanding|unpaid|remaining) (balance|bill|amount|invoice|taxes|tax|fine|fees?)'
+    - '\$ ?\d[\d,.]*|\d[\d,.]* ?(dollars|bucks|grand)|(hundred|thousand) (dollars|bucks)|dollars'
   remote:
-    - 'anydesk'
-    - 'any desk'
-    - 'teamviewer'
-    - 'team viewer'
-    - 'ultraviewer'
-    - 'logmein'
-    - 'quick ?assist'
-    - 'rustdesk'
-    - 'screenconnect'
-    - 'connectwise'
-    - 'remote (access|desktop|support|control|session|software|app|tool|connection)'
-    - 'screen ?shar(e|ing)'
-    - '(access to|control of|into) your (computer|device|phone|laptop|pc|screen|machine)'
-    - '(see|view|watch) your (screen|computer|desktop|laptop)'
+    # Named remote-access tools.
+    - 'anydesk|any desk|teamviewer|team viewer|ultraviewer|logmein|log me in|quick ?assist|rustdesk|screenconnect|connectwise|splashtop|supremo|zoho assist|support ?assist'
+    - 'remote (access|desktop|support|control|session|software|app|tool|connection|repair|assistan(t|ce)|inspection|helper|login|view(er)?)'
+    - 'remotely'
+    # Seeing or controlling the device.
+    - 'screen ?shar(e|ing)|shar(e|ing) (your|the|my|whole|entire)( whole| entire)? screen'
+    - '(screen|camera|device|phone|computer) (control|access)'
+    - '(from|on) (my|our) (end|side)|from here'
+    - "(let|allow) (it|me|us|him|them|the app|the program)( to)? (connect|in|access|control|into|take)"
+    - "(click|tap|press|hit|say|select) (on )?(allow|accept|trust|yes|join|connect|start|run|install)"
+    # Software or a link the caller supplies.
+    - "(app|apps|file|program|software|link|tool|profile|update|extension|helper|viewer|installer|site|website|page|address|portal)( that| which)?( \\w+){0,2}? (i|we)( am|'m|m| will|'ll|ll)? (send|sending|sent|text|texting|texted|give|giving|gave|tell|told)"
+    - '(access to|control of|into|in to|onto) your (computer|device|phone|laptop|pc|screen|machine|system|tablet|mac|desktop)'
+    - '(see|view|watch|control|access|operate) (your|the) (screen|computer|desktop|laptop|phone|device|pc)'
+    - 'take (over|control)|full control|(full|all|accessibility|admin|administrator) (access|permissions?)'
+    - '(connect|log ?in|logon|get in|remote|dial) (to|into|in to|onto) (your|the) (computer|device|phone|laptop|pc|machine|system|screen|mac)'
+    - '(join|start) (the |a |my |our )?(support |remote |screen )?session|session (code|id|number)'
+    - 'support (code|session|website|site|portal|page|link|tool|app|software)'
+    - 'incoming (connection|request)|(accessibility|developer) (options|settings|access|permissions?)'
+    - '(windows|start) key|run (box|window|command)'
