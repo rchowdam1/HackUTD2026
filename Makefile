@@ -1,6 +1,6 @@
 UV := env -u PYTHONPATH -u PYTHONHOME -u VIRTUAL_ENV uv
 
-.PHONY: install smoke test run
+.PHONY: install smoke test run preflight
 
 install:
 	$(UV) sync
@@ -14,3 +14,6 @@ smoke: install
 
 run:
 	$(UV) run uvicorn app.main:app --reload --port 8000
+
+preflight: install
+	scripts/preflight
