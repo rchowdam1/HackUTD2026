@@ -264,7 +264,7 @@ def test_arm_c_confirm_needs_lexicon_solo_has_its_own_id(monkeypatch):
 
     def fake_answers(window):
         windows.append([s.seq for s in window])
-        return {"payment": 0.8}  # confident enough to confirm, not to act alone
+        return {**dict.fromkeys(intent.QUESTIONS, 0.0), "payment": 0.8}  # confident enough to confirm, not to act alone
 
     monkeypatch.setattr(intent, "answers", fake_answers)
     monkeypatch.setattr(intent, "judge", lambda ans, cat, seen: ("confirm" if seen else None)

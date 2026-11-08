@@ -213,7 +213,8 @@ def test_solo_detection_has_its_own_rule_id(model):
     (d,) = decide(segs, "C", V)
     assert (d.template_id, d.basis) == ("ALERT-PAY-01", ["C-INTENT-PAY-SOLO"])
     (e,) = detect(segs, "C", V)
-    assert (e.source, e.confidence_class, e.span_seq) == ("intent", "low", [3])
+    assert (e.source, e.confidence_class, e.span_seq, e.score) == ("intent", "low", [3], 0.97)
+    assert all(r.score is None for r in detect(call("Read me the code we texted you."), "C", V))  # rules: no score
 
 
 def test_confirmation_needs_the_lexicon(model):
@@ -256,9 +257,13 @@ def test_only_caller_turns_are_sent(model):
     assert [r["json"]["state"]["caller_turn"] for r in sent] == ["Okay."]
 
 
-@pytest.mark.parametrize("scenario_id, expected", [("clinic", []), ("bank", ["ALERT-OTP-01"])])
-def test_demo_replays_with_the_model_on(model, scenario_id, expected):
-    model(lambda turn: {})
+@pytest.mark.parametrize("scenario_id, nouls, expected", [
+    ("clinic", {}, []), ("bank", {}, ["ALERT-OTP-01"]),
+    ("family", {}, []),  # the rules alone miss the grandson call ...
+    ("family", {"pay_send": 0.99}, ["ALERT-PAY-01"]),  # ... the model's money request is what catches it
+])
+def test_demo_replays_with_the_model_on(model, scenario_id, nouls, expected):
+    model(lambda turn: nouls if "take out" in turn else {})
     sc = Scenario.model_validate(json.loads((DEMO / f"{scenario_id}.json").read_text()))
     segs = call(*[t.text if t.speaker == "caller" else ("subscriber", t.text) for t in sc.turns])
     assert [d.template_id for d in decide(segs, "C", V)] == expected

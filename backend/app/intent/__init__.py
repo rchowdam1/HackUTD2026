@@ -295,6 +295,11 @@ def _bar(guard: str) -> float:
     return GUARD_BAR.get(guard, GUARD_MAX)
 
 
+def request_score(ans: dict[str, float], category: Category) -> float:
+    """The model's probability that the caller asked for something in this category (any way of asking)."""
+    return max(ans[q] for q in REQUESTS[category])
+
+
 def _evidence(ans: dict[str, float], category: Category) -> bool:
     """Does the model, on its own, find a request in this category on this turn?"""
     if ans["warning"] >= WARNED:
@@ -332,7 +337,7 @@ def judge(ans: dict[str, float], category: Category, lexicon_seen: bool,
     if evidence:
         return None
     guarded = any(ans[g] >= _bar(g) for g in GUARDS[category])
-    no_request = max(ans[q] for q in REQUESTS[category]) < NO_REQUEST and ans["self_service"] >= DIY
+    no_request = request_score(ans, category) < NO_REQUEST and ans["self_service"] >= DIY
     return "veto" if guarded or no_request else None
 
 

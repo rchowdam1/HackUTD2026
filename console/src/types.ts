@@ -21,6 +21,7 @@ export interface RiskEvent {
   span_seq: number[];
   confidence_class: "high" | "medium" | "low";
   policy_version: string;
+  score: number | null; // intent events: the model's probability that the caller asked
 }
 
 export interface Decision {
@@ -63,21 +64,3 @@ export type Event =
   | { event_id: string; session_ref: string | null; type: "sms"; payload: SmsPayload }
   | { event_id: string; session_ref: string | null; type: "reply"; payload: ReplyPayload }
   | { event_id: string; session_ref: string | null; type: "consent"; payload: { state: ConsentState } };
-
-export interface ArmCounts {
-  TP: number;
-  FP: number;
-  FN: number;
-  TN: number;
-  hard_benign_fp: number;
-  hard_benign_n: number;
-}
-
-export type Results =
-  | { status: "pending" }
-  | {
-      batch: string;
-      source: "script";
-      arms: Record<string, ArmCounts>;
-      discordant?: { K_only: number; B_only: number } | null;
-    };

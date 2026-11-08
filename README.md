@@ -1,8 +1,8 @@
 # CallSafe (HackUTD 2026)
 
-CallSafe texts you during a call when the caller asks for a code, money or access to your device. The text names the request and gives one safe step. The demo replays two calls through the live pipeline: a clinic call that must stay silent, and a bank call that turns into a request for a one-time passcode (OTP). An operator console shows the transcript, why an alert fired, and the held-out results. `PRD.md` §19 is the build spec.
+CallSafe texts you during a call when the caller asks for a code, money or access to your device. The text names the request and gives one safe step. The demo replays three calls through the live pipeline: a clinic call that must stay silent, a bank call that turns into a request for a one-time passcode (OTP), and a "grandson in trouble" call that asks for cash in words the rules don't catch. An operator console shows the transcript, the texts on a simulated phone, and why an alert fired: by the rules, or by Perplexity Decider with its probability. `PRD.md` §19 is the build spec.
 
-The demo runs arm B (rules + policy) in simulated SMS mode: the console's phone frame shows the texts and has on-screen reply buttons. The Twilio account is still a trial (no number, can't send our message bodies), and real SMS needs an upgraded account plus 10DLC or toll-free registration, which takes days.
+The demo runs arm C (rules + Perplexity Decider) when `INTENT_MODEL=on` and `OPENROUTER_API_KEY` are set, otherwise arm B (rules only); either way in simulated SMS mode: the console's phone frame shows the texts and has on-screen reply buttons. The Twilio account is still a trial (no number, can't send our message bodies), and real SMS needs an upgraded account plus 10DLC or toll-free registration, which takes days.
 
 ## Stack
 

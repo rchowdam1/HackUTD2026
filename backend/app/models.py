@@ -63,6 +63,7 @@ class RiskEvent(BaseModel):
     span_seq: list[int]
     confidence_class: ConfidenceClass
     policy_version: str
+    score: float | None = None  # intent events: the model's probability that the caller asked (app.intent)
 
 
 class Decision(BaseModel):

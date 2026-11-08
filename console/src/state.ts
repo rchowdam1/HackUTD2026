@@ -11,7 +11,6 @@ export interface State {
   risks: RiskEvent[];
   decisions: Decision[];
   bubbles: Bubble[];
-  wrongCount: number;
   consent: ConsentState | null;
 }
 
@@ -22,7 +21,6 @@ export const initial: State = {
   risks: [],
   decisions: [],
   bubbles: [],
-  wrongCount: 0,
   consent: null,
 };
 
@@ -53,11 +51,7 @@ export function reduce(s: State, a: Action): State {
       return { ...s, bubbles };
     }
     case "reply":
-      return {
-        ...s,
-        wrongCount: Math.max(s.wrongCount, a.payload.wrong_count), // WRONG total never decreases
-        bubbles: [...s.bubbles, { kind: "in", keyword: a.payload.keyword, id: a.event_id }],
-      };
+      return { ...s, bubbles: [...s.bubbles, { kind: "in", keyword: a.payload.keyword, id: a.event_id }] };
     case "consent":
       return { ...s, consent: a.payload.state };
     case "sms_mode":
@@ -66,7 +60,7 @@ export function reduce(s: State, a: Action): State {
       // Rebuild from GET /state, then apply live events that arrived after it, minus duplicates.
       const { snapshot: snap, after } = a;
       const seen = new Set(snap.events.map((e) => e.event_id));
-      const replayed = snap.events.reduce(reduce, { ...initial, wrongCount: Math.max(s.wrongCount, snap.wrong_count) });
+      const replayed = snap.events.reduce(reduce, initial);
       const current = { ...replayed, smsMode: snap.sms_mode, consent: snap.consent }; // snapshot values are newer than its events
       return after.filter((e) => !seen.has(e.event_id)).reduce(reduce, current);
     }

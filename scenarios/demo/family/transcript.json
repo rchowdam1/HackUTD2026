@@ -1,0 +1,37 @@
+[
+  {
+    "seq": 1,
+    "speaker": "caller",
+    "t_start_ms": 0,
+    "t_end_ms": 5280,
+    "text": "Grandma? It's me, Danny. I'm in trouble and I don't know who else to call."
+  },
+  {
+    "seq": 2,
+    "speaker": "subscriber",
+    "t_start_ms": 5280,
+    "t_end_ms": 8480,
+    "text": "Danny? Oh my goodness, what happened?"
+  },
+  {
+    "seq": 3,
+    "speaker": "caller",
+    "t_start_ms": 8480,
+    "t_end_ms": 14000,
+    "text": "I hit another car and the police are holding me. The lawyer says I can go home today if we sort it out."
+  },
+  {
+    "seq": 4,
+    "speaker": "caller",
+    "t_start_ms": 14000,
+    "t_end_ms": 24000,
+    "text": "Could you go to the bank, take out whatever you can spare, and hand it to the man he sends to your house? Please don't tell Mom."
+  },
+  {
+    "seq": 5,
+    "speaker": "subscriber",
+    "t_start_ms": 24000,
+    "t_end_ms": 28560,
+    "text": "Oh, sweetheart. Okay, let me find my purse."
+  }
+]

@@ -16,7 +16,7 @@ import logging
 from collections.abc import AsyncIterator
 from pathlib import Path
 
-from app import ROOT, asr, pipeline, policy
+from app import ROOT, asr, intent, pipeline, policy
 from app.models import Scenario, Segment, SmsMode, Speaker, TranscriptLine
 
 DEMO_DIR = ROOT / "scenarios" / "demo"
@@ -71,8 +71,9 @@ async def replay_transcript(
 
 
 async def _replay(segments: Timed, sms_mode: SmsMode, realtime: bool) -> str:
-    """Start an arm B session, feed each segment no earlier than it is due, then finish."""
-    ref = await pipeline.start("B", policy.VERSION, sms_mode)
+    """Start a session (arm C, rules + intent model, when the model is on; else arm B), feed each
+    segment no earlier than it is due, then finish."""
+    ref = await pipeline.start("C" if intent.enabled() else "B", policy.VERSION, sms_mode)
     t0 = asyncio.get_running_loop().time()
     async for due_ms, fields in segments:
         if realtime:
