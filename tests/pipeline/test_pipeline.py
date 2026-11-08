@@ -2,6 +2,7 @@
 import asyncio
 import json
 import threading
+import time
 
 import pytest
 
@@ -59,7 +60,7 @@ def summary(events):
     for e in events:
         p = e.payload
         detail = {"session": p.get("state"), "segment": p.get("seq"), "risk_event": tuple(p.get("span_seq", ())),
-                  "decision": p.get("template_id"), "sms": p.get("template_id")}[e.type]
+                  "decision": p.get("template_id"), "sms": p.get("template_id"), "turn": p.get("seq")}[e.type]
         out.append((e.type, detail))
     return out
 
@@ -90,9 +91,9 @@ def test_alert_then_exactly_one_followup_on_double_finish(gw):
     assert gw.sent == ["ALERT-OTP-01", "FU-OTP-01"]
     assert summary(events) == [
         ("session", "running"),
-        ("segment", 1),
-        ("segment", 2), ("risk_event", (2,)), ("decision", "ALERT-OTP-01"),
-        ("segment", 3), ("risk_event", (3,)),
+        ("segment", 1), ("turn", 1),
+        ("segment", 2), ("risk_event", (2,)), ("decision", "ALERT-OTP-01"), ("turn", 2),
+        ("segment", 3), ("risk_event", (3,)), ("turn", 3),
         ("sms", "ALERT-OTP-01"),
         ("sms", "FU-OTP-01"),
         ("session", "finished"),
@@ -109,7 +110,7 @@ def test_no_followup_without_alert_or_consent(gw, monkeypatch):
 
     _, events = run(silent)
     assert gw.sent == []
-    assert [e.type for e in events] == ["session", "segment", "session"]
+    assert [e.type for e in events] == ["session", "segment", "turn", "session"]
 
     monkeypatch.setattr(consent, "is_active", lambda: False)
 
@@ -120,7 +121,7 @@ def test_no_followup_without_alert_or_consent(gw, monkeypatch):
 
     _, events = run(opted_out)
     assert gw.sent == []  # opted out: skipped before the gateway, not a failed send
-    assert [e.type for e in events] == ["session", "segment", "risk_event", "decision", "session"]
+    assert [e.type for e in events] == ["session", "segment", "risk_event", "decision", "turn", "session"]
 
 
 def test_start_while_active_finishes_old_session(gw):
@@ -329,3 +330,55 @@ def test_transcript_dropped_when_session_ends(gw, end):
 
     (held, s), _ = run(scenario)
     assert held == 1 and s.segments == []
+
+
+def test_alert_latency_is_measured_from_the_end_of_the_flagged_turn(gw):
+    async def scenario():
+        ref = await pipeline.start("B", "v1.0", "simulated", source="phone")
+        spoken = Segment(session_ref=ref, seq=1, speaker="caller", text="Read me the code.", source="asr",
+                         ended_at=time.time() - 0.25)  # speech ended 250 ms before it reached us
+        await pipeline.process(spoken)
+        await pipeline.finish(ref)
+
+    _, events = run(scenario)
+    alert = next(e.payload for e in events if e.type == "sms" and e.payload["template_id"] == "ALERT-OTP-01")
+    followup = next(e.payload for e in events if e.type == "sms" and e.payload["template_id"] == "FU-OTP-01")
+    assert 250 <= alert["latency_ms"] < 2000 and followup["latency_ms"] is None
+    turn = next(e.payload for e in events if e.type == "turn")
+    assert turn["flagged_by"] == "rule" and turn["ai"] == "off" and turn["decided_ms"] >= 250
+    assert {e.payload["source"] for e in events if e.type == "session"} == {"phone"}
+
+
+@pytest.mark.parametrize("view", [("request", 0.999, "payment"), ("unavailable", None, None)])
+def test_arm_c_turn_carries_the_model_verdict_and_subscriber_turns_are_off(gw, monkeypatch, view):
+    monkeypatch.setattr(rules, "ai_view", lambda segments, policy_version: view)
+
+    async def scenario():
+        ref = await pipeline.start("C", "v1.0", "simulated")
+        await pipeline.process(seg(ref, 1, "Grandma, I need money for bail."))
+        await pipeline.process(seg(ref, 2, "Oh no.", speaker="subscriber"))
+        await pipeline.finish(ref)
+
+    _, events = run(scenario)
+    turns = [e.payload for e in events if e.type == "turn"]
+    assert [(t["seq"], t["ai"], t["score"], t["category"]) for t in turns] == [(1, *view), (2, "off", None, None)]
+
+
+def test_twilio_refusal_code_is_on_the_failed_sms(gw, monkeypatch):
+    class Refused(Exception):
+        code = 21610  # Twilio: the recipient replied STOP
+
+    class Refusing:
+        def send(self, template_id, session_ref):
+            raise Refused()
+
+    monkeypatch.setattr(sms, "get_gateway", lambda: Refusing())
+
+    async def scenario():
+        ref = await pipeline.start("B", "v1.0", "simulated")
+        await pipeline.process(seg(ref, 1, "Read me the code."))
+        await pipeline.finish(ref)
+
+    _, events = run(scenario)
+    failed = next(e.payload for e in events if e.type == "sms")
+    assert failed["status"] == "failed" and failed["error_code"] == "21610"

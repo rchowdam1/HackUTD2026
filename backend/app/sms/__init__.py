@@ -155,13 +155,15 @@ async def handle_inbound(message_sid: str, body: str, phone: str | None = None) 
     return payload
 
 
-def handle_status(message_sid: str, status: str) -> None:
-    """Twilio status callback: emit sent/delivered/failed for a message we sent."""
+def handle_status(message_sid: str, status: str, error_code: str | None = None) -> None:
+    """Twilio status callback: emit sent/delivered/failed for a message we sent, with Twilio's ErrorCode
+    (e.g. 30034: the sending number isn't registered for A2P 10DLC, so carriers block it)."""
     mapped = {"sent": "sent", "delivered": "delivered", "failed": "failed", "undelivered": "failed"}.get(status)
     if mapped is None or message_sid not in _sent:
         return
     template_id, session_ref = _sent[message_sid]
-    emit("sms", SmsPayload(message_id=message_sid, template_id=template_id, status=mapped), session_ref)
+    emit("sms", SmsPayload(message_id=message_sid, template_id=template_id, status=mapped,
+                           error_code=error_code or None), session_ref)
 
 
 async def invite(phone: str | None = None) -> str:

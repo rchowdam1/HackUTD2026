@@ -317,6 +317,13 @@ def _evidence(ans: dict[str, float], category: Category) -> bool:
     return False
 
 
+def verdict(ans: dict[str, float]) -> tuple[bool, float, Category]:
+    """The model's own view of one caller turn, for the console: does it find a request in any category,
+    and its top request probability with that category."""
+    top = max(CATEGORIES, key=lambda c: request_score(ans, c))
+    return any(_evidence(ans, c) for c in CATEGORIES), request_score(ans, top), top
+
+
 def judge(ans: dict[str, float], category: Category, lexicon_seen: bool,
           rule_fired: bool = False) -> Judgment | None:
     """The decision table for one category on one caller turn.

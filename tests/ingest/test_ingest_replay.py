@@ -87,7 +87,8 @@ def test_asr_mode_emits_segments_in_order_with_scenario_speakers_and_offsets(dem
 def test_cached_mode_replays_transcript(demo, fixtures_dir):
     ref, events, _ = replay(source="cached", realtime=False)
     expected = json.loads((fixtures_dir / "scenario_otp" / "transcript.json").read_text())
-    assert segments(events) == [{**line, "session_ref": ref, "source": "cached"} for line in expected]
+    assert segments(events) == [{**line, "session_ref": ref, "source": "cached", "ended_at": None,
+                                 "audio": f"{SCENARIO_ID}/t{i:02d}.wav"} for i, line in enumerate(expected, 1)]
     assert states(events) == ["running", "finished"]
 
 

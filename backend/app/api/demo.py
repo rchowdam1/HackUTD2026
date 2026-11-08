@@ -1,9 +1,11 @@
-"""Demo controls (§19.4): run a replay, end the call, reset, toggle SMS mode."""
+"""Demo controls (§19.4): run a replay, end the call, reset, toggle SMS mode, and the replay audio."""
 from __future__ import annotations
 
 import asyncio
+import re
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app import ingest, pipeline, sms
@@ -55,3 +57,12 @@ class Mode(BaseModel):
 def sms_mode(body: Mode) -> dict:
     sms.set_mode(body.mode)
     return {"mode": sms.get_mode()}
+
+
+@router.get("/audio/{scenario_id}/{name}")
+def audio(scenario_id: str, name: str) -> FileResponse:
+    """A replay turn's WAV (Segment.audio), which the console plays while the line types out."""
+    path = ingest.AUDIO_DIR / scenario_id / name
+    if scenario_id not in ingest.scenario_ids() or not re.fullmatch(r"t\d{2}\.wav", name) or not path.is_file():
+        raise HTTPException(404, "no such audio")
+    return FileResponse(path, media_type="audio/wav")

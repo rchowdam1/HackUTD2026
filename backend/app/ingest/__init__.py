@@ -2,8 +2,8 @@
 
 Track B's `POST /demo/run/{scenario_id}` calls `run(scenario_id, ...)`.
 Source `asr` transcribes audio/demo/<id>/tNN.wav with whisper; source `cached`
-replays scenarios/demo/<id>/transcript.json, paced for the console's word-by-word
-typing. ASR falls back to cached when the scenario has no audio or the model can't load.
+replays scenarios/demo/<id>/transcript.json, each line due when its turn's audio starts
+(the console plays the turn's WAV, `Segment.audio`, while the line types out). ASR falls back to cached when the scenario has no audio or the model can't load.
 
 Cancellation is cooperative: a replay stops, without calling finish, as soon as
 another session (or none) is current.
@@ -21,7 +21,7 @@ from app.models import Arm, Scenario, Segment, SmsMode, Speaker, TranscriptLine
 
 DEMO_DIR = ROOT / "scenarios" / "demo"
 AUDIO_DIR = ROOT / "audio" / "demo"
-# Cached replay pacing. WORD_MS must match WORD_MS in console/src/App.tsx (the typing speed).
+# Cached replay pacing for a transcript without audio. WORD_MS must match WORD_MS in console/src/App.tsx.
 WORD_MS = 100
 TURN_GAP_MS = 500
 log = logging.getLogger(__name__)
@@ -56,8 +56,14 @@ async def run(
 ) -> str:
     """Replay a demo scenario; returns session_ref. `source` defaults to env REPLAY_SOURCE."""
     turns = await _asr_turns(scenario_id) if (source or asr.default_source()) == "asr" else None
-    segments = _transcribed(turns) if turns else _cached(load_transcript(DEMO_DIR / scenario_id / "transcript.json"))
-    return await _replay(segments, sms_mode, realtime)
+    if turns:
+        segments = _transcribed(turns)
+    else:
+        lines = load_transcript(DEMO_DIR / scenario_id / "transcript.json")
+        turns = audio_turns(scenario_id)
+        audio = [_audio_ref(wav) for _, wav in turns] if turns and len(turns) == len(lines) else None
+        segments = _cached(lines, audio)
+    return await _replay(segments, sms_mode, realtime, source=f"replay:{scenario_id}")
 
 
 async def replay_transcript(
@@ -75,9 +81,9 @@ def arm() -> Arm:
     return "C" if intent.enabled() else "B"
 
 
-async def _replay(segments: Timed, sms_mode: SmsMode, realtime: bool) -> str:
+async def _replay(segments: Timed, sms_mode: SmsMode, realtime: bool, source: str | None = None) -> str:
     """Start a session (see arm()), feed each segment no earlier than it is due, then finish."""
-    ref = await pipeline.start(arm(), policy.VERSION, sms_mode)
+    ref = await pipeline.start(arm(), policy.VERSION, sms_mode, source)
     t0 = asyncio.get_running_loop().time()
     async for due_ms, fields in segments:
         if realtime:
@@ -90,12 +96,19 @@ async def _replay(segments: Timed, sms_mode: SmsMode, realtime: bool) -> str:
     return ref
 
 
-async def _cached(lines: list[TranscriptLine]) -> Timed:
-    """Each line is due once the one before has typed out in the console, plus a turn gap, so the
-    next line (and any alert it triggers) arrives just as the previous one finishes."""
+def _audio_ref(wav: Path) -> str:
+    return wav.relative_to(AUDIO_DIR).as_posix()
+
+
+async def _cached(lines: list[TranscriptLine], audio: list[str] | None = None) -> Timed:
+    """With audio: each line is due when its turn's audio starts (t_start_ms), and the console types it
+    over the turn's audio, so the next line arrives as the previous one finishes. Without: once the
+    line before has typed out at WORD_MS a word, plus a turn gap."""
     due_ms = 0
-    for line in lines:
-        yield due_ms, {"source": "cached", **line.model_dump()}
+    for i, line in enumerate(lines):
+        if audio:
+            due_ms = line.t_start_ms
+        yield due_ms, {"source": "cached", **line.model_dump(), **({"audio": audio[i]} if audio else {})}
         due_ms += len(line.text.split()) * WORD_MS + TURN_GAP_MS
 
 
@@ -117,6 +130,7 @@ async def _transcribed(turns: list[tuple[Speaker, Path]]) -> Timed:
     A transcription error ends the source, so the call finishes on the segments so far."""
     offset_ms = seq = 0
     for speaker, wav in turns:
+        audio: str | None = _audio_ref(wav)  # on the turn's first segment only
         try:
             segments, duration_s = await asyncio.to_thread(asr.transcribe, wav)
         except Exception:
@@ -125,9 +139,10 @@ async def _transcribed(turns: list[tuple[Speaker, Path]]) -> Timed:
         end_ms = offset_ms + round(duration_s * 1000)
         for start_s, end_s, text in segments:
             seq += 1
-            yield end_ms, {"seq": seq, "speaker": speaker, "text": text, "source": "asr",
+            yield end_ms, {"seq": seq, "speaker": speaker, "text": text, "source": "asr", "audio": audio,
                            "t_start_ms": offset_ms + round(start_s * 1000),
                            "t_end_ms": offset_ms + round(end_s * 1000)}
+            audio = None
         offset_ms = end_ms
 
 

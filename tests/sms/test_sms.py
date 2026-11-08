@@ -340,3 +340,10 @@ def test_no_raw_number_or_body_in_logs(client, published, caplog, twilio):
     assert sent_texts(twilio)  # messages went through the mocked client
     for secret in [DEMO, DEMO.lstrip("+"), "4821", templates.get("ALERT-OTP-01"), templates.get("ENROLL")]:
         assert secret not in caplog.text
+
+
+def test_status_carries_twilio_error_code(published, twilio):
+    sms.set_mode("real")
+    message_id = alerted()
+    sms.handle_status(message_id, "undelivered", "30034")  # carrier block: the number isn't 10DLC-registered
+    assert [(p.status, p.error_code) for t, p, _ in published if t == "sms"] == [("failed", "30034")]
