@@ -9,30 +9,42 @@ Every number here comes from one of two sources, named each time: the dev set (`
 - **The call is real.** The judge dials a Twilio number we own. Twilio forwards the call to the subscriber's phone (Arnav's, `DEMO_PHONE`) and sends both sides' audio to the laptop. It is not a carrier integration.
 - **Speech-to-text is real and local.** faster-whisper runs on the laptop.
 - **The AI is real and leaves the laptop.** The demo runs arm C: each caller turn, plus up to three turns before it, goes to OpenRouter (Perplexity Decider). The laptop stores no audio and no transcripts.
-- **The alert text is sent through Twilio for real, but it doesn't arrive.** US carriers currently block it: Twilio error 30034, because our number's 10DLC registration isn't done, and that takes days. The console's phone frame mirrors exactly what was sent and shows the real "not delivered" status. Never say a text arrived on a phone.
-- **Speed:** the target is the alert text sent within 2 seconds of the end of the caller's flagged sentence. The console shows how long it took on each turn. Say "the console shows how long it took", never a number.
+- **The alert text is sent to Twilio for real, but it doesn't arrive.** Twilio accepts it, then US carriers block it: Twilio error 30034, because our number's 10DLC registration isn't done, and that takes days. The console's "Outgoing texts" panel (tagged "real SMS") shows exactly what we sent and the status Twilio reports back, which is "failed"; the Why panel then reads "Warning detected but the alert text was NOT sent (failed)". Say it plainly: Twilio took it, the carrier refused it. Never say a text arrived on a phone.
+- **Speed:** the target is the alert text sent within 2 seconds of the end of the caller's flagged sentence. The Why panel's "Speed" line shows how long it took. Say "the console shows how long it took", never a number.
 
 ## 3-minute version: the live call
 
-**Before the judge arrives:** console open, arm badge reads "rules + AI (Perplexity Decider)", consent active, Arnav's phone unlocked with the ringer on, the printed caller script on the table.
+**Before the judge arrives:**
+- Console open and logged in; the opt-in prompt answered **Yes** (consent active).
+- **SMS mode: real** (the "real" button is lit and the texts panel reads "Outgoing texts · real SMS"). If it says simulated, the Twilio and 30034 lines below are false: switch it or don't say them.
+- Arm C on (`INTENT_MODEL=on`, OpenRouter key set). Once the call starts, the header reads "call running · rules + AI (Perplexity Decider)".
+- Arnav's phone unlocked, ringer on, **not on speaker**. The spare phone and the printed scripts on the table.
 
-**0:00-0:20 Problem (slide 1)**
-"This call got past Scam Shield. The number looks fine. Thirty seconds in, the caller asks for money or for the code we just texted you. That's the moment the money goes, and nothing on your phone says a word. Let's do it live. You're the scammer."
+Timings below are `say -r 150` machine reads of the spoken lines (150 words per minute) plus the call itself; pointing and pauses aren't in them. Rehearse once with a stopwatch and write the real times next to these.
 
-**0:20-0:35 Set up the call**
-Hand the judge the grandson script and the number card. "Call this number and read the caller lines. Arnav plays your grandma." (If the judge would rather not use their own phone, hand them the spare.) Arnav's phone rings and he answers on speaker. "That number is ours on Twilio. It forwards the call to Arnav's phone and sends the audio to this laptop."
+**0:00-0:15 Problem (slide 1)** (38 words, 13 s)
+"This call got past Scam Shield. The number looks fine. Thirty seconds in, the caller asks for money or a code. That's when the money goes, and your phone says nothing. Let's do it live. You're the scammer."
 
-**0:35-1:35 The grandson call (console)**
-The judge reads the lines and Arnav answers. Point at the transcript as both sides appear. "Both sides, transcribed live on this laptop." After the judge's car-accident line: "Nothing yet. There's no code and no dollar amount, and our rules alone stay silent on this whole call." On the bank-and-cash line, the alert fires mid-call: "There. Perplexity Decider is" (read the percentage the console shows) "sure the caller wants money. That's the AI moment: rules alone miss this call." Point at the phone frame: "That's the text we sent: 'caller is asking for money. Don't pay. Hang up, call them back on a number you know.' It went out through Twilio for real. US carriers are blocking it today because our number's registration isn't done, so this frame shows exactly what we sent and the real status, not delivered." Point at the turn row: "The console shows how long it took."
+**0:15-0:30 Set up the call** (29 words, 11 s, said while the judge dials)
+Hand the judge the grandson script and the number card (or the spare phone). "Call this number and read the caller lines. Arnav plays Grandma. The number is ours on Twilio. It forwards to Arnav's phone and streams the audio to this laptop."
 
-**1:35-2:00 Hang up, follow-up, Why panel (console)**
-Arnav hangs up. The follow-up appears in the phone frame. "After the call, the follow-up explains the trick: scammers rush you, real people let you call back." Point at "Why this alert": "Every alert quotes the line that set it off and says why it matters. Here it says the model caught it, not the rules."
+**0:30-1:15 The grandson call (console)** (presenter silent; the recorded call is 28.6 s of speech, plus ring, answer and the model's verdict)
+Arnav answers with the phone at his ear, not on speaker. **The presenter says nothing while the call is live**: the judge's phone and Arnav's phone both hear the room, and anything they pick up becomes a transcript turn that goes to OpenRouter. Point instead:
+- Point at the transcript as both sides appear.
+- After the car-accident line, point at the empty Why panel. No words.
+- On the bank-and-cash line the alert fires. Point at "Caught by" and the outgoing text.
+- Arnav says his last line and hangs up.
 
-**2:00-2:35 The numbers (slide 3)**
-"The obvious way to build this is keyword matching. On our dev set, 40 scripted calls we tuned the rules on, keywords false-alert on 11 of 13 tricky harmless calls; our rules and rules plus AI on 0 of 13; all three catch all 20 scams. Dev shows no AI gain because we tuned the rules on it. On 6,228 scripted calls written blind by AI agents that never saw our code, keywords alerted on 64.4% of harmless calls. Our rules alerted on 0.9% and caught 65.9% of scams. With AI, 99.2% caught and 0.3% false alerts, but that was measured before our last merge with the previous model, TypeSafe Jev, not the Perplexity Decider you just saw. They're scripts, not real calls, so no production claim." (Point to "Where we fail".) "The rules miss about a third of the blind scams. The grandson call is that kind of miss, and that's what the AI is for."
+**1:15-1:40 What just happened (console)** (56 words, 25 s)
+"Both sides, transcribed live on this laptop. Our rules stayed silent: no code, no dollar amount. Perplexity Decider caught it." (Read the percentage after "Caught by" as it shows: "N percent sure". Never promise a number.) "Here's the text we sent. Twilio accepted it; US carriers block it until our number's registration is done, so it reads failed. Speed shows how long it took. And the follow-up explains the trick."
 
-**2:35-3:00 Stack and next steps (slide 4)**
-"A Twilio number, whisper on the laptop, Python rules, and Perplexity Decider through OpenRouter. We store counts, not audio or transcripts. T-Mobile already runs AI inside calls on any phone with Live Translation. Next we route on that path, add an in-call audio prompt, gate it on consent, and finish sender registration so the text arrives. We don't ask you to trust AI. We tell you what the caller just asked for, give one step that's safe even if we're wrong, and teach you the trick so you catch it next time, on any phone."
+**1:40-2:25 The numbers (slide 3)** (80 words, 43 s: spoken numbers are slow)
+"Keyword matching is the obvious build. On 40 dev calls we tuned on, keywords false-alert on 11 of 13 tricky harmless calls; our rules, with or without AI, on none. All three catch all 20 scams, so dev shows no AI gain. On 6,228 blind scripted calls, keywords caught 84.3% of scams but alerted on 64.4% of harmless calls. Our rules: 65.9% caught, 0.9% false alerts. With AI, 99.2% caught, 0.3% false, measured with our previous model, not this one."
+
+**2:25-3:00 Stack and close (slide 4)** (79 words, 31 s)
+"A Twilio number, whisper on the laptop, Python rules, and Perplexity Decider through OpenRouter. We store counts, not audio or transcripts. Next: the Live Translation path for any phone, an in-call voice prompt, and finished registration so the text arrives. We don't ask you to trust AI. We tell you what the caller just asked for, give one step that's safe even if we're wrong, and teach you the trick so you catch it next time, on any phone."
+
+Spoken total: 282 words, 2:02 by machine read, plus about 45 s for ringing, the call and the model's verdict: about 2:47. If the rehearsal runs long, cut "Keyword matching is the obvious build." and "We store counts, not audio or transcripts." (the slide and the Q&A card carry both).
 
 ## Printed caller script: the grandson call (hand this to the judge)
 
@@ -68,15 +80,19 @@ Use it for a second judge at the table, or when the AI is down: rules catch this
 
 ## Fallback ladder (say which rung you're on, out loud)
 
-1. **Phone network fails** (the call doesn't connect, drops, or no transcript shows within a few seconds): "The phone network isn't cooperating, so we'll use the laptop mic. Same pipeline, same AI." Press **Live (mic)** in the console and have the judge read the same script into the laptop, push-to-talk, Arnav answering.
+1. **Phone network fails** (the call doesn't connect, drops, or no transcript shows within a few seconds): "The phone network isn't cooperating, so we'll use the laptop mic. Same pipeline, same AI." Press **Live (mic)** in the console and have the judge read the same script into the laptop, push-to-talk, Arnav answering. Only if the merged console has that button (see the check below); otherwise go straight to rung 2.
 2. **Mic fails too:** "Here's a recording of the same call." Press **Run grandson**. It replays a recorded call through the same pipeline. Say it's a recording.
-3. **The AI is down** (the turn shows the "AI unavailable, rules only" badge): say so. The rules still alert on code, money and access requests they recognise, so switch to the bank script, which the rules catch. Don't claim the grandson catch on that run.
+3. **The AI is down** (an "AI unavailable, rules only" badge on the turn, or "Caught by" reads "CallSafe rules" on a call the AI should have caught): say so. The rules still alert on code, money and access requests they recognise, so switch to the bank script, which the rules catch. Don't claim the grandson catch on that run.
 
-Never pretend a lower rung is a live phone call. The console's session source says which one is running: phone, mic or replay.
+Never pretend a lower rung is a live phone call.
+
+## Check against the merged console before printing
+Labels quoted above that exist on this deck's base: "Run grandson", "Reset", "Log out", "SMS mode" real/simulated, the header "call running · rules + AI (Perplexity Decider)", "Outgoing texts · real SMS", the Why panel's "Caught by: Perplexity Decider (AI): N% sure", "Speed", and "Warning detected but the alert text was NOT sent (failed)". Built on other branches and not yet seen here: the live-call path through Twilio, the follow-up after a live hang-up, **Live (mic)**, the "AI unavailable, rules only" badge, and a phone/mic/replay source label. Open the merged console and change any line above whose label isn't there. If the console starts showing 30034 as "blocked by carrier", update the SMS lines to match.
 
 ## Reset between judges
 - Hang up both phones.
 - Press the console **Reset** button. It cancels the call session and pending sends and clears the transcript. It never changes consent.
-- Check the consent state is active. If a phone was STOPped, switch SMS mode to simulated and press YES in the phone frame, or swap to the spare phone.
-- Check the arm badge still reads "rules + AI (Perplexity Decider)". If it doesn't, say the demo is running on rules only and use the bank script.
+- If the texts panel says "Call monitoring is off" (someone said STOP or No), press **Log out**, log back in and answer **Yes** on the opt-in prompt. If a phone texted STOP for real, Twilio blocks texts to it until it texts START, so use the spare phone instead.
+- Check **SMS mode** is still **real**.
+- Check the arm: on the next call the header must read "call running · rules + AI (Perplexity Decider)". If it doesn't, say the demo is running on rules only and use the bank script.
 - Put the printed scripts back face up for the next judge.
