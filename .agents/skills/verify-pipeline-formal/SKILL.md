@@ -43,7 +43,7 @@ The `broken-*` configs prove each property can fail: each flips one guard consta
 
 ## Findings at the sync commit
 
-- **Reset can't stop an SMS that is already being sent (`NoStaleSend` violated).** Counterexample: the bank alert is queued; its worker thread runs `send_if_live`, sees the call live; the operator presses Reset (generation 1 → 2, task cancelled, but cancelling doesn't stop the thread); the thread calls `gateway.send(...)` and the alert goes out for a reset call. The window is from the thread's `_live` check through the consent lookup and the Twilio HTTP request (milliseconds to a few hundred ms). PRD §19.10's "never sends SMS" is stronger than the code can promise; what holds is `SendStartsLive`. Either the PRD wording or the design (e.g. a cancellable send) should change; this is a product decision, not a verification fix.
+- **Reset can't stop an SMS that is already being sent (`NoStaleSend` violated).** Counterexample: the bank alert is queued; its worker thread runs `send_if_live`, sees the call live; the operator presses Reset (generation 1 → 2, task cancelled, but cancelling doesn't stop the thread); the thread calls `gateway.send(...)` and the alert goes out for a reset call. The window is from the thread's `_live` check through the consent lookup and the bridge request (milliseconds to a few hundred ms). PRD §19.10's "never sends SMS" is stronger than the code can promise; what holds is `SendStartsLive`. Either the PRD wording or the design (e.g. a cancellable send) should change; this is a product decision, not a verification fix.
 - **The arm C lock in `_finish` is not load-bearing today.** With the lock removed, `NoAlertAfterFinished` still holds, because every route that finishes a call (`/demo/end-call`, `/demo/run`, `/demo/reset`) cancels the replay first, which drops an in-flight arm C evaluation. The lock would matter for a caller that runs `pipeline.finish` while `process` is evaluating without cancelling; keep it, but don't rely on it as the guard.
 
 ## Coverage record
@@ -61,7 +61,3 @@ The `broken-*` configs prove each property can fail: each flips one guard consta
 3. Update `model/Pipeline.tla` from the code first, keeping one action per await-free stretch, then rerun. Don't shape the model to make a check pass, and don't drop a property or shrink a bound without saying so.
 4. Judge each result. Pass → re-run the `broken-*` config that guards the changed code to show the check can still fail. Violation → replay the TLC trace (`.verify/formal/<ts>/<cfg>.log`, "State 1..n") against the code step by step. A step the code can't take = model bug (fix the model, say what was wrong). Every step possible = code bug (report the steps in code terms and the commit that introduced it; don't fix product code unless asked).
 5. Update the findings, coverage record and expectations, then move the sync commit to the commit you checked. Never move it for a check you couldn't run.
-
-The `maintain-verification` skill runs this procedure as part of its pass. If the pstack `statechart` skill is available in your harness, use it to read TLC traces as plain-language state paths.
-
-Human-facing overview (prerequisites, statuses, CI, troubleshooting): `docs/verification.md`. Keep it in step when this skill changes.

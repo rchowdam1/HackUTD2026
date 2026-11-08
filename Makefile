@@ -1,14 +1,17 @@
 UV := env -u PYTHONPATH -u PYTHONHOME -u VIRTUAL_ENV uv
 
-.PHONY: install smoke test run preflight verify verify-changed verify-lint verify-formal demo-up
+.PHONY: install lint smoke test run preflight verify verify-changed verify-lint verify-formal demo-up
 
 install:
 	$(UV) sync
 
+lint:
+	$(UV) tool run ruff@0.17.4 check
+
 test:
 	$(UV) run pytest
 
-smoke: install
+smoke: install lint
 	$(UV) run pytest
 	$(UV) run python scripts/smoke_replay.py
 

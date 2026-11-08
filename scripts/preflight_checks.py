@@ -25,7 +25,7 @@ SECRET_VARS = ("PHOTON_BRIDGE_TOKEN", "PROJECT_SECRET", "TYPESAFE_API_KEY", "CON
                "SESSION_SECRET")
 PHONE_VARS = ("PHOTON_LINE", "DEMO_PHONE", "SPARE_PHONE")
 BRIDGE_URL = "http://127.0.0.1:8787"  # default PHOTON_BRIDGE_URL
-# Routes the live demo needs (docs/track-b-brief.md), with the task that adds them.
+# Routes the live demo needs (PRD §19.4), with the task that adds them.
 DEMO_ROUTES = {
     "/sms/inbound": "b-photon #68", "/login": "b-api #19",
     "/events/stream": "b-api #19", "/demo/run/{scenario_id}": "b-api #19", "/demo/reset": "b-api #19",

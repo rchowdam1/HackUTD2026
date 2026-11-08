@@ -1,6 +1,5 @@
 """scripts/demo_up.py: startup order and cleanup with fake processes (no uvicorn, no bun, no Photon)."""
 import importlib.util
-import subprocess
 import sys
 from pathlib import Path
 
