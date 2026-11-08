@@ -116,3 +116,26 @@ def test_ulaw_table_matches_g711():
         import audioop
     pcm = audioop.ulaw2lin(bytes(range(256)), 2)
     assert [int.from_bytes(pcm[i:i + 2], "little", signed=True) for i in range(0, 512, 2)] == live.ULAW
+
+
+def test_whisper_starts_on_a_draft_and_drops_it_when_the_speaker_carries_on(client, monkeypatch, published):
+    # Silence of DRAFT_MS starts whisper early; speech resuming before PAUSE_MS makes that draft stale.
+    heard = []
+
+    def fake_transcribe(wav, beam_size=5):
+        heard.append(len(wav.getvalue()))
+        return [(0.0, 0.5, f"take {len(heard)}")], 0.5
+
+    monkeypatch.setattr(asr, "transcribe", fake_transcribe)
+    msgs = call([("inbound", 400, True), ("inbound", 400, False),  # a 400 ms breath: draft started, then...
+                 ("inbound", 400, True), ("inbound", 800, False)])  # ...more speech, then a real pause
+    with client.websocket_connect("/voice/stream", headers={"x-twilio-signature": sign(STREAM, {})}) as ws:
+        for m in msgs:
+            ws.send_json(m)
+        deadline = time.monotonic() + 5
+        while not any(t == "session" and p.state == "finished" for t, p, _ in published) and time.monotonic() < deadline:
+            time.sleep(0.01)
+
+    segments = [p for t, p, _ in published if t == "segment"]
+    assert [s.text for s in segments] == ["take 2"]  # one turn, from the second draft; the stale one was dropped
+    assert len(heard) == 2 and heard[0] < heard[1]  # stale draft, then the full turn's draft; none at the pause

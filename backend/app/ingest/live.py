@@ -25,6 +25,7 @@ from app.models import SmsMode, Speaker
 SAMPLE_RATE = 8000
 SPEECH_RMS = 500  # 16-bit RMS of a 20 ms frame above which it counts as speech; phone line noise sits well below
 PAUSE_MS = 600  # the pause counts toward the 2 s alert budget (latency is timed from the end of speech)
+DRAFT_MS = 300  # whisper starts on the turn after this much silence; used if the pause then reaches PAUSE_MS
 MAX_UTTERANCE_MS = 8000
 MIN_SPEECH_MS = 300  # shorter bursts (clicks, a cough) aren't sent to whisper, which invents words on noise
 TRACK_SPEAKER: dict[str, Speaker] = {"inbound": "caller", "outbound": "subscriber"}
@@ -40,8 +41,9 @@ def _ulaw_to_linear(byte: int) -> int:
 
 ULAW = [_ulaw_to_linear(b) for b in range(256)]
 
-# (speaker, start_ms, end_ms, 16-bit PCM, wall-clock time its speech ended)
+# (speaker, start_ms, end_ms, 16-bit PCM up to the end of speech, wall-clock time its speech ended)
 Utterance = tuple[Speaker, int, int, bytes, float]
+Transcript = tuple[list[tuple[float, float, str]], float]
 
 
 class _Track:
@@ -76,10 +78,16 @@ class _Track:
             return self.flush()
         return None
 
+    def speech(self) -> bytes | None:
+        """The turn so far without its trailing silence, or None while it's too short to transcribe."""
+        if self.start_ms is None or self.speech_ms < MIN_SPEECH_MS:
+            return None
+        return self.pcm[:len(self.pcm) - self.silence_ms * SAMPLE_RATE // 1000].tobytes()
+
     def flush(self) -> Utterance | None:
         u = None
-        if self.start_ms is not None and self.speech_ms >= MIN_SPEECH_MS:
-            u = (self.speaker, self.start_ms, self.end_ms, self.pcm.tobytes(), time.time() - self.silence_ms / 1000)
+        if (pcm := self.speech()) is not None:
+            u = (self.speaker, self.start_ms, self.end_ms, pcm, time.time() - self.silence_ms / 1000)
         self._reset()
         return u
 
@@ -88,7 +96,7 @@ async def run(messages: AsyncIterator[dict], *, sms_mode: SmsMode) -> str:
     """Monitor one streamed call (Twilio's JSON messages) like a replay; returns session_ref.
     The session finishes when the stream stops or the socket closes. If the operator starts another
     call or resets, the session is replaced and this returns early without reading further."""
-    utterances: asyncio.Queue[Utterance | None] = asyncio.Queue()
+    utterances: asyncio.Queue[tuple[Utterance, asyncio.Task[Transcript] | None] | None] = asyncio.Queue()
     reader = asyncio.create_task(_cut(messages, utterances))
     try:
         return await _replay(_transcribed(utterances), sms_mode, realtime=False, source="phone")
@@ -96,30 +104,45 @@ async def run(messages: AsyncIterator[dict], *, sms_mode: SmsMode) -> str:
         reader.cancel()
 
 
-async def _cut(messages: AsyncIterator[dict], out: asyncio.Queue[Utterance | None]) -> None:
+async def _cut(messages: AsyncIterator[dict], out: asyncio.Queue) -> None:
+    """Cut each track into utterances. At DRAFT_MS of silence whisper already starts on the turn (a draft);
+    if the pause reaches PAUSE_MS with no new speech the audio is the same and the draft is used, which
+    takes DRAFT_MS - PAUSE_MS off the alert latency. If the speaker carries on, the draft is dropped."""
     tracks = {name: _Track(speaker) for name, speaker in TRACK_SPEAKER.items()}
+    drafts: dict[str, tuple[bytes, asyncio.Task[Transcript]]] = {}
     async for m in messages:
         if m.get("event") == "media":
-            media = m["media"]
-            if u := tracks[media["track"]].add(base64.b64decode(media["payload"]), int(media["timestamp"])):
-                out.put_nowait(u)
+            media, track = m["media"], tracks[m["media"]["track"]]
+            u = track.add(base64.b64decode(media["payload"]), int(media["timestamp"]))
+            if u:
+                out.put_nowait((u, _draft_for(drafts.pop(track.speaker, None), u)))
+            elif track.silence_ms == DRAFT_MS and (pcm := track.speech()) is not None:
+                drafts[track.speaker] = (pcm, asyncio.create_task(asyncio.to_thread(_transcribe, pcm)))
         elif m.get("event") == "stop":
             break
     for track in tracks.values():
         if u := track.flush():
-            out.put_nowait(u)
+            out.put_nowait((u, _draft_for(drafts.pop(track.speaker, None), u)))
     out.put_nowait(None)
 
 
-async def _transcribed(utterances: asyncio.Queue[Utterance | None]) -> Timed:
+def _draft_for(draft: tuple[bytes, asyncio.Task[Transcript]] | None, u: Utterance) -> asyncio.Task[Transcript] | None:
+    return draft[1] if draft and draft[0] == u[3] else None
+
+
+def _transcribe(pcm: bytes) -> Transcript:
+    # Greedy decoding: on a phone line it reads the same as beam 5 for us, at a fraction of the time.
+    return asr.transcribe(_wav(pcm), beam_size=1)
+
+
+async def _transcribed(utterances: asyncio.Queue) -> Timed:
     """One utterance at a time, in the order they ended, so seq follows the conversation.
     Whisper runs off the event loop; a transcription error ends the call on the segments so far."""
     seq = 0
-    while (u := await utterances.get()) is not None:
-        speaker, start_ms, _, pcm, ended_at = u
+    while (item := await utterances.get()) is not None:
+        (speaker, start_ms, _, pcm, ended_at), draft = item
         try:
-            # Greedy decoding: on a phone line it reads the same as beam 5 for us, at a fraction of the time.
-            segments, _ = await asyncio.to_thread(asr.transcribe, _wav(pcm), beam_size=1)
+            segments, _ = await (draft or asyncio.to_thread(_transcribe, pcm))
         except Exception:
             log.exception("ASR failed on a live call; ending the call")
             return
