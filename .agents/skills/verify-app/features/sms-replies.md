@@ -8,7 +8,7 @@ The subscriber answers texts with keywords. In simulated mode the console's phon
 - `replies.wrong-counter` counts WRONG against ALERT-OTP-01 in SQLite, ticks the counter, answers R-WRONG, and survives a reload.
 - `replies.shared` answers SHARED with R-SHARED-OTP for an OTP alert.
 - `replies.keyword-normalise` maps "  wrong. ", "Hello?", "Stop please!", "yes" to WRONG, HELP, STOP, YES.
-- `replies.stop-blocks-alerts` shows that after STOP the rules still decide but the gateway refuses: a failed alert, no follow-up, nothing on the phone.
+- `replies.stop-blocks-alerts` shows that after STOP the rules still decide but the alert is skipped, not failed: no sms event, no follow-up, nothing on the phone, Why panel "Monitoring opt-in: No. No text sent".
 
 ## How to get to it (user POV)
 
@@ -26,7 +26,7 @@ Preconditions:
 - **WRONG.** Read the stored WRONG total n from SQLite; the `WRONG replies` counter shows n. Click `WRONG`. SSE `reply` = `{keyword: WRONG, counted: true, wrong_count: n+1}`; counter shows n+1; SQLite total n+1 with a row for template ALERT-OTP-01; `GET /aggregates` agrees; outbox last is R-WRONG; after `page.reload()` the counter still shows n+1.
 - **SHARED.** Click `SHARED`. Reply SHARED counted; outbox last R-SHARED-OTP; phone shows its text.
 - **Normalisation.** `POST /sms/simulate-inbound` with each body above; response keyword and outbox template match; the STOP variant writes `stopped`, the final YES writes `active` (SQLite).
-- **STOP blocks alerts.** Click `STOP` (SSE consent stopped, SQLite stopped, outbox R-STOP), click `Run bank`, wait for `session finished`. SSE has decision ALERT-OTP-01 and exactly one sms event `{message_id: "", template_id: ALERT-OTP-01, status: failed}`; outbox unchanged; the phone shows one `.bubble.out.failed`. Click `YES` to restore; SQLite active.
+- **STOP blocks alerts.** Click `STOP` (SSE consent stopped, SQLite stopped, outbox R-STOP), click `Run bank`, wait for `session finished`. SSE has decision ALERT-OTP-01 and no sms event; outbox unchanged; `Why this alert` shows `Caller asked for a code` and `Monitoring opt-in: No. No text sent`; `main` contains no "failed"; `Phone` shows `Call monitoring is off.`; no transcript marker. Click `YES` to restore; SQLite active.
 - **Proof.** `screenshots/replies.*`, SQLite assertions in `report.json`, `events-cached.jsonl`.
 
 ## Gotchas

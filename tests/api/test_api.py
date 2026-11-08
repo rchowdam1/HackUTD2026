@@ -24,6 +24,7 @@ PROTECTED = [
     ("GET", "/sms/templates/R-HELP"),
     ("GET", "/sms/outbox"),
     ("POST", "/sms/invite"),
+    ("POST", "/sms/consent"),
 ]
 
 

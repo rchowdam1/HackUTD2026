@@ -25,6 +25,18 @@ async def simulate_inbound(msg: Inbound) -> dict:
     return payload.model_dump()
 
 
+class OptIn(BaseModel):
+    opt_in: bool
+
+
+@router.post("/consent")
+def set_consent(body: OptIn) -> dict:
+    """The console's after-login opt-in prompt: sets demo consent directly, without sending a text."""
+    state = "active" if body.opt_in else "stopped"
+    consent.set_state(state)
+    return {"consent": state}
+
+
 @router.get("/templates/{template_id}")
 def template_text(template_id: str) -> dict:
     try:

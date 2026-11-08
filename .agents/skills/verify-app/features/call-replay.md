@@ -4,8 +4,8 @@ The operator replays one of two demo calls through the live pipeline. The clinic
 
 ## Sub-features
 
-- `replay.clinic-silent` replays the clinic call: cached transcript shown and labelled, no decision, no SMS, "call ended", "No alert - not a safety verdict".
-- `replay.bank-alert` replays the bank call: ALERT-OTP-01 then exactly one FU-OTP-01, auto end-call, and a Why panel that matches the decision.
+- `replay.clinic-silent` replays the clinic call (opted in): cached transcript shown and labelled, no decision, no SMS, no transcript marker, "call ended", "No alert - not a safety verdict".
+- `replay.bank-alert` replays the bank call: ALERT-OTP-01 then exactly one FU-OTP-01, auto end-call, a Why panel that matches the decision, and transcript markers for both texts.
 
 ## How to get to it (user POV)
 
@@ -19,9 +19,10 @@ Preconditions:
 - Instance launched with profile `cached` and the console (`make verify ARGS="--features call-replay"`).
 - For the bank call the demo phone is opted in; the check replies YES itself if SQLite says otherwise.
 
-- **Clinic.** `POST /demo/reset`, open the console, click `Run clinic`. SSE shows `session running` (arm B, simulated), segments 1-3 equal to `scenarios/demo/clinic/transcript.json` with `source: cached`, then `session finished`; no `decision` or `sms` event; `GET /sms/outbox` length unchanged. The `Live transcript` card shows all three turns and the `cached transcript` tag; banner shows `call ended`; `Why this alert` shows `No alert - not a safety verdict`; `Phone` shows `No texts yet.`.
+- **Clinic.** `POST /demo/reset`, ensure opt-in, open the console, click `Run clinic`. SSE shows `session running` (arm B, simulated), segments 1-3 equal to `scenarios/demo/clinic/transcript.json` with `source: cached`, then `session finished`; no `decision` or `sms` event; `GET /sms/outbox` length unchanged. The `Live transcript` card shows all three turns and the `cached transcript` tag; banner shows `call ended`; `Why this alert` shows `No alert - not a safety verdict`; `Phone` shows `No texts yet.`; the transcript has no `p.marker`.
 - **Bank.** Reset, ensure opt-in, open the console, click `Run bank`. SSE: one `decision` with `template_id ALERT-OTP-01`, `followup_template_id FU-OTP-01`; ordered `session running → sms ALERT-OTP-01 → sms FU-OTP-01 → session finished`; both sms events `queued` with message ids; the decision `basis` is a subset of published risk-event `rule_id`s with category `otp`. Outbox gains exactly ALERT-OTP-01 then FU-OTP-01, texts equal to `policy/v1.0/templates.yaml`, ids equal to the SSE ids.
 - **Why panel.** In `Why this alert`: headline `Caller asked for a code`; `Rule` = `basis` joined by ", "; `Confidence` = the cited risk event's class in words; `Keyword-only would have fired` = Yes/No from `keyword_arm_would_fire`; `Policy` = `v1.0`.
+- **Transcript markers.** In `Live transcript`, the line right after the flagged line is `p.marker` `* Alert message sent to user`; the markers are exactly that and `* Follow-up message sent to user` (last, after the call ends).
 - **Proof.** `screenshots/replay.*--*-finished.png` + `.aria.txt`, `artifacts/replay.bank-alert--event-order.json`, `artifacts/replay.bank-alert--outbox-new.json`, and the run's `events-cached.jsonl`.
 
 ## Gotchas
@@ -29,6 +30,7 @@ Preconditions:
 - Every journey starts from `ctx.api_reset()`, which also sets SMS mode to simulated: reset never changes the mode, and a leftover real mode would hide the phone frame.
 - Replays are paced for the console's word-by-word typing (`WORD_MS` per word plus `TURN_GAP_MS` per line in `backend/app/ingest`): clinic ≈5.5 s, bank ≈8 s. Wait for the `session finished` event, not a sleep.
 - Open the console before clicking Run: the reducer clears on `session running`, so a page loaded mid-call shows a partial transcript.
+- Markers come from `sms` events (not failed), placed after the transcript line that was last when the event arrived; they are console-only, there is no marker event.
 - The follow-up is only sent if consent is still active when the call finishes; a STOP during the call suppresses it by design.
 - Starting a replay finishes the previous session first (a follow-up can be sent for it). Reset before each replay for a clean event window.
 - The cached transcript texts are the contract here. With `REPLAY_SOURCE=asr` the text comes from whisper; that is `asr-replay`, not this feature.

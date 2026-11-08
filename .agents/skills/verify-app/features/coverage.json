@@ -6,7 +6,8 @@
       "paths": [
         "backend/app/api/auth.py",
         "console/src/App.tsx",
-        "console/src/api.ts"
+        "console/src/api.ts",
+        "console/src/OptInPrompt.tsx"
       ],
       "synced_commit": "35ed336647808a5fbe43a9567b383e5663e50c2f"
     },
