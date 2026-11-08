@@ -1,6 +1,6 @@
 # Verification
 
-The verification system launches the real app in a sandbox, uses it the way the operator, the phone and the Photon bridge do, and reports PASS, FAIL or BLOCKED with evidence for each check. Agents should read the skills in `.agents/skills/`. They are the source of truth, and `make verify-lint` keeps them in step with the code.
+The verification system launches the real app in a sandbox, uses it the way the operator, the phone and Twilio do, and reports PASS, FAIL or BLOCKED with evidence for each check. Agents should read the skills in `.agents/skills/`. They are the source of truth, and `make verify-lint` keeps them in step with the code.
 
 ```bash
 make verify-changed                               # features touched since origin/main (before a PR)
@@ -24,11 +24,11 @@ If one of these is missing, the checks that need it come back BLOCKED. BLOCKED i
 
 ## Safety
 
-Each run copies the working tree, minus `scenarios/H1/`, into `.verify/sandbox/<run_id>/`. It never reads `.env`, uses random secrets and made-up phone numbers, and can't reach Photon. It never uses ports 8000 or 5173, and only one run happens at a time. Cleanup kills only the processes the run started, and the run FAILs if your `data/` or `results/` changed.
+Each run copies the working tree, minus `scenarios/H1/`, into `.verify/sandbox/<run_id>/`. It never reads `.env`, uses random secrets and made-up phone numbers, and has no Twilio account SID or sender, so it never texts anyone. It never uses ports 8000 or 5173, and only one run happens at a time. Cleanup kills only the processes the run started, and the run FAILs if your `data/` or `results/` changed.
 
 ## Not covered by automation
 
-Real iMessage through the Photon bridge, `scripts/demo_up`, arm C in a live call, H1 scoring, voice generation and the physical demo setup. Check those by hand with `scripts/preflight`.
+Real Twilio SMS to a phone, Twilio webhooks through the cloudflared tunnel, `scripts/demo_up`, Twilio's own STOP handling, arm C in a live call, H1 scoring, voice generation and the physical demo setup. Check those by hand with `scripts/preflight` and `docs/twilio-live.md`.
 
 ## Open finding
 

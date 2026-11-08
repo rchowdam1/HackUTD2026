@@ -1,33 +1,36 @@
-"""SMS gateway (issues #17, #68): keywords, message-id dedupe, bridge auth, consent refusal, privacy.
+"""SMS gateway (issues #17, #78): keywords, MessageSid dedupe, signatures, consent refusal, privacy.
 
-The Spectrum bridge is always mocked; nothing leaves the machine.
+Twilio is always mocked; nothing leaves the machine.
 """
 import asyncio
-import json
 import logging
+from types import SimpleNamespace
 
-import httpx
 import pytest
 from fastapi.testclient import TestClient
+from twilio.request_validator import RequestValidator
 
 from app import consent, sms, storage
 from app.main import create_app
 from app.policy import templates
 
 DEMO = "+15551234567"
-TOKEN = "bridge-token"
+TOKEN = "twilio-token"
+BASE = "https://callsafe.example.com"
 
 
 @pytest.fixture(autouse=True)
 def env(tmp_path, monkeypatch):
     monkeypatch.setattr(storage, "DB_PATH", tmp_path / "safesignal.db")
-    for k, v in {"CONSENT_SALT": "salt", "DEMO_PHONE": DEMO, "PHOTON_BRIDGE_TOKEN": TOKEN,
+    for k, v in {"CONSENT_SALT": "salt", "DEMO_PHONE": DEMO, "TWILIO_ACCOUNT_SID": "AC123",
+                 "TWILIO_AUTH_TOKEN": TOKEN, "TWILIO_FROM": "+15550000000", "PUBLIC_BASE_URL": BASE,
                  "OPERATOR_PASSWORD": "op", "SESSION_SECRET": "secret"}.items():
         monkeypatch.setenv(k, v)
     monkeypatch.setattr(sms, "_mode", "simulated")
     monkeypatch.setattr(sms, "_last_alerts", {})
+    monkeypatch.setattr(sms, "_sent", {})
     monkeypatch.setattr(sms, "_simulated", sms.SimulatedGateway())
-    monkeypatch.setattr(sms, "_photon", None)
+    monkeypatch.setattr(sms, "_twilio", None)
 
 
 @pytest.fixture
@@ -39,23 +42,24 @@ def events(monkeypatch):
 
 
 @pytest.fixture
-def photon(monkeypatch):
-    """Fake Spectrum bridge; returns the list of (path, x-bridge-token, json body) it received."""
-    calls = []
+def twilio(monkeypatch):
+    """Fake Twilio client; returns the list of messages.create kwargs it received."""
+    created = []
 
-    def handler(request):
-        calls.append((request.url.path, request.headers.get("x-bridge-token"), json.loads(request.content)))
-        return httpx.Response(200, json={"id": f"spc-msg-{len(calls)}"})
+    class FakeClient:
+        def __init__(self, sid, token):
+            self.messages = self
 
-    gateway = sms.PhotonGateway()
-    gateway.http = httpx.Client(base_url=gateway.http.base_url, headers=gateway.http.headers,
-                                transport=httpx.MockTransport(handler))
-    monkeypatch.setattr(sms, "_photon", gateway)
-    return calls
+        def create(self, **kw):
+            created.append(kw)
+            return SimpleNamespace(sid=f"SM{len(created):032d}")
+
+    monkeypatch.setattr(sms, "Client", FakeClient)
+    return created
 
 
-def sent_texts(calls):
-    return [body["text"] for _, _, body in calls]
+def sent_texts(created):
+    return [m["body"] for m in created]
 
 
 def alerted(ref="sess1", template_id="ALERT-OTP-01"):
@@ -128,11 +132,11 @@ def test_wrong_counter_runs_across_sessions(events):
     assert ("reply", second, "s2") in events  # attaches to the latest alerted session
 
 
-def test_stop_in_real_mode_confirms_with_r_stop(events, photon):
+def test_stop_in_real_mode_sends_no_reply(events, twilio):
     sms.set_mode("real")
     alerted()
     inbound("STOP", "SM1", DEMO)
-    assert sent_texts(photon) == [templates.get("ALERT-OTP-01"), templates.get("R-STOP")]
+    assert sent_texts(twilio) == [templates.get("ALERT-OTP-01")]  # Twilio confirms STOP itself
     assert consent.get_state() == "stopped"
 
 
@@ -158,7 +162,7 @@ def test_failed_stop_is_processed_when_retried(events, monkeypatch):
         inbound("STOP", "SMretry")
     assert consent.get_state() == "active" and not storage.inbound_seen("SMretry")
     monkeypatch.setattr(consent, "set_state", real_set_state)
-    assert inbound("STOP", "SMretry").keyword == "STOP"  # the bridge's retry is not swallowed as a duplicate
+    assert inbound("STOP", "SMretry").keyword == "STOP"  # Twilio's retry is not swallowed as a duplicate
     assert consent.get_state() == "stopped"
 
 
@@ -167,10 +171,14 @@ def test_failed_stop_is_processed_when_retried(events, monkeypatch):
 def test_reply_after_failed_alert_is_not_counted(events, monkeypatch):
     sms.set_mode("real")
     consent.set_state("active")
-    gateway = sms.PhotonGateway()
-    gateway.http = httpx.Client(base_url="http://bridge", transport=httpx.MockTransport(lambda r: httpx.Response(502)))
-    monkeypatch.setattr(sms, "_photon", gateway)
-    with pytest.raises(httpx.HTTPStatusError):
+    class DownClient:
+        def __init__(self, sid, token):
+            self.messages = self
+
+        def create(self, **kw):
+            raise RuntimeError("twilio 503")
+    monkeypatch.setattr(sms, "Client", DownClient)
+    with pytest.raises(RuntimeError):
         sms.get_gateway().send("ALERT-OTP-01", "sess1")
     sms.set_mode("simulated")
     assert inbound("WRONG", "SM1").counted is False
@@ -188,22 +196,24 @@ def test_reply_from_unalerted_spare_phone_is_not_counted(events, monkeypatch):
 # --- consent refusal -----------------------------------------------------------
 
 @pytest.mark.parametrize("mode", ["simulated", "real"])
-def test_send_refuses_without_consent(events, photon, mode):
+def test_send_refuses_without_consent(events, twilio, mode):
     sms.set_mode(mode)
     for state in [None, "invited", "stopped"]:
         if state:
             consent.set_state(state)
         with pytest.raises(RuntimeError):
             sms.get_gateway().send("ALERT-OTP-01", "sess1")
-    assert sms._simulated.outbox == [] and photon == []
+    assert sms._simulated.outbox == [] and twilio == []
     assert sms._last_alerts == {}
 
 
-def test_photon_send_posts_template_text_to_bridge(events, photon):
+def test_twilio_send_uses_template_text_and_status_callback(events, twilio):
     sms.set_mode("real")
     consent.set_state("active")
-    assert sms.get_gateway().send("ALERT-OTP-01", "sess1") == "spc-msg-1"
-    assert photon == [("/send", TOKEN, {"to": DEMO, "text": templates.get("ALERT-OTP-01")})]
+    message_id = sms.get_gateway().send("ALERT-OTP-01", "sess1")
+    assert twilio == [{"to": DEMO, "from_": "+15550000000", "body": templates.get("ALERT-OTP-01"),
+                       "status_callback": f"{BASE}/sms/status"}]
+    assert sms._sent[message_id] == ("ALERT-OTP-01", "sess1")
 
 
 def test_unknown_template_raises_before_sending(events):
@@ -216,14 +226,18 @@ def test_unknown_template_raises_before_sending(events):
 def test_mode_toggle():
     assert sms.get_mode() == "simulated" and isinstance(sms.get_gateway(), sms.SimulatedGateway)
     sms.set_mode("real")
-    assert isinstance(sms.get_gateway(), sms.PhotonGateway)
+    assert isinstance(sms.get_gateway(), sms.TwilioGateway)
 
 
 # --- webhooks + signatures -----------------------------------------------------
 
-def post(client, text, message_id="spc-msg-in1", token=TOKEN):
-    headers = {"x-bridge-token": token} if token else {}
-    return client.post("/sms/inbound", json={"id": message_id, "text": text, "sender": DEMO}, headers=headers)
+def signed(path, params, token=TOKEN):
+    return {"X-Twilio-Signature": RequestValidator(token).compute_signature(BASE + path, params)}
+
+
+def post(client, body, sid="SMin1", sender=DEMO, path="/sms/inbound"):
+    params = {"MessageSid": sid, "Body": body, "From": sender}
+    return client.post(path, data=params, headers=signed(path, params))
 
 
 @pytest.fixture
@@ -231,49 +245,79 @@ def client():
     return TestClient(create_app())
 
 
-def test_inbound_rejects_bad_bridge_token(client, events, monkeypatch):
-    assert post(client, "WRONG", token=None).status_code == 403
-    assert post(client, "WRONG", token="nope").status_code == 403
-    monkeypatch.delenv("PHOTON_BRIDGE_TOKEN")
-    assert post(client, "WRONG").status_code == 403  # fails closed without a token
+def test_inbound_webhook_rejects_bad_signature(client, events, monkeypatch):
+    params = {"MessageSid": "SM1", "Body": "WRONG", "From": DEMO}
+    assert client.post("/sms/inbound", data=params).status_code == 403
+    assert client.post("/sms/inbound", data=params, headers=signed("/sms/inbound", params, "wrong")).status_code == 403
+    assert client.post("/sms/status", data=params).status_code == 403
     assert [e for e in events if e[0] == "reply"] == []
 
 
-@pytest.mark.parametrize("sender", [None, "", "+10000000000", "someone@example.com"])
-def test_inbound_ignores_missing_or_unenrolled_sender(client, events, photon, sender):
+@pytest.mark.parametrize("unset", ["TWILIO_AUTH_TOKEN", "PUBLIC_BASE_URL"])
+def test_webhooks_fail_closed_when_unconfigured(client, events, monkeypatch, unset):
+    monkeypatch.delenv(unset)
+    for path in ["/sms/inbound", "/sms/status"]:
+        params = {"MessageSid": "SM1", "Body": "STOP", "From": DEMO, "MessageStatus": "delivered"}
+        forged = {"X-Twilio-Signature": RequestValidator("").compute_signature(BASE + path, params)}
+        assert client.post(path, data=params, headers=forged).status_code == 403
+        assert client.post(path, data=params, headers=signed(path, params)).status_code == 403
+    assert events == []
+
+
+@pytest.mark.parametrize("sender", ["", "+10000000000", "someone@example.com"])
+def test_inbound_ignores_missing_or_unenrolled_sender(client, events, twilio, sender):
     sms.set_mode("real")
     consent.set_state("stopped")
-    r = client.post("/sms/inbound", json={"id": "spc-in-x", "text": "YES", "sender": sender},
-                    headers={"x-bridge-token": TOKEN})
-    assert r.status_code == 204
+    r = post(client, "YES", "SMx", sender)
+    assert r.status_code == 200 and "<Response>" in r.text
     assert consent.get_state() == "stopped"  # an unidentified YES never opts the demo phone back in
-    assert photon == [] and [e for e in events if e[0] == "reply"] == []
+    assert twilio == [] and [e for e in events if e[0] == "reply"] == []
 
 
-def test_inbound_replies_only_to_the_configured_number(client, events, photon):
+def test_inbound_replies_only_to_the_configured_number(client, events, twilio):
     sms.set_mode("real")
     consent.set_state("active")
-    formatted = DEMO.lstrip("+")  # same digits, different formatting from the bridge
-    r = client.post("/sms/inbound", json={"id": "spc-in-y", "text": "HELP", "sender": formatted},
-                    headers={"x-bridge-token": TOKEN})
-    assert r.status_code == 204
-    assert [body["to"] for _, _, body in photon] == [DEMO]
+    assert post(client, "HELP", "SMy", DEMO.lstrip("+")).status_code == 200  # same digits, other formatting
+    assert [m["to"] for m in twilio] == [DEMO]
 
 
-def test_inbound_processing_failure_is_5xx_so_the_bridge_retries(events, monkeypatch):
+def test_inbound_processing_failure_is_5xx_so_twilio_retries(events, monkeypatch):
     def locked(state, phone=None):
         raise RuntimeError("database is locked")
     monkeypatch.setattr(consent, "set_state", locked)
-    r = TestClient(create_app(), raise_server_exceptions=False).post(
-        "/sms/inbound", json={"id": "spc-in-z", "text": "STOP", "sender": DEMO}, headers={"x-bridge-token": TOKEN})
-    assert r.status_code == 500 and not storage.inbound_seen("spc-in-z")
+    r = post(TestClient(create_app(), raise_server_exceptions=False), "STOP", "SMz")
+    assert r.status_code == 500 and not storage.inbound_seen("SMz")
 
 
-def test_inbound_accepts_bridge_token_and_dedupes(client, events):
+def test_inbound_webhook_accepts_valid_signature_and_dedupes(client, events):
     alerted()
-    assert post(client, "Wrong.", "spc-msg-in9").status_code == 204
-    assert post(client, "Wrong.", "spc-msg-in9").status_code == 204  # same message id again: ignored
+    r = post(client, "Wrong.", "SM9")
+    assert r.status_code == 200 and "<Response>" in r.text
+    assert post(client, "Wrong.", "SM9").status_code == 200  # same MessageSid again: ignored
     assert [p.keyword for t, p, _ in events if t == "reply"] == ["WRONG"]
+
+
+def test_status_webhook_emits_mapped_status(client, events, twilio):
+    sms.set_mode("real")
+    message_id = alerted()
+    for twilio_status, expected in [("sent", "sent"), ("delivered", "delivered"), ("undelivered", "failed")]:
+        params = {"MessageSid": message_id, "MessageStatus": twilio_status}
+        assert client.post("/sms/status", data=params, headers=signed("/sms/status", params)).status_code == 204
+    params = {"MessageSid": "SMunknown", "MessageStatus": "delivered"}
+    client.post("/sms/status", data=params, headers=signed("/sms/status", params))
+    assert [(p.message_id, p.status) for t, p, _ in events if t == "sms"] == [
+        (message_id, "sent"), (message_id, "delivered"), (message_id, "failed")]
+
+
+def test_tunnel_reaches_only_twilio_webhooks_and_health(client, events):
+    via_tunnel = {"Cf-Connecting-Ip": "203.0.113.7"}
+    for method, path in [("POST", "/login"), ("GET", "/events/stream"), ("POST", "/demo/reset"),
+                         ("GET", "/sms/outbox"), ("POST", "/sms/simulate-inbound"), ("GET", "/state")]:
+        assert client.request(method, path, headers=via_tunnel).status_code == 404, path
+    assert client.get("/health", headers=via_tunnel).status_code == 200
+    params = {"MessageSid": "SMt", "Body": "HELP", "From": DEMO}
+    r = client.post("/sms/inbound", data=params, headers={**signed("/sms/inbound", params), **via_tunnel})
+    assert r.status_code == 200 and "<Response>" in r.text
 
 
 # --- operator routes -----------------------------------------------------------
@@ -299,13 +343,13 @@ def test_operator_routes(client, events):
 
 # --- privacy (SM-06) -----------------------------------------------------------
 
-def test_no_raw_number_or_body_in_logs(client, events, caplog, photon):
+def test_no_raw_number_or_body_in_logs(client, events, caplog, twilio):
     caplog.set_level(logging.DEBUG)
     sms.set_mode("real")
     asyncio.run(sms.invite(DEMO))
     inbound("YES", "SM1", DEMO)
     alerted()
-    post(client, "Wrong. my code is 4821", "spc-msg-in2")
-    assert sent_texts(photon)  # messages went through the mocked bridge
+    post(client, "Wrong. my code is 4821", "SMin2")
+    assert sent_texts(twilio)  # messages went through the mocked client
     for secret in [DEMO, DEMO.lstrip("+"), "4821", templates.get("ALERT-OTP-01"), templates.get("ENROLL")]:
         assert secret not in caplog.text

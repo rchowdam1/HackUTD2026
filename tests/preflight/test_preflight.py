@@ -1,4 +1,4 @@
-"""scripts/preflight check logic with fakes: no network, no Photon bridge, no model."""
+"""scripts/preflight check logic with fakes: no network, no Twilio, no model."""
 import importlib.util
 import io
 import os
@@ -15,40 +15,49 @@ _spec = importlib.util.spec_from_file_location(
 pf = sys.modules["preflight_checks"] = importlib.util.module_from_spec(_spec)  # dataclass needs it registered
 _spec.loader.exec_module(pf)
 
-TOKEN = "tok-secret-123"
-ENV = {"PHOTON_BRIDGE_TOKEN": TOKEN, "TYPESAFE_API_KEY": "ts-key-456", "DEMO_PHONE": "+12145551234",
-       "SPARE_PHONE": "+12145559876", "OPERATOR_PASSWORD": "op-secret-pw"}
+SID, TOKEN = "AC" + "0123456789abcdef" * 2, "tok-secret-123"
+ENV = {"TWILIO_ACCOUNT_SID": SID, "TWILIO_AUTH_TOKEN": TOKEN, "TWILIO_FROM": "+15550001111",
+       "PUBLIC_BASE_URL": "https://demo.example.com", "DEMO_PHONE": "+12145551234", "SPARE_PHONE": "+12145559876",
+       "OPERATOR_PASSWORD": "op-secret-pw", "TYPESAFE_API_KEY": "ts-key-456"}
 
 
-class FakeBridge:
-    """httpx.get/post stand-ins for the local Spectrum bridge; records POST /send bodies."""
+class FakeTwilio:
+    """incoming_phone_numbers.list(), messages.create(), messages.list() and messages(sid).fetch()."""
 
-    def __init__(self, status=200, health=True):
-        self.status, self.health, self.sent = status, health, []
+    def __init__(self, numbers=(), statuses=("queued",), error_code=None, inbound=()):
+        self.incoming_phone_numbers = SimpleNamespace(list=lambda **kw: list(numbers))
+        self.statuses, self.error_code, self.sent = list(statuses), error_code, []
+        self.inbound, self.listed = list(inbound), []
+        self.messages = self
 
-    def get(self, url):
-        if not self.health:
-            raise ConnectionError("refused")
-        return SimpleNamespace(status_code=200, json=lambda: {"ok": True})
+    def list(self, **kw):
+        self.listed.append(kw)
+        return self.inbound
 
-    def post(self, url, json, headers, timeout):
-        self.sent.append((url, headers["x-bridge-token"], json))
-        return SimpleNamespace(status_code=self.status)
+    def create(self, **kw):
+        self.sent.append(kw)
+        return SimpleNamespace(sid="SM1", status="queued")
+
+    def __call__(self, sid):
+        status = self.statuses.pop(0) if len(self.statuses) > 1 else self.statuses[0]
+        return SimpleNamespace(fetch=lambda: SimpleNamespace(status=status, error_code=self.error_code))
 
 
-def use_bridge(monkeypatch, fake):
-    import httpx
-    monkeypatch.setattr(pf, "http_get", fake.get)
-    monkeypatch.setattr(httpx, "post", fake.post)
+def use_twilio(monkeypatch, fake):
+    monkeypatch.setattr(pf, "twilio_client", lambda env: fake)
     return fake
+
+
+def number(url, method="POST"):
+    return SimpleNamespace(sms_url=url, sms_method=method)
 
 
 # --- masking and env --------------------------------------------------------------------------
 
-def test_scrub_masks_secrets_and_phones():
-    text = f"token {TOKEN} key ts-key-456 to {ENV['DEMO_PHONE']}"
+def test_scrub_masks_secrets_sids_and_phones():
+    text = f"sid {SID} token {TOKEN} key ts-key-456 /Accounts/{SID}/Messages to +12145551234"
     out = pf.scrub(text, ENV)
-    assert TOKEN not in out and "ts-key-456" not in out and ENV["DEMO_PHONE"] not in out
+    assert SID not in out and TOKEN not in out and "ts-key-456" not in out and "+12145551234" not in out
     assert "+1******1234" in out
 
 
@@ -136,25 +145,55 @@ def test_cached_replay_pass():
     assert r.status == "PASS", r.detail
 
 
-# --- bridge ------------------------------------------------------------------------------------
+# --- tunnel / webhook --------------------------------------------------------------------------
 
-def test_bridge_needs_token():
-    r = pf.check_bridge({})
-    assert r.status == "FAIL" and "PHOTON_BRIDGE_TOKEN" in r.detail
+@pytest.mark.parametrize("url,want", [("", "not set"), ("http://demo.example.com", "not https")])
+def test_tunnel_bad_url(url, want):
+    r = pf.check_tunnel({"PUBLIC_BASE_URL": url})
+    assert r.status == "FAIL" and want in r.detail and r.fix
 
 
-def test_bridge_unreachable(monkeypatch):
-    use_bridge(monkeypatch, FakeBridge(health=False))
-    r = pf.check_bridge(ENV)
+def test_tunnel_unreachable(monkeypatch):
+    def down(url):
+        raise ConnectionError("refused")
+    monkeypatch.setattr(pf, "http_get", down)
+    r = pf.check_tunnel(ENV)
     assert r.status == "FAIL" and "refused" in r.detail and "demo-up" in r.fix
 
 
-def test_bridge_ok_on_localhost(monkeypatch):
+def test_tunnel_ok(monkeypatch):
     seen = []
     monkeypatch.setattr(pf, "http_get", lambda url: seen.append(url) or SimpleNamespace(
-        status_code=200, json=lambda: {"ok": True}))
-    assert pf.check_bridge(ENV).status == "PASS"
-    assert seen == ["http://127.0.0.1:8787/health"]
+        status_code=200, json=lambda: {"status": "ok"}))
+    assert pf.check_tunnel({"PUBLIC_BASE_URL": "https://demo.example.com/"}).status == "PASS"
+    assert seen == ["https://demo.example.com/health"]
+
+
+def test_webhook_missing_env():
+    r = pf.check_webhook({"PUBLIC_BASE_URL": "https://x"})
+    assert r.status == "FAIL" and "TWILIO_AUTH_TOKEN" in r.detail
+
+
+def test_webhook_mismatch_fails_with_fix(monkeypatch):
+    use_twilio(monkeypatch, FakeTwilio(numbers=[number("https://old.trycloudflare.com/sms/inbound")]))
+    r = pf.check_webhook(ENV)
+    assert r.status == "FAIL" and "old.trycloudflare.com" in r.detail
+    assert "https://demo.example.com/sms/inbound" in r.fix
+
+
+def test_webhook_get_method_fails(monkeypatch):
+    use_twilio(monkeypatch, FakeTwilio(numbers=[number("https://demo.example.com/sms/inbound", "GET")]))
+    assert pf.check_webhook(ENV).status == "FAIL"
+
+
+def test_webhook_unknown_number(monkeypatch):
+    use_twilio(monkeypatch, FakeTwilio(numbers=[]))
+    assert "not a phone number" in pf.check_webhook(ENV).detail
+
+
+def test_webhook_match(monkeypatch):
+    use_twilio(monkeypatch, FakeTwilio(numbers=[number("https://demo.example.com/sms/inbound")]))
+    assert pf.check_webhook(ENV).status == "PASS"
 
 
 # --- consent / sms -----------------------------------------------------------------------------
@@ -185,30 +224,35 @@ def test_consent_both_active(monkeypatch):
 
 
 def test_sms_not_sent_without_consent(monkeypatch):
-    fake = use_bridge(monkeypatch, FakeBridge())
+    fake = use_twilio(monkeypatch, FakeTwilio())
     r = pf.check_sms(ENV, consent_ok=False)
     assert r.status == "FAIL" and fake.sent == []
 
 
-def test_sms_sends_r_help_through_bridge(monkeypatch):
+def test_sms_delivered_uses_r_help(monkeypatch):
     from app.policy import templates
-    fake = use_bridge(monkeypatch, FakeBridge())
-    r = pf.check_sms(ENV, consent_ok=True)
-    assert r.status == "PASS" and "+1******1234" in r.detail and ENV["DEMO_PHONE"] not in r.detail
-    assert fake.sent == [("http://127.0.0.1:8787/send", TOKEN,
-                          {"to": ENV["DEMO_PHONE"], "text": templates.get("R-HELP")})]
+    fake = use_twilio(monkeypatch, FakeTwilio(statuses=["sent", "delivered"]))
+    r = pf.check_sms(ENV, consent_ok=True, poll_s=0)
+    assert r.status == "PASS" and "+1******1234" in r.detail
+    assert fake.sent == [{"to": ENV["DEMO_PHONE"], "from_": ENV["TWILIO_FROM"], "body": templates.get("R-HELP")}]
 
 
-def test_sms_bridge_refuses(monkeypatch):
-    use_bridge(monkeypatch, FakeBridge(status=502))
-    r = pf.check_sms(ENV, consent_ok=True)
-    assert r.status == "FAIL" and "502" in r.detail and "Photon dashboard" in r.fix
+def test_sms_undelivered(monkeypatch):
+    use_twilio(monkeypatch, FakeTwilio(statuses=["undelivered"], error_code=30003))
+    r = pf.check_sms(ENV, consent_ok=True, poll_s=0)
+    assert r.status == "FAIL" and "30003" in r.detail
+
+
+def test_sms_timeout(monkeypatch):
+    use_twilio(monkeypatch, FakeTwilio(statuses=["sent"]))
+    r = pf.check_sms(ENV, consent_ok=True, timeout_s=0.05, poll_s=0.01)
+    assert r.status == "FAIL" and "last status sent" in r.detail
 
 
 def test_no_sms_flag_skips(monkeypatch):
     for name in ("check_model", "check_app", "check_replay"):
         monkeypatch.setattr(pf, name, lambda n=name: pf.Result("PASS", n, "ok"))
-    fake = use_bridge(monkeypatch, FakeBridge())
+    fake = use_twilio(monkeypatch, FakeTwilio())
     results = pf.run_checks({}, send_sms=False)
     assert [(r.name, r.status) for r in results[-2:]] == [("sms", "SKIP"), ("sms-reply", "SKIP")] and fake.sent == []
 
@@ -243,6 +287,7 @@ def test_reply_needs_operator_password(monkeypatch):
 def test_reply_pass_on_reply_event_and_prompt_masks_phone(monkeypatch, capsys):
     calls = []
     monkeypatch.setattr(pf, "wait_for_reply", reply_waiter(True, calls))
+    use_twilio(monkeypatch, FakeTwilio())
     r = pf.check_reply(ENV, sms_ok=True, timeout_s=7)
     assert r.status == "PASS" and "/sms/inbound" in r.detail
     assert calls == [(ENV["OPERATOR_PASSWORD"], 7)]
@@ -250,10 +295,19 @@ def test_reply_pass_on_reply_event_and_prompt_masks_phone(monkeypatch, capsys):
     assert "reply HELP" in err and "+1******1234" in err and ENV["DEMO_PHONE"] not in err
 
 
-def test_reply_timeout_points_at_bridge(monkeypatch):
+def test_reply_timeout_twilio_received_it_points_at_webhook(monkeypatch):
     monkeypatch.setattr(pf, "wait_for_reply", reply_waiter(False))
+    fake = use_twilio(monkeypatch, FakeTwilio(inbound=[SimpleNamespace(sid="SMin")]))
     r = pf.check_reply(ENV, sms_ok=True, timeout_s=5)
-    assert r.status == "FAIL" and "no reply" in r.detail and "DEMO_PHONE" in r.fix and "bridge" in r.fix
+    assert r.status == "FAIL" and "never handled" in r.detail and "11200" in r.fix
+    assert fake.listed[0]["from_"] == ENV["DEMO_PHONE"] and fake.listed[0]["to"] == ENV["TWILIO_FROM"]
+
+
+def test_reply_timeout_nothing_reached_twilio(monkeypatch):
+    monkeypatch.setattr(pf, "wait_for_reply", reply_waiter(False))
+    use_twilio(monkeypatch, FakeTwilio(inbound=[]))
+    r = pf.check_reply(ENV, sms_ok=True, timeout_s=5)
+    assert r.status == "FAIL" and "no reply" in r.detail and "DEMO_PHONE" in r.fix
 
 
 def test_reply_app_unreachable(monkeypatch):
@@ -264,7 +318,7 @@ def test_reply_app_unreachable(monkeypatch):
 
 
 def test_run_checks_runs_reply_after_sms_pass(monkeypatch):
-    for name in ("check_model", "check_app", "check_replay", "check_bridge", "check_consent"):
+    for name in ("check_model", "check_app", "check_replay", "check_tunnel", "check_webhook", "check_consent"):
         monkeypatch.setattr(pf, name, lambda *a, n=name: pf.Result("PASS", n, "ok"))
     monkeypatch.setattr(pf, "check_sms", lambda env, ok: pf.Result("PASS", "sms", "ok"))
     seen = []

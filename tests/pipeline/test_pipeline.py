@@ -311,3 +311,18 @@ def test_intent_cache_cleared_when_session_ends(gw, monkeypatch, end):
 
     cached, _ = run(scenario)
     assert cached > 0 and len(intent._cache) == 0
+
+
+@pytest.mark.parametrize("end", ["finish", "reset"])
+def test_transcript_dropped_when_session_ends(gw, end):
+    """No call text stays in memory once the call ends (PRD §12 transient content)."""
+    async def scenario():
+        ref = await pipeline.start("B", "v1.0", "simulated")
+        s = pipeline.current()
+        await pipeline.process(seg(ref, 1, "Read me the code."))
+        held = len(s.segments)
+        await (pipeline.finish(ref) if end == "finish" else pipeline.reset())
+        return held, s
+
+    (held, s), _ = run(scenario)
+    assert held == 1 and s.segments == []

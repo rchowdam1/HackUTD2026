@@ -1,11 +1,11 @@
 ---
 name: verify-app
-description: "Verify CallSafe end to end: launch the real backend + console in an isolated sandbox, drive user journeys (Playwright, API, bridge inbound posts, CLIs), and prove outcomes via SSE, SQLite and files. Use after changing backend/, console/, policy/, scenarios/demo/, eval/ or scripts/, before a PR, or when asked whether a feature works."
+description: "Verify CallSafe end to end: launch the real backend + console in an isolated sandbox, drive user journeys (Playwright, API, signed Twilio webhooks, CLIs), and prove outcomes via SSE, SQLite and files. Use after changing backend/, console/, policy/, scenarios/demo/, eval/ or scripts/, before a PR, or when asked whether a feature works."
 ---
 
 # Verify CallSafe
 
-Each check drives a real user path (buttons, `POST /demo/run`, bridge posts, the CLIs) and then confirms the result on a separate channel (SSE events, SQLite read-only, `GET /sms/outbox`, files). The recipe for each feature is in [`features/`](features/README.md). `features/coverage.json` maps source paths to features.
+Each check drives a real user path (buttons, `POST /demo/run`, signed Twilio webhooks, the CLIs) and then confirms the result on a separate channel (SSE events, SQLite read-only, `GET /sms/outbox`, files). The recipe for each feature is in [`features/`](features/README.md). `features/coverage.json` maps source paths to features.
 
 ```bash
 make verify-changed BASE=origin/main          # features touched since BASE
@@ -23,7 +23,7 @@ Exit codes: 0 = all PASS, 1 = a FAIL or isolation breach, 2 = BLOCKED or nothing
 - Assert the user action and its side effects (SQLite rows, outbox, files). Never call internal setters.
 - Wait on events with `ctx.wait_event(...)`, never fixed sleeps. The one exception is proving that nothing arrives late.
 - Never weaken an assertion or delete a check to get green. A product bug stays FAIL until its owner tracks it in an issue. Only then may the check be marked `known_gap="#<issue> ..."`, which reports KNOWN-GAP.
-- Never report the items in `coverage.json` → `external` (real iMessage, arm C live, H1 scoring) as verified.
+- Never report the items in `coverage.json` → `external` (real Twilio SMS, arm C live, H1 scoring) as verified.
 - Never kill processes by name. Other uvicorn and vite processes on the machine aren't ours.
 
 ## Adding a check

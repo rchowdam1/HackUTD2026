@@ -11,11 +11,14 @@ import os
 import pkgutil
 from contextlib import asynccontextmanager
 
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, Request
+from fastapi.responses import Response
 
 from app import asr, intent, storage
 
 ROUTER_PACKAGES = ("app.api", "app.sms")
+# The only paths reachable through the cloudflared tunnel (scripts/demo_up): Twilio's webhooks + /health.
+TUNNEL_PATHS = {"/sms/inbound", "/sms/status", "/health"}
 
 
 def discover_routers() -> list[APIRouter]:
@@ -45,6 +48,15 @@ def create_app() -> FastAPI:
                   redoc_url="/redoc" if docs else None, openapi_url="/openapi.json" if docs else None)
     for router in discover_routers():
         app.include_router(router)
+
+    @app.middleware("http")
+    async def tunnel_only_twilio(request: Request, call_next):
+        # Cloudflare sets Cf-Connecting-Ip on every request it forwards and a client can't strip it, so
+        # its presence means "came in through the tunnel". The console and API stay localhost-only.
+        if "cf-connecting-ip" in request.headers and request.url.path not in TUNNEL_PATHS:
+            return Response(status_code=404)
+        return await call_next(request)
+
     return app
 
 

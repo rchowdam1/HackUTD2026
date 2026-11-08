@@ -152,6 +152,7 @@ async def _finish(s: _Session) -> None:
     # Wait for an in-flight evaluation (arm C), then for its pending alert sends.
     async with s.lock:
         intent.clear_cache()
+        s.segments.clear()  # call text is transient (PRD §12): gone once the call ends
     await asyncio.gather(*s.tasks, return_exceptions=True)
     if not _live(s.generation):
         return
@@ -169,6 +170,7 @@ async def reset() -> None:
     _session = None
     intent.clear_cache()
     if s is not None:
+        s.segments.clear()  # an in-flight arm C evaluation works on its own copy
         for task in list(s.tasks):
             task.cancel()
     emit("session", SessionPayload(state="reset"), s.ref if s else None, _generation)
