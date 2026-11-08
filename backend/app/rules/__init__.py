@@ -8,9 +8,10 @@ Arms (tables in policy/<version>/rules.yaml and lexicon.yaml):
 - K: a lexicon term in any speaker's text.
 - B: a caller request, in the caller's direction, not negated or hedged, whose
   object is a lexicon term in the same turn or (for "read it to me") a recent turn.
-- C: B plus TypeSafe Jev judgments (app.intent) on caller turns, for categories B didn't
-  act on: C-INTENT-*-01 when the model confirms a category the lexicon saw, and the
-  model-only C-INTENT-*-SOLO above a stricter bar. If the model is off or a call fails, C = B.
+- C: B plus TypeSafe Jev judgments (app.intent) on caller turns, for categories without
+  evidence yet: Jev's guards can veto a turn's B request (a warning, a report, a done deal),
+  and Jev adds C-INTENT-*-01 when it finds a request in a category the lexicon saw, or the
+  model-only C-INTENT-*-SOLO when the lexicon didn't. If the model is off or a call fails, C = B.
 Evidence is category wording and rule ids only, never call text.
 """
 from __future__ import annotations
@@ -169,23 +170,27 @@ def _requests(p: _Policy, segments: list[Segment], i: int, policy_version: str) 
     return out
 
 
-def _intent(p: _Policy, segments: list[Segment], i: int, fired: set[str],
+def _intent(p: _Policy, segments: list[Segment], i: int, rule_events: list[RiskEvent], accepted: set[str],
             policy_version: str) -> list[RiskEvent]:
-    """Arm C: Jev's judgments on caller turn i for categories B didn't act on (app.intent.judge).
-    "confirm" needs the lexicon to have seen the category in this turn or the context window;
-    "solo" is the model alone (distinct rule id, low confidence). No answer = arm B."""
-    if all(c.name in fired for c in p.categories):
-        return []
+    """Arm C on caller turn i (app.intent.judge), for categories without evidence yet (`accepted`):
+    Jev can veto this turn's B request ("veto"), or add evidence B lacks: "confirm" when the
+    lexicon saw the category in this turn or the context window, "solo" for the model alone
+    (distinct rule id, low confidence). No answer (model off or call failed) = arm B."""
+    if all(c.name in accepted for c in p.categories):
+        return rule_events
     window = segments[max(0, i - p.cfg["context_turns"]):i + 1]
     ans = intent.answers(window)
     if ans is None:
-        return []
-    seg, out = segments[i], []
+        return rule_events
+    fired = {e.category for e in rule_events}
+    out = [e for e in rule_events
+           if e.category in accepted or intent.judge(ans, e.category, True, rule_fired=True) != "veto"]
+    seg = segments[i]
     for cat in p.categories:
-        if cat.name in fired:
+        if cat.name in accepted or cat.name in fired:
             continue
         judgment = intent.judge(ans, cat.name, any(cat.lexicon.search(s.text) for s in window))
-        if judgment:
+        if judgment in ("confirm", "solo"):
             out.append(_event(seg, cat.cfg["b_event"], "intent", cat.cfg["c_rules"][judgment], cat.name, [seg.seq],
                               "medium" if judgment == "confirm" else "low", policy_version))
     return out
@@ -203,7 +208,7 @@ def detect(segments: list[Segment], arm: Arm, policy_version: str) -> list[RiskE
                 continue
             new = _requests(p, segments, i, policy_version)
             if arm == "C":
-                new += _intent(p, segments, i, {e.category for e in events + new}, policy_version)
+                new = _intent(p, segments, i, new, {e.category for e in events}, policy_version)
             events += new
     first: dict[str | None, RiskEvent] = {}
     for e in events:
