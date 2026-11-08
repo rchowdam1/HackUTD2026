@@ -560,7 +560,14 @@ function Transcript({ state, live, transcribing }: { state: State; live: Map<str
   const end = useRef<HTMLOListElement>(null);
   const last = state.segments[state.segments.length - 1];
   useEffect(() => {
-    end.current?.lastElementChild?.scrollIntoView({ block: "end" });
+    const ol = end.current;
+    if (!ol) return;
+    const scroll = () => ol.lastElementChild?.scrollIntoView({ block: "end" });
+    scroll();
+    // Lines grow after they arrive (typing, the alert marker, underlines), so keep the newest in view.
+    const grown = new ResizeObserver(scroll);
+    grown.observe(ol);
+    return () => grown.disconnect();
   }, [state.segments.length, markers.length, last?.text]);
   return (
     <section className="card transcript" aria-labelledby="transcript-label">

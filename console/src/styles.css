@@ -117,7 +117,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 .row.primary-row, .row.primary-row .icon { color: var(--magenta-text); font-weight: 600; }
 .row.danger, .row.danger .icon { color: var(--danger); }
 .row:not(:disabled):hover .row-label { text-decoration: underline; text-underline-offset: 4px; }
-.toggle { display: flex; align-items: center; gap: 8px; margin-top: 18px; }
+.toggle { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 18px; }
 .toggle .label-text { margin-right: auto; }
 
 /* Centre: verdict and transcript */
@@ -239,6 +239,11 @@ button:disabled { opacity: 0.45; cursor: default; }
   .ticker { display: none; } /* the Why panel and the transcript already say what the ticker says */
 }
 
+/* A narrow control column: the SMS mode label sits above its two pills instead of pushing one down. */
+@media (min-width: 1000px) and (max-width: 1279px) {
+  .toggle .label-text { flex-basis: 100%; }
+}
+
 /* Tablet and phone: one column that scrolls; nothing may scroll sideways. */
 @media (max-width: 999px) {
   .col.left, .col.centre, .col.right { flex-basis: 100%; }
@@ -248,10 +253,10 @@ button:disabled { opacity: 0.45; cursor: default; }
   .topbar .spacer { display: none; }
   .clock .hero { font-size: 4rem; }
   .headline { font-size: 2rem; }
-  .line { grid-template-columns: 8px 44px 1fr; font-size: 18px; }
+  .line { grid-template-columns: 8px 64px 1fr; font-size: 18px; }
   .line .time { display: none; }
   .line .rel { grid-column: 3; }
-  .marker { margin-left: 72px; }
+  .marker { margin-left: 92px; }
   .why dl { grid-template-columns: 1fr; gap: 2px; }
   .why dd + dt { margin-top: 8px; }
   .results { grid-template-columns: 1fr; row-gap: 12px; }
