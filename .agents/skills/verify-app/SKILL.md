@@ -1,11 +1,11 @@
 ---
 name: verify-app
-description: "Verify Safe Signal end to end: launch the real FastAPI backend + Vite operator console in an isolated sandbox, drive user journeys with Playwright, the API, Twilio-signed webhooks and the CLIs, and prove outcomes via SSE, SQLite and files. Use after changing backend/, console/, policy/, scenarios/demo/, eval/ or scripts/, before opening a PR, or when asked whether a feature actually works."
+description: "Verify Safe Signal end to end: launch the real FastAPI backend + Vite operator console in an isolated sandbox, drive user journeys with Playwright, the API, Photon bridge inbound posts and the CLIs, and prove outcomes via SSE, SQLite and files. Use after changing backend/, console/, policy/, scenarios/demo/, eval/ or scripts/, before opening a PR, or when asked whether a feature actually works."
 ---
 
 # Verify Safe Signal
 
-Safe Signal is one FastAPI process (`backend/app`) plus a React/Vite operator console (`console/`). Users touch it through the console (operator), the simulated or real phone (SMS keywords), Twilio webhooks, and two CLIs (`python -m eval.run`, `scripts/preflight`). This skill launches the real app, drives those paths the way a user would, and writes PASS / FAIL / BLOCKED with evidence. The recipes per feature live in [`features/`](features/README.md); start there to know what a check proves.
+Safe Signal is one FastAPI process (`backend/app`) plus a React/Vite operator console (`console/`). Users touch it through the console (operator), the simulated or real phone (SMS keywords), the Photon bridge's inbound posts, and two CLIs (`python -m eval.run`, `scripts/preflight`). This skill launches the real app, drives those paths the way a user would, and writes PASS / FAIL / BLOCKED with evidence. The recipes per feature live in [`features/`](features/README.md); start there to know what a check proves.
 
 Everything goes through one helper, `scripts/verify.py` (stdlib + the project venv + Playwright 1.64.1). Run it from the repo root (any worktree):
 
@@ -31,7 +31,7 @@ What launch does, in order:
 
 1. Takes `.verify/lock` (non-blocking). A second concurrent run or a still-running manual instance → BLOCKED, never a shared instance.
 2. Snapshots the working tree (`git ls-files -co --exclude-standard`, so uncommitted edits are included; `scenarios/H1/` excluded) into `.verify/sandbox/<run_id>/`. The app resolves `data/` and `results/` from its own file path, so the sandbox's copies are what it writes.
-3. Writes a clean environment (nothing inherited but PATH/HOME/locale): random `OPERATOR_PASSWORD`, `SESSION_SECRET`, `CONSENT_SALT`; signing-only `TWILIO_AUTH_TOKEN`; fictional `DEMO_PHONE=+15550100001`, `SPARE_PHONE=+15550100002`; `PUBLIC_BASE_URL=http://127.0.0.1:<port>`; `REPLAY_SOURCE=cached` (profile `cached`) or `asr`; `HF_HUB_OFFLINE=1`; `PYTHONPATH=<sandbox>/backend`. `.env` is never read; without `TWILIO_ACCOUNT_SID` the app cannot reach Twilio, so no real phone is ever texted.
+3. Writes a clean environment (nothing inherited but PATH/HOME/locale): random `OPERATOR_PASSWORD`, `SESSION_SECRET`, `CONSENT_SALT`; random `PHOTON_BRIDGE_TOKEN` and `PHOTON_BRIDGE_URL=http://127.0.0.1:9`; fictional `DEMO_PHONE=+15550100001`, `SPARE_PHONE=+15550100002`; `PUBLIC_BASE_URL=http://127.0.0.1:<port>`; `REPLAY_SOURCE=cached` (profile `cached`) or `asr`; `HF_HUB_OFFLINE=1`; `PYTHONPATH=<sandbox>/backend`. `.env` is never read; with the bridge URL on the discard port the app cannot reach Photon, so no real phone is ever texted.
 4. Starts `python -m uvicorn app.main:app --app-dir <sandbox>/backend --port <free port>` in its own process group. Ready = `/health` 200, which uvicorn only answers after the lifespan (`storage.init`, ASR preload) completed.
 5. For UI checks: `npm ci --prefer-offline` in the sandbox console, then `node node_modules/vite/bin/vite.js --port <free> --strictPort` with `BACKEND_URL` pointing at the backend. Ready = `/` serves the "Safe Signal" page.
 
@@ -56,7 +56,7 @@ Checks live in `scripts/checks.py` (`verify.py list` prints them). Each one acts
 - **Browser:** Playwright Chromium, headless, 1440×900. Locate by role and accessible name: `get_by_role("button", name="Run bank", exact=True)`, cards via their H2 (`card(page, "^Why this alert")`), the password by placeholder `Operator password`. Every string a check relies on is in `UI_HANDLES`.
 - **Console readiness:** `open_console()` navigates, logs in through the form if needed, then posts `/demo/reset` until the banner shows `reset`. The Vite proxy holds SSE headers until the first event, so a "response" or `onopen` never signals readiness.
 - **Observer:** the harness keeps its own SSE subscription on the backend (`EventTap`), independent of the browser. Waits are `ctx.wait_event(predicate, since=mark, timeout)`, never fixed sleeps, except to prove nothing arrives late.
-- **API:** `httpx` with the operator cookie (`ctx.api`) or without (`ctx.anon`). Twilio webhooks are signed by `twilio_signature()` (base64 HMAC-SHA1 of URL + sorted params), written from Twilio's spec and not borrowed from the app.
+- **API:** `httpx` with the operator cookie (`ctx.api`) or without (`ctx.anon`). Bridge inbound posts are built by `post_bridge()` with the same JSON and `x-bridge-token` header the Bun bridge sends.
 - **State:** SQLite opened read-only (`ctx.db_rows`), consent found by recomputing `sha256(CONSENT_SALT + E.164)`; `GET /sms/outbox` for what the simulated phone received; files in the sandbox for CLI output.
 - **CLIs:** `python -m eval.run --arms K,B --batch dev` and `python scripts/preflight_checks.py --no-sms` with cwd = sandbox and the sandbox env.
 
@@ -73,7 +73,7 @@ Everything for run `<run_id>` is in `.verify/runs/<run_id>/` (`.verify/runs/late
 
 Proof standards: drive the real user path (buttons, `POST /demo/run`, signed webhooks, the CLIs), never internal setters. Assert the action *and* the resulting state, including side effects (SQLite rows, outbox, files). PASS requires at least one executed assertion and all assertions true. Missing Playwright, Chromium, the whisper model or a precondition check → BLOCKED with the reason. A Playwright locator failure is FAIL category `ui-locator`: either the UI regressed or the map drifted; `make verify-lint` and the screenshot tell which. `harness-error` (an exception in the harness itself) is BLOCKED, never PASS. The run also fingerprints the checkout's `data/` and `results/` before and after; any change fails the run as an isolation breach. Before trusting a harness change, run with `--negative-control`: `control.invalid-assertion` must FAIL.
 
-Never report items listed under `external` in `features/coverage.json` (real Twilio SMS, the tunnel, arm C live, H1 scoring, …) as verified from a local run.
+Never report items listed under `external` in `features/coverage.json` (real iMessage via Photon, arm C live, H1 scoring, …) as verified from a local run.
 
 ## Cleanup
 

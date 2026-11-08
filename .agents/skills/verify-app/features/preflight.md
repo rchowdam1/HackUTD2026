@@ -1,6 +1,6 @@
 # Preflight
 
-`scripts/preflight` is the team's go/no-go before each judging block: whisper loads offline, the app starts offline with the demo routes, cached replays produce the expected decisions, then tunnel, Twilio webhook, phone consent, power and a real SMS round trip. It prints `PASS|FAIL|SKIP <name> - <detail>` per check and exits 1 if anything failed, never printing secrets or full numbers.
+`scripts/preflight` is the team's go/no-go before each judging block: whisper loads offline, the app starts offline with the demo routes, cached replays produce the expected decisions, then tunnel, the Twilio webhook (not yet ported to Photon), phone consent, power and a real SMS round trip. It prints `PASS|FAIL|SKIP <name> - <detail>` per check and exits 1 if anything failed, never printing secrets or full numbers.
 
 ## Sub-features
 

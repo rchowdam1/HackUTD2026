@@ -26,4 +26,4 @@ Preconditions:
 
 - Inviting the demo phone downgrades an active phone to `invited`, which silently stops alerts. The check restores it; a manual run must too.
 - A missing `SPARE_PHONE` returns 400 `SPARE_PHONE is not set`; the sandbox always sets both.
-- In real mode this texts a real phone. Never call it against a configured Twilio account from automation.
+- In real mode this texts a real phone. Never call it against a configured Photon bridge from automation.

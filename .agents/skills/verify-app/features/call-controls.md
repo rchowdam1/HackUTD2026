@@ -1,6 +1,6 @@
 # Call controls
 
-The operator can cut a replay short with End call, wipe the screen and cancel everything pending with Reset (consent and counts survive), and flip SMS delivery between real Twilio and the simulated phone.
+The operator can cut a replay short with End call, wipe the screen and cancel everything pending with Reset (consent and counts survive), and flip SMS delivery between real (Photon iMessage) and the simulated phone.
 
 ## Sub-features
 
@@ -28,7 +28,7 @@ Preconditions:
 
 ## Gotchas
 
-- Real mode is safe to toggle in the sandbox: it has no `TWILIO_ACCOUNT_SID`, the clinic call never alerts, and each real-mode call is reset immediately. Never run the bank call in real mode against a configured Twilio account.
+- Real mode is safe to toggle in the sandbox: `PHOTON_BRIDGE_URL` points at the discard port, the clinic call never alerts, and each real-mode call is reset immediately. Never run the bank call in real mode against a configured Photon bridge.
 - The console only learns the SMS mode from a click or a `session running` event; there is no API to read it. `controls.sms-mode-after-reload` fails for that reason: it is marked `known_gap` ([#64](https://github.com/rchowdam1/HackUTD2026/issues/64)), so the report shows it as KNOWN-GAP (assertion unchanged, verdict not failed). When it passes, the report says so; then drop the marker. After such a reload the Phone card is also shown although real mode is active.
 - End call and Reset both cancel the replay task; Reset additionally invalidates the generation so late SMS tasks drop. Only Reset clears the transcript.
 - Reset emits `session reset` with the old `session_ref` (or null when idle). Filter late events by events *after* the reset event.

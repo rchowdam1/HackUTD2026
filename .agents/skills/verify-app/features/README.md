@@ -1,12 +1,12 @@
 # Safe Signal verification map
 
-This directory is the maintained source for verifying what Safe Signal's users can do: the operator at the judging table (console), the subscriber's phone (SMS replies), Twilio (webhooks), and the team's CLIs (eval, preflight). Read this index before driving the app, then use the matching feature file as the recipe. `coverage.json` is the machine-readable half: which source paths each feature covers, which paths force a full run, what is out of automated scope, and the commit each feature was last verified at.
+This directory is the maintained source for verifying what Safe Signal's users can do: the operator at the judging table (console), the subscriber's phone (SMS replies), the Photon bridge (inbound), and the team's CLIs (eval, preflight). Read this index before driving the app, then use the matching feature file as the recipe. `coverage.json` is the machine-readable half: which source paths each feature covers, which paths force a full run, what is out of automated scope, and the commit each feature was last verified at.
 
 ## Baseline preconditions
 
 - Run everything through `make verify*` (or the `uv run --with playwright==1.64.1 ... verify.py` line in `../SKILL.md`). It launches its own instance; never drive an instance you did not launch.
 - Each run snapshots the working tree into `.verify/sandbox/<run_id>/` (minus `scenarios/H1/`), so the app's `data/safesignal.db` and `results/` are the sandbox's, not the checkout's.
-- The sandbox environment is generated: random `OPERATOR_PASSWORD`, `SESSION_SECRET`, `CONSENT_SALT`, a signing-only `TWILIO_AUTH_TOKEN`, `DEMO_PHONE=+15550100001`, `SPARE_PHONE=+15550100002`, `REPLAY_SOURCE=cached` (profile `cached`) or `asr` (profile `asr`), `HF_HUB_OFFLINE=1`. `.env` is never read. There is no `TWILIO_ACCOUNT_SID`, so real-mode sends fail closed.
+- The sandbox environment is generated: random `OPERATOR_PASSWORD`, `SESSION_SECRET`, `CONSENT_SALT`, a random `PHOTON_BRIDGE_TOKEN`, `DEMO_PHONE=+15550100001`, `SPARE_PHONE=+15550100002`, `REPLAY_SOURCE=cached` (profile `cached`) or `asr` (profile `asr`), `HF_HUB_OFFLINE=1`. `.env` is never read. `PHOTON_BRIDGE_URL` points at the discard port, so real-mode sends fail closed.
 - A fresh sandbox has no consent row (state `invited`) and no reply counts. Checks that need an opted-in phone reply YES first.
 - `results/latest.json` is committed (H1 numbers). `results.pending` moves the sandbox copy aside; `results.eval-cli-to-card` regenerates it from the dev batch.
 
@@ -42,7 +42,7 @@ Each feature file starts with an H1 title and one paragraph describing the user-
 - [SMS replies](./sms-replies.md) covers the simulated phone's YES / WRONG / SHARED / STOP buttons, keyword normalisation, the WRONG counter, and consent gating of alerts.
 - [Call controls](./call-controls.md) covers End call and Reset mid-replay and the real / simulated SMS-mode toggle.
 - [Results card](./results-card.md) covers the pending state and `python -m eval.run` feeding the results and "Where we fail" cards.
-- [Twilio webhooks](./twilio-webhooks.md) covers signature enforcement, inbound replies with MessageSid dedupe, and status callbacks.
+- [Bridge inbound](./bridge-inbound.md) covers the Photon bridge's `x-bridge-token` check and inbound replies with id dedupe.
 - [Enrollment invite](./enrollment-invite.md) covers `POST /sms/invite` for the demo and spare phones and hashed-only storage.
 - [Fixture replay](./fixture-replay.md) covers the console's backend-free `?fixtures` mode.
 - [ASR replay](./asr-replay.md) covers whisper transcription of the demo audio when `REPLAY_SOURCE=asr`.

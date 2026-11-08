@@ -65,13 +65,13 @@
       ],
       "synced_commit": "8699795e49306a91b3a02c3cd500da3afdbb7bb8"
     },
-    "twilio-webhooks": {
-      "doc": "twilio-webhooks.md",
+    "bridge-inbound": {
+      "doc": "bridge-inbound.md",
       "paths": [
         "backend/app/sms/webhooks.py",
         "backend/app/sms/__init__.py"
       ],
-      "synced_commit": "8699795e49306a91b3a02c3cd500da3afdbb7bb8"
+      "synced_commit": null
     },
     "enrollment-invite": {
       "doc": "enrollment-invite.md",
@@ -150,25 +150,17 @@
     ".agents/skills/verify-pipeline-formal/**",
     "scripts/demo_up",
     "scripts/demo_up.py",
-    "scripts/sms_kill_check.py",
-    "results/**"
+    "results/**",
+    "hackutd/**"
   ],
   "external": [
     {
-      "item": "Real SMS through TwilioGateway to an enrolled phone",
-      "reason": "needs the Twilio account, sender and a real opted-in phone; automated verification never texts a real number. Human check: scripts/preflight (sms) on the demo laptop."
+      "item": "Real iMessage through PhotonGateway and the Spectrum bridge (hackutd/) to a registered phone",
+      "reason": "needs the Spectrum project secret and a phone registered on the project; automated verification never texts a real number. Human check: docs/photon-live.md."
     },
     {
-      "item": "Twilio-originated webhooks through the cloudflared tunnel",
-      "reason": "needs the tunnel and the Twilio number's webhook config; locally the signature path is verified by signing requests with Twilio's documented scheme."
-    },
-    {
-      "item": "Live demo bring-up and SMS kill check (scripts/demo_up, scripts/sms_kill_check.py)",
-      "reason": "start a cloudflared tunnel, rewrite the Twilio webhook and text real phones; operator-run on the demo laptop (docs/twilio-live.md)."
-    },
-    {
-      "item": "Twilio carrier-level STOP handling and its own auto-reply",
-      "reason": "happens inside Twilio, outside this app."
+      "item": "Live demo bring-up (scripts/demo_up starting the bridge)",
+      "reason": "starts the Bun bridge against Photon Spectrum Cloud; operator-run on the demo laptop (docs/photon-live.md)."
     },
     {
       "item": "Arm C (intent model) in a live call",
