@@ -16,7 +16,7 @@
 - If a text hasn't arrived 10 s after it was sent: flip the SMS mode toggle to simulated and say "switching to simulated SMS for the hall".
 
 **1:50-2:25 Why panel and one number (console, then slide 3)**
-"Every alert cites the rule that fired, here in the 'Why this alert' panel. The obvious way to build this is keyword matching. On calls that only mention codes or money, keywords alerted on [x of n]; we alerted on [x of n]. We caught [x of n] of the scams. That's 60 held-out scripted calls written by a teammate who never saw the rules. It's small, and we say so." (Point to the "Where we fail" card.) "Here's what we still miss: [placeholder]."
+"Every alert cites the rule that fired, here in the 'Why this alert' panel. The obvious way to build this is keyword matching. On calls that only mention codes or money, keywords alerted on [x of n]; we alerted on [x of n]. We caught [x of n] of the scams. That's 60 held-out scripted calls written blind by an AI agent that never saw the rules. It's small, and we say so." (Point to the "Where we fail" card.) "Here's what we still miss: [placeholder]."
 
 **2:25-3:00 Stack and next steps (slide 4)**
 "It's whisper speech-to-text and pure-Python rules, with Twilio for the texts. We store counts, not audio, transcripts or numbers. T-Mobile already runs AI inside calls on any phone with Live Translation. Next we route on that path, add an in-call audio prompt, gate it on consent, and verify the sender. We don't ask you to trust AI. We tell you what the caller just asked for, give one step that's safe even if we're wrong, and teach you the trick so you catch it next time, on any phone."

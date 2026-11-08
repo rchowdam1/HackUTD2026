@@ -18,7 +18,7 @@ Numbers stay as `[placeholders]` until H+12; fill them only from `results/latest
 - Hard-benign false alerts: keyword baseline (K) `[x of n]` vs Safe Signal (B) `[x of n]`
 - Scams caught: K `[x of n]`, B `[x of n]` (Wilson 95% CI `[lo-hi]`)
 - Paired: `[k]` calls only K got right, `[b]` only B got right. `[win called | no win called]`
-- Small print: "60 held-out scripted calls written by a teammate who never saw the rules. Scripted transcripts, not ASR. Too small for a production claim."
+- Small print: "60 held-out scripted calls written blind by an AI agent that never saw the rules. Scripted transcripts, not ASR. Too small for a production claim."
 - Side card, "Where we fail": `[missed scam types from results/latest.md]`
 
 ## 4. Stack and next steps
