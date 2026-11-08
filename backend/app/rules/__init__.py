@@ -44,6 +44,7 @@ class _Policy:
     hedges: re.Pattern
     exclusions: re.Pattern
     context_object: re.Pattern
+    negated_object: re.Pattern
 
 
 def _rx(pattern: str) -> re.Pattern:
@@ -65,23 +66,31 @@ def load_policy(policy_version: str) -> _Policy:
         v = rf"(?P<v>{c['verbs']})\b"
         requests = (
             _rx(rf"\b(?:{frames})(?:\s+[\w']+){{0,2}}?\s+{v}"),  # can you (just) read
-            _rx(rf"^\s*(?:{cfg['fillers']}\b[\s,]*)*{v}"),  # imperative: read me / buy
+            _rx(rf"^\s*(?:{cfg['intro']}\b[^,]*,\s*)?(?:{cfg['fillers']}\b[\s,]*)*{v}"),  # imperative: read me / buy
             _rx(rf"\b{v}(?:\s+[\w']+){{0,4}}?\s+(?:me|us)\b"),  # read it back to me
             *(_rx(rf"\b(?:{p})\b") for p in c["extra"]),
         )
         categories.append(_Category(name, c, _any(lexicon[name]), requests))
     return _Policy(cfg, tuple(categories), _rx(cfg["clause_split"]), _any(cfg["negation"]),
                    _any(cfg["hedges"]), _rx(r"(?:" + "|".join(cfg["exclusions"]) + r")\b"),
-                   _rx(cfg["context_object"]))
+                   _rx(cfg["context_object"]), _rx(rf"\b{cfg['negated_object']}\b"))
 
 
 def _negated(p: _Policy, clause: str, anchor: int) -> bool:
+    if p.negated_object.search(clause, anchor):  # share it with no one
+        return True
     for m in p.negation.finditer(clause, 0, anchor):
         gap = clause[m.end():anchor]
+        aside = ""
+        if gap.lstrip().startswith(","):  # "do not, under any circumstances, share"
+            aside, _, gap = gap.lstrip()[1:].partition(",")
+            if len(aside.split()) > p.cfg["negation_max_aside_words"]:
+                continue
+        elif "," in gap:  # "don't worry, read me": the comma ends the negated clause
+            continue
         words = re.findall(r"[\w']+", gap.lower())
         if (len(words) <= p.cfg["negation_max_gap_words"]
-                and not set(words) & set(p.cfg["negation_blockers"])
-                and not ("," in gap and len(words) >= 2)):
+                and not set(words + aside.lower().split()) & set(p.cfg["negation_blockers"])):
             return True
     return False
 

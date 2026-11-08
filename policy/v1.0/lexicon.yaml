@@ -9,7 +9,7 @@ categories:
     - 'otps?'
     - 'pins?'
     - 'passwords?'
-    - 'digits'
+    - 'digits?'
   payment:
     - 'gift ?cards?'
     - 'wire( transfer)?'
@@ -40,3 +40,4 @@ categories:
     - 'remote (access|desktop|support|control|session|software|app|tool|connection)'
     - 'screen ?shar(e|ing)'
     - '(access to|control of|into) your (computer|device|phone|laptop|pc|screen|machine)'
+    - '(see|view|watch) your (screen|computer|desktop|laptop)'

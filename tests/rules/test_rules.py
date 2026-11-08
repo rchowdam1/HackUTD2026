@@ -62,6 +62,43 @@ PAIRS = {
     "remote hedge": ("ALERT-REMOTE-01",
                      "Open quick assist and click allow.",
                      "If someone tells you to open quick assist, hang up."),
+    # Added with the dev-set tuning (#12).
+    "otp negation aside": ("ALERT-OTP-01",
+                           "Right now, give me your PIN.",
+                           "Please do not, for any reason, give your PIN to us."),
+    "otp comma ends negation": ("ALERT-OTP-01",
+                                "Don't panic, tell me the PIN on the card.",
+                                "Don't tell me the PIN on the card."),
+    "otp negated recipient": ("ALERT-OTP-01",
+                              "Share the passcode with me.",
+                              "Share the passcode with nobody."),
+    "otp won't you": ("ALERT-OTP-01",
+                      "Won't you read me the code?",
+                      "I won't read you the code."),
+    "otp intro phrase": ("ALERT-OTP-01",
+                         "To finish the upgrade, read out the code we texted.",
+                         "To finish the upgrade, type the code we texted into the app."),
+    "otp confirm": ("ALERT-OTP-01",
+                    "Before we continue, confirm the PIN you got by mail.",
+                    "Before we continue, we confirmed the PIN you got by mail."),
+    "otp i need": ("ALERT-OTP-01",
+                   "I just need the one-time PIN from the letter.",
+                   "You just need the one-time PIN from the letter."),
+    "otp what does it say": ("ALERT-OTP-01",
+                             "I texted you a four digit number. What does it say?",
+                             "I texted you a four digit number. Did it arrive?"),
+    "pay you can": ("ALERT-PAY-01",
+                    "You can settle the fine with gift cards.",
+                    "You can't settle a fine with gift cards."),
+    "pay yes filler": ("ALERT-PAY-01",
+                       "Yes, then wire it to the holding account.",
+                       "Yes, the bank will wire it to the holding account."),
+    "remote lets me see": ("ALERT-REMOTE-01",
+                           "This lets me see your screen.",
+                           "This lets you see your screen."),
+    "remote hedge someone may": ("ALERT-REMOTE-01",
+                                 "You need to install AnyDesk.",
+                                 "Someone may call and say you need to install AnyDesk."),
 }
 
 
@@ -113,6 +150,8 @@ def test_negation_scope_ends_at_a_new_clause():
     assert alerts(call("Don't hang up, just read me the code."), "B") == ["ALERT-OTP-01"]
     assert alerts(call("Never share your code with anyone, but you can read it to me."), "B") == ["ALERT-OTP-01"]
     assert alerts(call("Never, ever share your code."), "B") == []
+    assert alerts(call("Please do not, under any circumstances, share your code with me."), "B") == []
+    assert alerts(call("Never, just read me the code."), "B") == ["ALERT-OTP-01"]
 
 
 def test_not_a_request():
