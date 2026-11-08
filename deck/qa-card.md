@@ -1,6 +1,6 @@
 # Q&A card (one sentence each, PRD §19.8)
 
-- **Is the text real?** It's sent to Twilio for real and Twilio accepts it, but US carriers block it today (Twilio error 30034: our number's 10DLC registration isn't done, which takes days), so the console's Outgoing texts panel shows exactly what we sent and the status Twilio reports, "failed"; no text reached a phone.
+- **Is the text real?** It's sent to Twilio for real and Twilio accepts it, but US carriers block it today (Twilio error 30034: our number's 10DLC registration isn't done, which takes days), so the console's Phone panel mirrors what we sent and shows the status Twilio reports, "carrier blocked"; no text reached a phone.
 - **Is this a real call?** Yes: you called a Twilio number we own, which forwards to Arnav's phone and streams the audio to this laptop; it's not a carrier integration, and if the phone network fails we say so and switch to the laptop mic or a recorded replay.
 - **What leaves the laptop?** The live demo runs rules + AI, so each caller turn plus up to three turns before it goes to OpenRouter (Perplexity Decider), the alert text goes to Twilio, and the call itself runs through Twilio; speech-to-text runs on the laptop, which stores no audio or transcripts, only counts and hashed numbers.
 - **How fast?** The target is the alert text sent within 2 seconds of the end of the caller's flagged sentence, and the console's Speed line shows how long it took.
@@ -13,7 +13,7 @@
 - **Is listening legal?** Subscriber opt-in is necessary but not sufficient; caller notice in all-party-consent states is a gate before any real customer.
 - **How good is it?** On the blind H4 set (6228 scripted calls written by AI agents that never saw our code), keywords caught more scams (84.3%) but alerted on 64.4% of harmless calls, and our rules alerted on 0.9% while catching 65.9%; rules + AI caught 99.2% with 0.3% false alerts, measured on the pre-merge branch with TypeSafe Jev 1.14, the previous model, not re-measured with Perplexity Decider V1.2; scripts, not real calls, so no production claim.
 - **Does the AI help?** On the dev set (40 scripted calls the rules were tuned on) keywords false-alert on 11 of 13 hard-benign calls, rules and rules + AI on 0 of 13, and all three catch 20 of 20 scams, so dev shows no AI gain because the rules were tuned on it; the gain shows on calls like the grandson one, which the rules alone miss.
-- **What if the AI is wrong?** A false alarm costs one callback; silence is never a safety verdict; WRONG replies go to a human-approved, tested policy change.
+- **What if the AI is wrong?** A false alarm costs one callback; "No alert detected" never means safe; WRONG replies go to a human-approved, tested policy change.
 - **Why trust AI at all?** Every alert shows the line that set it off and who caught it, rules or model, and the advice is the same safe step even if we're wrong.
 
 Q&A-only material: gate board, full K/B/C table.

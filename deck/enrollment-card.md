@@ -6,4 +6,4 @@ If the intent model (arm C) is switched on: each caller turn and up to three tur
 
 **CallSafe only ever says stop and check. Any text saying a caller is fine, or asking for codes, money or info, is not us.**
 
-Printing note (not on the card): the demo runs arm B, so print without the arm C line. With real SMS, Twilio handles STOP itself and blocks further texts to that phone.
+Printing note (not on the card): the live demo runs arm C, so print the card with the arm C line. With real SMS, Twilio handles STOP itself and blocks further texts to that phone.

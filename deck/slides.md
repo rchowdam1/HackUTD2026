@@ -11,7 +11,7 @@ Numbers come from two sources only, labelled on the slide. **Dev:** `results/lat
 ## 2. Live call
 **Title:** You're the scammer.
 - [placeholder: live console. A judge calls our Twilio number and reads the grandson script; Arnav's phone rings and he answers. Both sides are transcribed live. Rules stay silent; Perplexity Decider flags the money request mid-call (the Why panel's "Caught by: Perplexity Decider (AI): N% sure", N as the console shows it) and quotes the line; the alert is sent to Twilio, Arnav hangs up and the follow-up is sent.]
-- Footer: "Live call through a Twilio number we own, forwarded to the subscriber's phone; not a carrier integration. Alert texts are sent through Twilio for real, but US carriers block them today (Twilio error 30034: our number's 10DLC registration isn't done, which takes days), so the console's Outgoing texts panel shows exactly what was sent and the status Twilio reports: failed. AI on: each caller turn plus up to three turns before it goes to OpenRouter."
+- Footer: "Live call through a Twilio number we own, forwarded to the subscriber's phone; not a carrier integration. Alert texts are sent through Twilio for real, but US carriers block them today (Twilio error 30034: our number's 10DLC registration isn't done, which takes days), so the console's Phone panel mirrors what was sent and shows the status Twilio reports: carrier blocked. AI on: each caller turn plus up to three turns before it goes to OpenRouter."
 
 ## 3. The numbers
 **Title:** Keywords alert on 64.4% of harmless calls. CallSafe rules alert on 0.9%.
@@ -22,7 +22,7 @@ Numbers come from two sources only, labelled on the slide. **Dev:** `results/lat
 - Side card, "Where we fail": on H4 the rules alone miss about a third of the scams, and keywords catch more. The grandson call is one the rules miss. The AI catches that kind of request, but it sends call text off the laptop, and its H4 number was measured with the previous model.
 
 ## 4. Stack and next steps
-**Stack:** caller dials a Twilio number we own -> Twilio forwards the call to the subscriber and streams both sides' audio to the laptop -> faster-whisper small.en (CPU, on the laptop) -> rules + policy (pure Python, versioned YAML) + Perplexity Decider V1.2 through OpenRouter (each caller turn plus up to three turns before it) -> alert text via Twilio (sent for real; carrier-blocked until 10DLC registration) -> operator console (React). Fallbacks: "Live (mic)" push-to-talk in the console (if it is in the merged console), then the recorded "Run grandson" replay, through the same pipeline. FastAPI, SQLite: counts and HMAC-hashed numbers only, no audio or transcripts stored.
+**Stack:** caller dials a Twilio number we own -> Twilio forwards the call to the subscriber and streams both sides' audio to the laptop -> faster-whisper small.en (CPU, on the laptop) -> rules + policy (pure Python, versioned YAML) + Perplexity Decider V1.2 through OpenRouter (each caller turn plus up to three turns before it) -> alert text via Twilio (sent for real; carrier-blocked until 10DLC registration) -> operator console (React). Fallbacks: "Start live conversation" (laptop mic, tap Caller / You per line), then the recorded "Run grandson" replay, through the same pipeline. FastAPI, SQLite: counts and HMAC-hashed numbers only, no audio or transcripts stored.
 
 **Next:**
 - Carrier routing on the Live Translation (*87) path, so it works on any phone
@@ -30,4 +30,4 @@ Numbers come from two sources only, labelled on the slide. **Dev:** `results/lat
 - A consent gate, with caller notice in all-party-consent states
 - Finish 10DLC registration and verify our sender, so the alert text arrives
 
-Enrollment card shown on this slide: see `enrollment-card.md`. Print it **with** the arm C (OpenRouter) line, because the live demo runs arm C. The card's own printing note still says arm B and is out of date.
+Enrollment card shown on this slide: see `enrollment-card.md`. Print it **with** the arm C (OpenRouter) line, because the live demo runs arm C.
