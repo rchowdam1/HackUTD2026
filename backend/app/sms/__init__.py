@@ -28,7 +28,7 @@ _mode: SmsMode = "simulated"
 # Latest alert each recipient was actually sent: recipient (consent._phone) -> (session_ref, ALERT template_id).
 # Recorded only after the gateway accepted the alert, so replies never attach to a failed alert.
 _last_alerts: dict[str | None, tuple[str, str]] = {}
-_sent: dict[str, tuple[str, str | None]] = {}  # Twilio MessageSid -> (template_id, session_ref), for status callbacks
+_sent: dict[str, tuple[str, str | None]] = {}  # message id -> (template_id, session_ref), for status callbacks
 
 
 def _check(template_id: str) -> None:
@@ -57,6 +57,7 @@ class SimulatedGateway:
     def deliver(self, template_id: str, to: str | None = None, session_ref: str | None = None) -> str:
         message_id = f"SIM{uuid.uuid4().hex[:12]}"
         self.outbox.append({"message_id": message_id, "template_id": template_id, "text": templates.get(template_id)})
+        _sent[message_id] = (template_id, session_ref)
         return message_id
 
 
