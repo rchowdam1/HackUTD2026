@@ -95,3 +95,5 @@ All under `scripts/`, invoked as `verify.py <command>` (see top of this file for
 Modules: `harness.py` (lock, sandbox, launch, doctor, cleanup, isolation fingerprint), `context.py` (SSE observer, SQLite read-back, Playwright, assertion recorder), `checks.py` (journeys), `maint.py` (affected / lint / sync), `verify.py` (CLI + reports).
 
 Keeping this skill true as the app changes is the `maintain-verification` skill (`.agents/skills/maintain-verification/SKILL.md`). The pipeline's ordering guarantees (stale sends, one follow-up) are model-checked separately by `verify-pipeline-formal`.
+
+Human-facing overview (prerequisites, statuses, CI, troubleshooting): `docs/verification.md`. Keep it in step when this skill changes.

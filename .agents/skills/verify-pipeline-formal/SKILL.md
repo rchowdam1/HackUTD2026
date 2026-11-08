@@ -63,3 +63,5 @@ The `broken-*` configs prove each property can fail: each flips one guard consta
 5. Update the findings, coverage record and expectations, then move the sync commit to the commit you checked. Never move it for a check you couldn't run.
 
 The `maintain-verification` skill runs this procedure as part of its pass. If the pstack `statechart` skill is available in your harness, use it to read TLC traces as plain-language state paths.
+
+Human-facing overview (prerequisites, statuses, CI, troubleshooting): `docs/verification.md`. Keep it in step when this skill changes.
