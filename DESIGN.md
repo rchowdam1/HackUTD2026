@@ -61,7 +61,7 @@ Fonts: `https://fonts.googleapis.com/css2?family=Jost:wght@200;300;400;500&famil
 | `--field` | 3.5:1 | control edges (meets 3:1 non-text) |
 | `--ink-4`, `--line` | below 3:1 | never for text or for the only edge of a control |
 
-Magenta is the only T-Mobile element. Don't add T-Mobile logos, wordmarks or fonts: the product is CallSafe.
+Magenta is the only T-Mobile element in the console. The intro screen (`#home`, for the demo video) shows CallSafe × T-Mobile (Arnav, 2026-11-08); nowhere else.
 
 ## Typography
 

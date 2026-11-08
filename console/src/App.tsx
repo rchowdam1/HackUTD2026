@@ -1,5 +1,6 @@
 import { type ReactNode, useCallback, useEffect, useReducer, useRef, useState } from "react";
 import * as api from "./api";
+import Home from "./Home";
 import Numbers from "./Numbers";
 import OptInPrompt from "./OptInPrompt";
 import { initial, reduce, type Action, type Bubble, type State } from "./state";
@@ -60,6 +61,13 @@ export default function App() {
     setAuthed(false);
   }, []);
   const optInDone = useCallback(() => setAskOptIn(false), []);
+  const [home, setHome] = useState(() => location.hash === "#home");
+  useEffect(() => {
+    const onHash = () => setHome(location.hash === "#home");
+    addEventListener("hashchange", onHash);
+    return () => removeEventListener("hashchange", onHash);
+  }, []);
+  if (home) return <Home />;
   if (authed === null) return null;
   if (!authed) {
     return (

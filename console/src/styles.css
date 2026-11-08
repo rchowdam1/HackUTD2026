@@ -276,3 +276,15 @@ button:disabled { opacity: 0.45; cursor: default; }
   .modal h2 { font-size: 30px; }
   .choices li { grid-template-columns: 72px 1fr; }
 }
+
+/* Intro screen for the demo video (#home) */
+.home { min-height: 100dvh; max-width: 1100px; margin: 0 auto; padding: 0 var(--pad); display: flex; flex-direction: column; justify-content: center; gap: clamp(20px, 4vh, 40px); }
+.lockup { display: flex; align-items: center; gap: 18px; }
+.lockup .wordmark { font-size: clamp(28px, 3vw, 40px); }
+.lockup .times { font: 200 28px/1 var(--display); color: var(--ink-3); }
+.lockup img { height: clamp(28px, 3vw, 40px); }
+.lockup .partner { font: 600 clamp(24px, 2.6vw, 34px)/1 var(--body); color: var(--magenta); letter-spacing: -0.01em; }
+.home-title { font: 300 clamp(2.4rem, 5vw, 4.6rem)/1.05 var(--display); letter-spacing: -0.015em; text-wrap: balance; }
+.home-sub { font: 300 clamp(18px, 1.6vw, 24px)/1.4 var(--display); color: var(--ink-2); max-width: 46ch; }
+.home-actions { display: flex; align-items: center; gap: 28px; }
+.home-actions .primary { display: inline-flex; align-items: center; text-decoration: none; }
