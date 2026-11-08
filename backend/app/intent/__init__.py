@@ -109,6 +109,11 @@ def evidence(window: list[Segment]) -> Evidence:
     return _evidence("\n".join(f"{s.speaker.capitalize()}: {s.text}" for s in window))
 
 
+def clear_cache() -> None:
+    """Drop cached windows (call text) when a session ends (PRD §12 transient content)."""
+    _evidence.cache_clear()
+
+
 def classify(window: list[Segment]) -> Category | None:
     """The window's alert category, or None to abstain (also when the model is off or broken)."""
     global _failed

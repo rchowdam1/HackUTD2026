@@ -5,6 +5,9 @@ Signatures are the contract; callers (ingest, Track B routes) use only these.
 Every session carries a generation number. start() and reset() bump the
 global generation; events and SMS send tasks from an older generation are
 dropped and never send SMS (§19.10 "late events after reset").
+
+Arm C may run the intent model, so its rules run in a worker thread; the
+session lock keeps evaluations in order and makes finish wait for them.
 """
 from __future__ import annotations
 
@@ -15,9 +18,9 @@ from dataclasses import dataclass, field
 
 from pydantic import BaseModel
 
-from app import consent, rules, sms
+from app import consent, intent, rules, sms
 from app.events import emit
-from app.models import Arm, Decision, EventType, Segment, SessionPayload, SmsMode, SmsPayload
+from app.models import Arm, Decision, EventType, RiskEvent, Segment, SessionPayload, SmsMode, SmsPayload
 
 log = logging.getLogger(__name__)
 
@@ -35,6 +38,7 @@ class _Session:
     tasks: set[asyncio.Task] = field(default_factory=set)  # pending SMS sends
     finished: bool = False  # closed to new segments (set as soon as finish starts)
     finish_task: asyncio.Task | None = None
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)  # held while rules run
 
 
 _generation = 0
@@ -79,21 +83,34 @@ async def process(segment: Segment) -> list[Decision]:
     s.segments.append(segment)
     _emit(s, "segment", segment)
 
-    for ev in rules.detect(s.segments, s.arm, s.policy_version):
-        key = (ev.rule_id, ev.event_type, ev.category, tuple(ev.span_seq))
-        if key not in s.risk_keys:
-            s.risk_keys.add(key)
-            _emit(s, "risk_event", ev.model_copy(update={"session_ref": s.ref}))
+    async with s.lock:
+        if s.arm == "C":  # the intent model blocks: keep it off the event loop
+            events, decisions = await asyncio.to_thread(_evaluate, s, list(s.segments))
+            if not _live(s.generation):  # reset during inference
+                intent.clear_cache()
+                return []
+        else:
+            events, decisions = _evaluate(s, s.segments)
 
-    sent = {d.template_id for d in s.alerts}
-    new = [d.model_copy(update={"session_ref": s.ref})
-           for d in rules.decide(s.segments, s.arm, s.policy_version)
-           if d.level == "action_warning" and d.template_id and d.template_id not in sent]
-    for d in new:
-        s.alerts.append(d)
-        _emit(s, "decision", d)
-        _queue_send(s, d.template_id)
-    return new
+        for ev in events:
+            key = (ev.rule_id, ev.event_type, ev.category, tuple(ev.span_seq))
+            if key not in s.risk_keys:
+                s.risk_keys.add(key)
+                _emit(s, "risk_event", ev.model_copy(update={"session_ref": s.ref}))
+
+        sent = {d.template_id for d in s.alerts}
+        new = [d.model_copy(update={"session_ref": s.ref}) for d in decisions
+               if d.level == "action_warning" and d.template_id and d.template_id not in sent]
+        for d in new:
+            s.alerts.append(d)
+            _emit(s, "decision", d)
+            _queue_send(s, d.template_id)
+        return new
+
+
+def _evaluate(s: _Session, segments: list[Segment]) -> tuple[list[RiskEvent], list[Decision]]:
+    return (rules.detect(segments, s.arm, s.policy_version),
+            rules.decide(segments, s.arm, s.policy_version))
 
 
 def _queue_send(s: _Session, template_id: str) -> asyncio.Task:
@@ -132,8 +149,9 @@ async def finish(session_ref: str) -> None:
 
 
 async def _finish(s: _Session) -> None:
-    # process() never awaits, so every accepted segment is already decided;
-    # draining means waiting for its pending alert sends.
+    # Wait for an in-flight evaluation (arm C), then for its pending alert sends.
+    async with s.lock:
+        intent.clear_cache()
     await asyncio.gather(*s.tasks, return_exceptions=True)
     if not _live(s.generation):
         return
@@ -149,6 +167,7 @@ async def reset() -> None:
     s = _session
     _generation += 1
     _session = None
+    intent.clear_cache()
     if s is not None:
         for task in list(s.tasks):
             task.cancel()
