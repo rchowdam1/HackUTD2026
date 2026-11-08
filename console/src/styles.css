@@ -76,8 +76,9 @@ button:disabled { opacity: 0.45; cursor: default; }
 .monitoring .text-button { font: inherit; letter-spacing: inherit; color: var(--ink); }
 .action-error { display: flex; align-items: center; gap: 18px; padding: 8px 0; border-bottom: 1px solid var(--line); color: var(--danger); font-weight: 600; }
 
-.band { display: flex; flex-wrap: wrap; gap: 28px clamp(32px, 4vw, 72px); padding: 28px 0; flex: 1; }
-.col { display: flex; flex-direction: column; gap: 36px; min-width: 0; }
+.page-main { flex: 1; display: flex; flex-direction: column; }
+.band { display: flex; flex-wrap: wrap; gap: 28px clamp(32px, 4vw, 72px); padding: 18px 0; flex: 1; }
+.col { display: flex; flex-direction: column; gap: clamp(22px, 3.5vh, 48px); min-width: 0; }
 .col.left { flex: 0.85 1 280px; }
 .col.centre { flex: 1.25 1 440px; }
 .col.right { flex: 1 1 320px; gap: 28px; }
@@ -85,6 +86,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 /* Fixed-height desktop layout: the page never scrolls; transcript, Why panel and phone thread scroll inside. */
 @media (min-width: 1100px) and (min-height: 700px) {
   .console { height: 100dvh; overflow: hidden; }
+  .page-main { min-height: 0; }
   .band { flex-wrap: nowrap; min-height: 0; }
   .col { min-height: 0; }
   .transcript { flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -96,15 +98,15 @@ button:disabled { opacity: 0.45; cursor: default; }
 }
 
 /* Left: call clock and controls */
-.clock .hero { font: 200 clamp(5rem, 8vw, 8rem)/0.86 var(--display); letter-spacing: -0.02em; }
-.clock .source { font: 300 26px/1.2 var(--display); margin-top: 18px; }
+.clock .hero { font: 200 clamp(5rem, min(8vw, 12vh), 8rem)/0.86 var(--display); letter-spacing: -0.02em; }
+.clock .source { font: 300 26px/1.2 var(--display); margin-top: 12px; }
 .clock .arm { font: 500 12px/1.4 var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--info); margin-top: 8px; }
 .badge { display: inline-flex; align-items: center; gap: 8px; margin-top: 10px; font: 500 12px/1.4 var(--mono); text-transform: uppercase; letter-spacing: 0.08em; }
 .badge.warn { color: var(--warn); }
 .clock .label .dot.live { color: var(--good); }
 .rows li + li .row { border-top: 1px solid var(--line); }
 .rows li:last-child .row.danger { border-top: 1px dashed var(--ink-4); }
-.row { display: grid; grid-template-columns: 22px 1fr auto; align-items: center; gap: 12px; width: 100%; min-height: 48px; text-align: left; font-size: 17px; font-weight: 500; }
+.row { display: grid; grid-template-columns: 22px 1fr auto; align-items: center; gap: 12px; width: 100%; min-height: clamp(44px, 5vh, 52px); text-align: left; font-size: 17px; font-weight: 500; }
 .row .icon { font-size: 12px; color: var(--ink-3); }
 .row .hint { font: 400 12px/1 var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); }
 .row.primary-row, .row.primary-row .icon { color: var(--magenta-text); font-weight: 600; }
@@ -183,6 +185,41 @@ button:disabled { opacity: 0.45; cursor: default; }
 .choices li:last-child { border-bottom: 1px solid var(--line); }
 .modal-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 28px; }
 
+/* Results band (full width, below the three columns) */
+.results { display: grid; grid-template-columns: 1fr auto; column-gap: clamp(32px, 4vw, 72px); align-items: end; padding: 12px 0 14px; border-top: 1px solid var(--line); }
+.results .label { grid-column: 1 / -1; margin-bottom: 6px; }
+.results-grid { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px clamp(32px, 4vw, 72px); flex-wrap: wrap; }
+.results-hero { display: flex; align-items: flex-end; gap: 18px; flex: 0 1 420px; min-width: 260px; }
+@media (min-width: 1100px) { .results-grid { flex-wrap: nowrap; } }
+.hero-sm { font: 200 clamp(3.6rem, 5vw, 5rem)/0.86 var(--display); letter-spacing: -0.02em; }
+.lead { font: 300 20px/1.3 var(--display); color: var(--ink-2); }
+.results table { border-collapse: collapse; font-size: 15px; }
+.results caption { caption-side: bottom; text-align: left; padding-top: 6px; font: 400 12px/1.4 var(--mono); color: var(--ink-3); }
+.results th, .results td { padding: 2px 28px 2px 0; text-align: left; border-bottom: 1px solid var(--line); }
+.results thead th { font: 500 12px/1.4 var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); }
+.results tbody th { font-weight: 500; padding-right: 36px; }
+.results th { white-space: nowrap; }
+.results td { font: 300 20px/1.3 var(--display); }
+.wrong-count { font: 500 12px/1.4 var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); text-align: right; }
+.wrong-count .n { display: block; font: 200 clamp(3.6rem, 5vw, 5rem)/0.86 var(--display); letter-spacing: -0.02em; color: var(--ink); text-transform: none; }
+
+/* Ticker: one hairline above, one below */
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.ticker { overflow: hidden; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); min-height: 40px; display: flex; align-items: center; }
+.ticker-track { display: flex; width: max-content; animation: ticker 70s linear infinite; }
+.ticker:hover .ticker-track { animation-play-state: paused; }
+.ticker-list { display: flex; gap: 36px; padding-right: 36px; min-width: min(1640px, 100vw); white-space: nowrap; font-size: 14px; color: var(--ink-2); }
+.ticker-list li { display: inline-flex; align-items: baseline; gap: 8px; padding: 9px 0; }
+.ticker-empty { font-size: 14px; color: var(--ink-3); }
+.ttag { font: 500 11px/1 var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--info); }
+.ttag.sms { color: var(--ink-3); }
+.ttag.alert { color: var(--magenta-text); }
+@keyframes ticker { to { transform: translateX(-50%); } }
+.footer { display: flex; justify-content: space-between; gap: 18px; flex-wrap: wrap; padding: 6px 0 8px; font: 400 12px/1.4 var(--mono); color: var(--ink-3); }
+
 @media (prefers-reduced-motion: reduce) {
   .typing::after { animation: none; }
+  .ticker { overflow-x: auto; }
+  .ticker-track { animation: none; }
+  .ticker-list[aria-hidden] { display: none; }
 }

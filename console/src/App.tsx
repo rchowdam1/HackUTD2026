@@ -2,7 +2,7 @@ import { type ReactNode, useCallback, useEffect, useReducer, useRef, useState } 
 import * as api from "./api";
 import OptInPrompt from "./OptInPrompt";
 import { initial, reduce, type Action, type Bubble, type State } from "./state";
-import type { Event, RiskEvent, Segment, SmsPayload } from "./types";
+import type { ArmCounts, Event, Results, RiskEvent, Segment, SmsPayload, TurnPayload } from "./types";
 
 const FIXTURES = new URLSearchParams(location.search).has("fixtures");
 // Live transcript typing speed. Must match WORD_MS in backend/app/ingest/__init__.py (cached replay pacing).
@@ -219,7 +219,8 @@ function Console({ onLoggedOut, askOptIn, onOptInDone }: { onLoggedOut: (why: st
           {error} <button className="text-button" onClick={() => setError(null)}>Dismiss</button>
         </p>
       )}
-      <main className="band">
+      <main className="page-main">
+        <div className="band">
         <div className="col left">
           <CallClock state={state} />
           <Controls state={state} dispatch={dispatch} />
@@ -232,7 +233,14 @@ function Console({ onLoggedOut, askOptIn, onOptInDone }: { onLoggedOut: (why: st
           <WhyPanel state={state} arrived={arrived.current} />
           <Phone bubbles={state.bubbles} simulated={state.smsMode === "simulated"} off={monitoringOff(state)} />
         </div>
+        </div>
+        <ResultsBand wrongCount={state.wrongCount} />
       </main>
+      <Ticker state={state} />
+      <footer className="footer">
+        <span>CallSafe · texts you during a call when the caller asks for a code, money or access</span>
+        <span>No alert is never a safety verdict</span>
+      </footer>
       {askOptIn && hydrated && state.consent !== "active" && <OptInPrompt onDone={onOptInDone} />}
     </div>
   );
@@ -346,8 +354,8 @@ function Controls({ state, dispatch }: { state: State; dispatch: (a: Action) => 
   const mode = state.smsMode;
   return (
     <section className="card controls" aria-labelledby="controls-label">
-      <h2 className="label" id="controls-label">
-        <span>Controls</span>
+      <h2 className="visually-hidden" id="controls-label">
+        Controls
       </h2>
       <ul className="rows">
         <ControlRow label="Run clinic" hint="harmless" icon="▶" onClick={() => api.runScenario("clinic")} />
@@ -620,5 +628,134 @@ function OutBubble({ b }: { b: Extract<Bubble, { kind: "out" }> }) {
       <div className="bubble out">{text ?? b.sms.template_id}</div>
       <small className={`status ${b.sms.status}`}>{statusWords(b.sms)}</small>
     </li>
+  );
+}
+
+// Eval rows, best last; an arm missing from the file is left out.
+const RESULT_ARMS: [string, string][] = [
+  ["K", "Keywords only"],
+  ["B", "CallSafe rules"],
+  ["C", "Rules + AI"],
+];
+const ofN = (n: number, total: number) => `${n} of ${total}`;
+
+// GET /results/latest, computed from the file every time (never hard-coded), and the WRONG counter.
+function ResultsBand({ wrongCount }: { wrongCount: number | null }) {
+  const [results, setResults] = useState<Results | "pending" | null>(null);
+  useEffect(() => {
+    if (!FIXTURES) api.results().then((r) => setResults(r && "arms" in r ? r : "pending"));
+  }, []);
+  const rows = results && results !== "pending" ? RESULT_ARMS.flatMap(([id, name]) => (results.arms[id] ? [[name, results.arms[id]] as [string, ArmCounts]] : [])) : [];
+  const best = rows[rows.length - 1];
+  const calls = best ? best[1].TP + best[1].FP + best[1].FN + best[1].TN : 0;
+  const batch = results && results !== "pending" ? (results.batch === "dev" ? "Dev set" : `Batch ${results.batch}`) : "";
+  return (
+    <section className="card results" aria-labelledby="results-label">
+      <h2 className="label" id="results-label">
+        <span>Results</span>
+      </h2>
+      {!best ? (
+        <p className="quiet">{results === null && !FIXTURES ? "Loading results…" : "Results pending"}</p>
+      ) : (
+        <div className="results-grid">
+          <div className="results-hero">
+            <p className="hero-sm">{best[1].hard_benign_fp}</p>
+            <p className="lead">
+              of {best[1].hard_benign_n} hard harmless calls falsely flagged by {best[0]}
+            </p>
+          </div>
+          <table>
+            <caption>
+              {batch}: {calls} scripted calls the rules were tuned on. Scripted transcripts, not real calls; no production claim.
+            </caption>
+            <thead>
+              <tr>
+                <td />
+                {rows.map(([name]) => (
+                  <th scope="col" key={name}>
+                    {name}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">False alerts, hard harmless calls</th>
+                {rows.map(([name, c]) => (
+                  <td key={name}>{ofN(c.hard_benign_fp, c.hard_benign_n)}</td>
+                ))}
+              </tr>
+              <tr>
+                <th scope="row">Scams caught</th>
+                {rows.map(([name, c]) => (
+                  <td key={name}>{ofN(c.TP, c.TP + c.FN)}</td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="wrong-count" role="status" aria-atomic="true">
+        <span className="n">{wrongCount ?? 0}</span> WRONG replies counted
+      </p>
+    </section>
+  );
+}
+
+const AI_CATEGORY: Record<RiskEvent["category"], string> = { otp: "code", payment: "money", remote: "access" };
+function aiWords(t: TurnPayload): string {
+  if (t.ai === "off") return "Rules only";
+  if (t.ai === "unavailable") return "AI unavailable";
+  const pct = t.score === null ? "" : ` ${percent(t.score)}`;
+  return t.ai === "request" && t.category ? `AI: ${AI_CATEGORY[t.category]}${pct}` : `AI: no request${pct}`;
+}
+function templateWords(id: string): string {
+  if (id.startsWith("ALERT-")) return "Alert text";
+  if (id.startsWith("FU-")) return "Follow-up text";
+  if (id === "ENROLL") return "Opt-in invite";
+  return id.startsWith("R-") ? `Reply to ${id.slice(2).split("-")[0]}` : id;
+}
+
+type TickerItem = { key: string; tag: "turn" | "alert" | "sms"; text: string };
+// One entry per judged turn, each text after the turn it followed.
+function tickerItems(s: State): TickerItem[] {
+  const sms = (afterSeq: number) =>
+    s.bubbles.flatMap((b): TickerItem[] => {
+      if (b.kind !== "out" || b.afterSeq !== afterSeq) return [];
+      const latency = b.sms.latency_ms == null ? "" : ` · ${(b.sms.latency_ms / 1000).toFixed(2)} s after turn end`;
+      const tag = b.sms.template_id.startsWith("ALERT-") ? "alert" : "sms";
+      return [{ key: `sms-${b.sms.message_id || b.sms.template_id}`, tag, text: `${templateWords(b.sms.template_id)} · ${statusWords(b.sms)}${latency}` }];
+    });
+  const turns = s.turns.flatMap((t): TickerItem[] => [
+    { key: `turn-${t.seq}`, tag: "turn", text: `${t.speaker === "caller" ? "Caller" : "You"} · ${aiWords(t)} · decided in ${t.decided_ms} ms` },
+    ...sms(t.seq),
+  ]);
+  return [...sms(0), ...turns];
+}
+
+// The pipeline's per-turn verdicts as a slow ticker (70 s a loop, paused on hover, still under reduced motion).
+function Ticker({ state }: { state: State }) {
+  const items = tickerItems(state);
+  const list = (copy: boolean) => (
+    <ul className="ticker-list" aria-hidden={copy || undefined}>
+      {items.map((i) => (
+        <li key={i.key}>
+          <span className={`ttag ${i.tag}`}>{i.tag}</span>
+          {i.text}
+        </li>
+      ))}
+    </ul>
+  );
+  return (
+    <section className="ticker" aria-label="Pipeline log">
+      {items.length === 0 ? (
+        <p className="ticker-empty">Each turn's verdict and every text appear here during a call.</p>
+      ) : (
+        <div className="ticker-track">
+          {list(false)}
+          {list(true)}
+        </div>
+      )}
+    </section>
   );
 }

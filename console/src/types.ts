@@ -68,6 +68,21 @@ export interface TurnPayload {
   decided_ms: number;
 }
 
+// GET /results/latest (backend/app/models.py Results): eval counts per arm over one batch of scripted calls.
+export interface ArmCounts {
+  TP: number;
+  FP: number;
+  FN: number;
+  TN: number;
+  hard_benign_fp: number;
+  hard_benign_n: number;
+}
+export interface Results {
+  batch: string;
+  source: "script";
+  arms: Record<string, ArmCounts>;
+}
+
 export interface ReplyPayload {
   keyword: string;
   counted: boolean;

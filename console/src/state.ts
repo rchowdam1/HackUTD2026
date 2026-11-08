@@ -14,6 +14,7 @@ export interface State {
   bubbles: Bubble[];
   turns: TurnPayload[];
   consent: ConsentState | null;
+  wrongCount: number | null; // all-time WRONG replies (GET /state, then reply events)
   alertSkipped: boolean; // an alert was decided while monitoring was off, so no text went out
 }
 
@@ -27,6 +28,7 @@ export const initial: State = {
   bubbles: [],
   turns: [],
   consent: null,
+  wrongCount: null,
   alertSkipped: false,
 };
 
@@ -63,7 +65,7 @@ export function reduce(s: State, a: Action): State {
       return { ...s, bubbles };
     }
     case "reply":
-      return { ...s, bubbles: [...s.bubbles, { kind: "in", keyword: a.payload.keyword, id: a.event_id }] };
+      return { ...s, wrongCount: a.payload.wrong_count, bubbles: [...s.bubbles, { kind: "in", keyword: a.payload.keyword, id: a.event_id }] };
     case "turn":
       return { ...s, turns: [...s.turns, a.payload] };
     case "consent":
@@ -75,7 +77,7 @@ export function reduce(s: State, a: Action): State {
       const { snapshot: snap, after } = a;
       const seen = new Set(snap.events.map((e) => e.event_id));
       const replayed = snap.events.reduce(reduce, { ...initial, consent: snap.consent }); // best guess for alertSkipped
-      const current = { ...replayed, smsMode: snap.sms_mode, consent: snap.consent }; // snapshot values are newer than its events
+      const current = { ...replayed, smsMode: snap.sms_mode, consent: snap.consent, wrongCount: snap.wrong_count }; // snapshot values are newer than its events
       return after.filter((e) => !seen.has(e.event_id)).reduce(reduce, current);
     }
   }
