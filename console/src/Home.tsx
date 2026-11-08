@@ -15,7 +15,6 @@ export default function Home() {
         )}
       </p>
       <h1 className="home-title">Every scam call asks for something. CallSafe speaks up the moment it does.</h1>
-      <p className="home-sub">It listens for a request for a code, money or access to your phone, puts the caller on hold and tells you, during the call.</p>
       <p className="home-actions">
         <a className="primary" href="#">
           Open CallSafe
