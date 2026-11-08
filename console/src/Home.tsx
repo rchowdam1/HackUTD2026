@@ -18,7 +18,7 @@ export default function Home() {
       <p className="home-sub">It listens for a request for a code, money or access to your phone, puts the caller on hold and tells you, during the call.</p>
       <p className="home-actions">
         <a className="primary" href="#">
-          See it live
+          Open CallSafe
         </a>
         <a className="nav" href="#numbers">
           The numbers

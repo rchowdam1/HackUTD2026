@@ -97,7 +97,7 @@ function Login({ note, onLogin }: { note: string | null; onLogin: () => void }) 
           err === null ? onLogin() : setError(err);
         }}
       >
-        <p className="wordmark">CallSafe</p>
+        <a className="wordmark home-link" href="#home" aria-label="CallSafe home"><span className="mark" aria-hidden="true" />CallSafe</a>
         <h1 className="headline">Operator console</h1>
         <label className="label" htmlFor="password">
           Password
@@ -308,7 +308,7 @@ function Console({ onLoggedOut, askOptIn, onOptInDone }: { onLoggedOut: (why: st
   return (
     <div className="console">
       <header className="topbar">
-        <p className="wordmark">CallSafe</p>
+        <a className="wordmark home-link" href="#home" aria-label="CallSafe home"><span className="mark" aria-hidden="true" />CallSafe</a>
         <span className="status" aria-live="polite">
           {sessionLabel(state)}
         </span>

@@ -288,3 +288,5 @@ button:disabled { opacity: 0.45; cursor: default; }
 .home-sub { font: 300 clamp(18px, 1.6vw, 24px)/1.4 var(--display); color: var(--ink-2); max-width: 46ch; }
 .home-actions { display: flex; align-items: center; gap: 28px; }
 .home-actions .primary { display: inline-flex; align-items: center; text-decoration: none; }
+.home-link { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; min-height: 44px; }
+.home-link .mark { width: 22px; height: 22px; border-radius: 6px; background: var(--magenta); box-shadow: inset 0 0 0 6px var(--magenta), inset 0 0 0 9px var(--ground); }
