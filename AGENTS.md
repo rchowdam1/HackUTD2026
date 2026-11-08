@@ -34,7 +34,7 @@ Rules for AI coding agents in this repo. They are based on Andrej Karpathy's obs
 [Issue #1](https://github.com/rchowdam1/HackUTD2026/issues/1) is the shared chat for all teammates and agents. The message board is a SUPER valuable resource, so use it as the team's memory.
 
 - Before starting work, read the board, especially every LEARN post.
-- Post CLAIM when you start a task and DONE when you finish. Post BLOCKED or ASK if you're stuck.
+- CLAIM goes on your task issue (see "Task issues" below), not on the board. Post BLOCKED or ASK on the board if you're stuck.
 - When you figure out something non-obvious, save it as a LEARN post. That covers gotchas, fixes, API quirks and working commands.
 - Post only when the message has real value to someone else. Don't post progress chatter, thanks, or repeats of earlier messages. The board must stay readable with 100 agents on it.
 - Follow the message format pinned in the issue. Keep messages short. Never post secrets.
@@ -60,6 +60,26 @@ gh api repos/rchowdam1/HackUTD2026/issues/1/comments --paginate --jq '.[] | sele
 gh issue comment 1 --body "\`agent-name\` · model · username
 TAG to:<agent> re:<comment-link> message"
 ```
+
+### Task issues
+Every agent task is its own GitHub issue. Each one is labelled `track-a`, `track-b` or `track-c`, assigned to the developer who owns the track, and titled `<agent-name>: <task>`. The body holds the assignment, the paths it owns and its "done when".
+
+- **Find work:** list the open, unclaimed tasks for your developer:
+  ```bash
+  gh issue list --assignee <username> --state open --search "-label:claimed"
+  ```
+  If your human gave you a task, take that issue.
+- **Respect gates:** don't claim an issue labelled `stretch`, or one whose body says "start after H+N", before its gate.
+- **Claim:** add the label, then comment CLAIM on the issue (same format as the board). Then re-read its comments. If an earlier CLAIM exists, back off and pick another issue.
+  ```bash
+  gh issue edit <n> --add-label claimed
+  gh issue comment <n> --body "\`agent-name\` · model · username
+  CLAIM branch <username>/<agent-name> · owns <paths>"
+  ```
+- **One agent per issue:** use the agent name and branch in the issue. If that branch already exists from earlier merged work, add `-2`.
+- **Link the PR:** put `Closes #<n>` in the PR body when it meets the issue's "done when". Merging then closes the issue. Use `Refs #<n>` for partial work, and comment on the issue with what's left.
+- **Stale claims:** a claimed issue with no comments or pushed commits for 60 minutes is stale. Comment FYI on the issue before you take it over.
+- **New work:** if no issue covers it, open one in the same format, labelled with your track and assigned to your developer. Then claim it.
 
 ## 6. Parallel Work
 
@@ -88,15 +108,14 @@ Up to 100 agents may be working at once.
 ### Ownership
 - Your CLAIM must list your branch and the files or directories you'll own.
 - Don't edit paths that another active claim owns. Pick other work, or post an ASK.
-- A claim with no posts for 60 minutes is stale. Post an FYI before you take it over.
 - Shared files include package manifests, lockfiles, configs, the DB schema and shared types. Keep your edits to them minimal and additive, and post an FYI when you change one.
 
 ### Pull requests
 1. Rebase onto the latest main with `git fetch origin && git rebase origin/main`. Resolve conflicts on your branch, keeping both sides' intent.
 2. Verify that the build and tests pass.
 3. Push with `git push --force-with-lease`. Only ever do this on your own branch.
-4. Open a PR with `gh pr create --fill`. Do not merge it, because a human reviews and merges.
-5. Post DONE with the PR link.
+4. Open a PR with `gh pr create --fill --body "Closes #<n>"` (or `Refs #<n>`), followed by a short what-and-how-verified. Do not merge it, because a human reviews and merges.
+5. The linked PR shows up on the task issue, so there's no separate DONE post.
 
 ### Basics
 - Keep PRs small and limited to one task.
