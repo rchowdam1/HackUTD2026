@@ -1,19 +1,19 @@
 ---
-title: "Safe Signal — Product Requirements Document"
+title: "CallSafe — Product Requirements Document"
 version: "1.4"
 status: "Hackathon product specification and build plan, revised after two validation reviews, the SMS/operator-console operating model, and four model-council reviews; integration and production assumptions unvalidated"
 created: "2026-11-07"
 updated: "2026-11-07"
-owner: "Safe Signal hackathon team"
+owner: "CallSafe hackathon team"
 method: "BMAD-aligned PM PRD: essential spine + enterprise/privacy adaptations + five-gate verification lifecycle"
 ---
 
-# Safe Signal
+# CallSafe
 ## Product Requirements Document | Hackathon v1.4
 
 **One-line pitch:** *Protect the person, not just the phone number.*
 
-**Product thesis.** A phone number's reputation can't tell you what a caller will ask once you pick up. Safe Signal listens, only with the subscriber's opt-in, for the moment a call turns dangerous (a request for a code, password, SSN, money or remote access), texts the subscriber one clear, safe next step, and follows up after the call. There is nothing to install and no browser to open: it works on any phone that can receive a text. T-Mobile's fraud and scam protection team runs the service from an operator console, and every claim that we are doing better has to pass five verification gates (§8). Delivered at the carrier layer, the same protection could reach subscribers whose phones lack on-device scam detection. **[ASSUMPTION]**
+**Product thesis.** A phone number's reputation can't tell you what a caller will ask once you pick up. CallSafe listens, only with the subscriber's opt-in, for the moment a call turns dangerous (a request for a code, password, SSN, money or remote access), texts the subscriber one clear, safe next step, and follows up after the call. There is nothing to install and no browser to open: it works on any phone that can receive a text. T-Mobile's fraud and scam protection team runs the service from an operator console, and every claim that we are doing better has to pass five verification gates (§8). Delivered at the carrier layer, the same protection could reach subscribers whose phones lack on-device scam detection. **[ASSUMPTION]**
 
 **Scope.** The hackathon demonstrates the pipeline on replayed and controlled calls with mocked carrier signals, sends real texts to a team-owned test phone, and reports measured results against the comparison arms in §9. Real carrier integration and broader device coverage are future work behind gates G-01 to G-07 (§15). We are not claiming to have invented AI scam detection; Google, Samsung and Apple already ship versions of it (§1.3).
 
@@ -37,7 +37,7 @@ This PRD directs the hackathon's product, frontend, backend, model-evaluation, a
 
 **Build plan (v1.4):** §19 is the document agents build from: the 3-minute judging loop, scope, frozen stack, interface contracts, SMS copy, evaluation, milestones and the three-developer split. Where §19 conflicts with §1–§18, §19 wins.
 
-**Sources of insight:** the T-Mobile Safe Signal challenge slide (user-provided), the team's judge interview notes (not independently verified as corporate commitments), the five-step AI evaluation lifecycle graphic provided to the team, team-compiled summaries of public T-Mobile job postings (third-party summaries, not independently verified), previously discussed research on audio deepfake detection, and public product/platform documentation listed in §17. No proprietary T-Mobile API, actual customer dataset, production model checkpoint, legal approval, or real carrier integration has been verified.
+**Sources of insight:** the T-Mobile CallSafe challenge slide (user-provided), the team's judge interview notes (not independently verified as corporate commitments), the five-step AI evaluation lifecycle graphic provided to the team, team-compiled summaries of public T-Mobile job postings (third-party summaries, not independently verified), previously discussed research on audio deepfake detection, and public product/platform documentation listed in §17. No proprietary T-Mobile API, actual customer dataset, production model checkpoint, legal approval, or real carrier integration has been verified.
 
 ## 1. Vision and positioning
 
@@ -47,7 +47,7 @@ Caller reputation and number-based filtering are useful, but cannot reliably det
 
 ### 1.2 Product vision
 
-Safe Signal extends existing call protection with an **opt-in, conversation-aware layer** that the subscriber never has to open. The subscriber opts in by replying to a text. On calls routed through a controlled telephony path, Safe Signal analyzes conversational risk and, when it identifies an actionable high-risk request, sends a short SMS with a plain-language warning and an independent next step. After the call, a follow-up SMS repeats the advice and offers recovery steps by reply keyword. T-Mobile's fraud and scam protection team configures policy, reviews evidence, monitors quality and approves every change from an operator console. Optionally (P1), the system may also answer before the subscriber and ask the caller to state the reason for calling. Synthetic-voice evidence may inform triage but never proves fraud or legitimacy.
+CallSafe extends existing call protection with an **opt-in, conversation-aware layer** that the subscriber never has to open. The subscriber opts in by replying to a text. On calls routed through a controlled telephony path, CallSafe analyzes conversational risk and, when it identifies an actionable high-risk request, sends a short SMS with a plain-language warning and an independent next step. After the call, a follow-up SMS repeats the advice and offers recovery steps by reply keyword. T-Mobile's fraud and scam protection team configures policy, reviews evidence, monitors quality and approves every change from an operator console. Optionally (P1), the system may also answer before the subscriber and ask the caller to state the reason for calling. Synthetic-voice evidence may inform triage but never proves fraud or legitimacy.
 
 **Customer promise:** *You remain in control of your calls. When a caller asks you to do something risky, we text you what the concern is and a safer next step. We will never tell you a caller is safe, and we will never ask you for codes, passwords, money or personal information. Replies are optional, and no text doesn't mean a call is safe.*
 
@@ -55,9 +55,9 @@ Safe Signal extends existing call protection with an **opt-in, conversation-awar
 
 The competitive hypothesis **[ASSUMPTION]** is **device-independent, carrier-operated intervention** combined with authorized carrier signals and accessible, text-based guidance. This is differentiated from a device-exclusive on-device feature **only if** the carrier makes real audio-routing and consent integration available, coverage increases, and measured incremental safety exceeds privacy/latency costs. Apple already screens unknown callers; Pixel and some Samsung devices already provide in-call scam detection. Consequently **pre-answer screening and “AI listens for scams” are not standalone differentiators**. T-Mobile's own Scam Shield already labels likely scam calls (Scam Likely), can block them (Scam Block), and warns subscribers who dial a Scam Likely number (Callback Protection); these are number-based checks, and its public page describes no in-call conversation analysis.
 
-**Additive claim:** calls that pass number and reputation filters can still turn into a request for a code, credential or transfer after connect. Safe Signal detects that *request*, not the caller's identity, texts one specific independent next step, and follows up afterward. Because the subscriber side is only SMS, it works on phones that can't run on-device detection, including basic phones. The hypothesis remains unproven until the benchmark in §9, and lift is claimed only against our own baselines. Prepared answers to the hard judge questions are in §9.4.
+**Additive claim:** calls that pass number and reputation filters can still turn into a request for a code, credential or transfer after connect. CallSafe detects that *request*, not the caller's identity, texts one specific independent next step, and follows up afterward. Because the subscriber side is only SMS, it works on phones that can't run on-device detection, including basic phones. The hypothesis remains unproven until the benchmark in §9, and lift is claimed only against our own baselines. Prepared answers to the hard judge questions are in §9.4.
 
-**Positioning (v1.4) [DECIDED]:** T-Mobile Live Translation (beta February 2026, live May 21, 2026) already runs network-native AI inside live calls on any phone, including flip phones, started by dialing \*87 (§17). "Nothing to install, any phone" is therefore not novel on its own; Live Translation is precedent that carrier in-call AI works, and Safe Signal points that path at scam requests. Hiya pairs scam alerts with post-call summaries, Aura monitors conversations with unknown callers and offers family access, ABA and AT&T run scam education, and Bitdefender Scamio answers "is this a scam?". Each owns one piece, so we claim no unique combination. Our wedge: **we don't ask you to trust AI.** Each alert names the request the caller made (not a verdict about the caller, unlike Pixel's "Likely scam"), gives one step that is safe even if the alert is wrong or forged, and the follow-up teaches the tactic so the subscriber spots it next time. The coverage argument leads with iPhones, which have pre-answer screening but no in-call scam detection (secondary sources), ahead of basic phones, where reading a text mid-call is hardest.
+**Positioning (v1.4) [DECIDED]:** T-Mobile Live Translation (beta February 2026, live May 21, 2026) already runs network-native AI inside live calls on any phone, including flip phones, started by dialing \*87 (§17). "Nothing to install, any phone" is therefore not novel on its own; Live Translation is precedent that carrier in-call AI works, and CallSafe points that path at scam requests. Hiya pairs scam alerts with post-call summaries, Aura monitors conversations with unknown callers and offers family access, ABA and AT&T run scam education, and Bitdefender Scamio answers "is this a scam?". Each owns one piece, so we claim no unique combination. Our wedge: **we don't ask you to trust AI.** Each alert names the request the caller made (not a verdict about the caller, unlike Pixel's "Likely scam"), gives one step that is safe even if the alert is wrong or forged, and the follow-up teaches the tactic so the subscriber spots it next time. The coverage argument leads with iPhones, which have pre-answer screening but no in-call scam detection (secondary sources), ahead of basic phones, where reading a text mid-call is hardest.
 
 ### 1.4 Jobs to be done
 
@@ -75,11 +75,11 @@ The competitive hypothesis **[ASSUMPTION]** is **device-independent, carrier-ope
 
 ### 2.2 Named journeys
 
-**UJ-01 — Ruth receives a legitimate call that mentions a code.** Ruth uses an older phone, is expecting a clinic callback, and opted into monitoring by replying YES to an invitation text. The caller confirms her appointment and says, “We'll text you a confirmation code. Please don't share it with anyone who calls.” Because the code is mentioned in a warning and nothing is asked of Ruth, no text is sent and the call continues uninterrupted. Safe Signal never sends an “all clear” either. If the optional Screening Proxy (P1) is built, Ruth hears the clinic's stated name and reason when she picks up, labeled as what the caller stated, and presses 1 to connect; if screening fails, the call rings through normally. **Value:** important calls are preserved and benign mentions of codes don't cause alarms. **Edge:** a blocked/withheld number is not classified as criminal merely because caller ID is missing.
+**UJ-01 — Ruth receives a legitimate call that mentions a code.** Ruth uses an older phone, is expecting a clinic callback, and opted into monitoring by replying YES to an invitation text. The caller confirms her appointment and says, “We'll text you a confirmation code. Please don't share it with anyone who calls.” Because the code is mentioned in a warning and nothing is asked of Ruth, no text is sent and the call continues uninterrupted. CallSafe never sends an “all clear” either. If the optional Screening Proxy (P1) is built, Ruth hears the clinic's stated name and reason when she picks up, labeled as what the caller stated, and presses 1 to connect; if screening fails, the call rings through normally. **Value:** important calls are preserved and benign mentions of codes don't cause alarms. **Edge:** a blocked/withheld number is not classified as criminal merely because caller ID is missing.
 
-**UJ-02 — Daniel hears a bank impersonator request an OTP.** An unfamiliar caller opens with a generic, benign introduction. Daniel opted into monitoring. The caller later asks Daniel to read out a six-digit verification code. Python rules identify a high-risk request, and within seconds Daniel's phone buzzes with a text from Safe Signal's fixed sender: **“Safe Signal: caller is asking for a code. Don't share it. Hang up, call your bank's number yourself.”** (§19.5) Daniel glances at it and ends the call. After he hangs up, a follow-up text (FR-23) repeats the advice and lists reply keywords: SHARED for next steps if he already gave the code, WRONG if the warning was a mistake, STOP to end Safe Signal. If Daniel's phone is at his ear, the text's vibration and tone are the in-call cue; an audible in-call cue is P1 (FR-17). **Value:** Safe Signal intervenes when the *request* becomes dangerous, irrespective of whether the voice is genuine or synthetic, doesn't leave Daniel on his own afterward, and needs nothing but his phone. **Edge:** if classification is inconclusive, nothing is sent and no definitive scam label is shown anywhere.
+**UJ-02 — Daniel hears a bank impersonator request an OTP.** An unfamiliar caller opens with a generic, benign introduction. Daniel opted into monitoring. The caller later asks Daniel to read out a six-digit verification code. Python rules identify a high-risk request, and within seconds Daniel's phone buzzes with a text from CallSafe's fixed sender: **“CallSafe: caller is asking for a code. Don't share it. Hang up, call your bank's number yourself.”** (§19.5) Daniel glances at it and ends the call. After he hangs up, a follow-up text (FR-23) repeats the advice and lists reply keywords: SHARED for next steps if he already gave the code, WRONG if the warning was a mistake, STOP to end CallSafe. If Daniel's phone is at his ear, the text's vibration and tone are the in-call cue; an audible in-call cue is P1 (FR-17). **Value:** CallSafe intervenes when the *request* becomes dangerous, irrespective of whether the voice is genuine or synthetic, doesn't leave Daniel on his own afterward, and needs nothing but his phone. **Edge:** if classification is inconclusive, nothing is sent and no definitive scam label is shown anywhere.
 
-**UJ-03 — Sofia receives a family-impersonation call with no explicit scam phrase.** A caller claiming to be her grandson says he's in trouble, needs her help with bail today, and asks her not to tell his parents. No deterministic rule fires because the script avoids the FR-07 payment phrases (send, transfer, wire, gift card); if a payment phrase appears, this becomes a rule case, not a model-coverage case. The weak-signal trigger (FR-12, T2) sees a relationship claim, urgency, secrecy and a payment request in the same window and invokes the scam-intent model, which returns urgency/payment Intent Evidence. Versioned policy sends a text: **“Safe Signal: caller is asking for money. Don't send any. Call your relative back on a number you already have.”** If the Voice Evidence model passed Gate 0, it runs on the same window and may add “voice authenticity uncertain” to the operator console as supporting context. **Value:** help under an unfamiliar attack pattern, whether the voice is synthetic or a human impersonator. **Edge:** a suspicious voice score alone produces “voice authenticity uncertain,” never “fraud confirmed”; if Intent Evidence is insufficient, policy abstains and nothing is sent.
+**UJ-03 — Sofia receives a family-impersonation call with no explicit scam phrase.** A caller claiming to be her grandson says he's in trouble, needs her help with bail today, and asks her not to tell his parents. No deterministic rule fires because the script avoids the FR-07 payment phrases (send, transfer, wire, gift card); if a payment phrase appears, this becomes a rule case, not a model-coverage case. The weak-signal trigger (FR-12, T2) sees a relationship claim, urgency, secrecy and a payment request in the same window and invokes the scam-intent model, which returns urgency/payment Intent Evidence. Versioned policy sends a text: **“CallSafe: caller is asking for money. Don't send any. Call your relative back on a number you already have.”** If the Voice Evidence model passed Gate 0, it runs on the same window and may add “voice authenticity uncertain” to the operator console as supporting context. **Value:** help under an unfamiliar attack pattern, whether the voice is synthetic or a human impersonator. **Edge:** a suspicious voice score alone produces “voice authenticity uncertain,” never “fraud confirmed”; if Intent Evidence is insufficient, policy abstains and nothing is sent.
 
 **UJ-04 — A fraud-operations analyst runs the service.** An analyst on T-Mobile's fraud and scam protection team signs in to the operator console. The gate board shows V1–V5 status with links to the evidence. Monitoring panels show aggregate alert rates, A/K/B/C comparison results, rule IDs, model invocation rates, SMS dispatch latency and delivery receipts, reply-keyword counts, and queue depth. The analyst cannot retrieve raw audio, transcripts, caller or subscriber phone numbers, or SMS bodies beyond template IDs. A simulated inference outage is visible as “enhanced analysis unavailable.” **Value:** the team runs and governs the service without seeing personal content.
 
@@ -167,11 +167,11 @@ The competitive hypothesis **[ASSUMPTION]** is **device-independent, carrier-ope
 | **FR-17** | Deliver the intervention via out-of-band SMS requiring zero subscriber app installation. The subscriber acts naturally by ending the voice call or referring to the received text advice. The delivery payload must be readable in under 5 seconds. | P0 | No app, browser, reply or tap needed to act on the advice. Core alert is at most 20 words in one 160-character GSM-7 segment, and its first line carries the warning on its own (visible in a lock-screen preview). Median read time under 5 s in the SM-09 timed check. Delivery receipt logged by message ID. An audible in-call cue for subscribers holding the phone to their ear is P1 (§11.2). |
 | **FR-18** | *Retired in v1.3.* A post-call summary needs a subscriber UI, which the product no longer has; FR-23 covers follow-up. | — | — |
 | **FR-23** | After a call that triggered an `action_warning`, send one stored follow-up SMS built only from the versioned Risk Event and Intervention: the risk category in plain language, the same independent next step, and reply keywords SHARED and WRONG (FR-26). It names the tactic the caller used and ends with the rule "Hang up, look up, call back" (templates in §19.5). | P0 | Sent after call end, at most once per call, and never for abstention outcomes; contains no transcript, audio, phone number or other PII; output-contract test rejects URLs, requests for codes or personal details, contact routes the subscriber doesn't already have, and any “you were scammed,” account-monitoring or reversal language. A follow-up-only opt-out (without stopping monitoring) is P1. |
-| **FR-26** | Handle reply keywords sent from the subscriber's own number: YES (opt in, FR-03), SHARED (category-specific recovery steps for the last alert), WRONG (false-alert report), STOP (end monitoring and texts), HELP (what Safe Signal is and how to stop it). Count replies by keyword and template in aggregate; store no free text. | P0 | Each keyword has a fixture and a template response; unrecognized replies get the HELP text; free-text replies are discarded after keyword matching; STOP and HELP follow standard messaging conventions **[GATE: G-05]**. Keyword normalisation, STOP variants and deduplication are specified in §19.4. |
+| **FR-26** | Handle reply keywords sent from the subscriber's own number: YES (opt in, FR-03), SHARED (category-specific recovery steps for the last alert), WRONG (false-alert report), STOP (end monitoring and texts), HELP (what CallSafe is and how to stop it). Count replies by keyword and template in aggregate; store no free text. | P0 | Each keyword has a fixture and a template response; unrecognized replies get the HELP text; free-text replies are discarded after keyword matching; STOP and HELP follow standard messaging conventions **[GATE: G-05]**. Keyword normalisation, STOP variants and deduplication are specified in §19.4. |
 
-**Messaging guardrails:** a security text that arrives right after a scam attempt looks a lot like a scam text, and once Safe Signal is known, scammers will try to fake it. So every Safe Signal text comes from one fixed sender, never asks for codes, passwords, money or personal information, contains no links or phone numbers, and points only to contact routes the subscriber already has. The invitation, enrollment and follow-up texts repeat the stop-and-check rule: *Safe Signal only ever says stop and check. Any text saying a caller is fine, or asking for codes, money or info, is not us.* A text that follows this rule still proves nothing about who sent it. The rule works because the advice is safe even if forged: a fake that copies us gives safe advice, and a fake that says "go ahead" breaks the rule. The SHARED reply returns category-specific, independent steps: for a shared code, contact the organization through its official app or the number on your card and change the related password there; for remote access, disconnect the device from the internet and then contact the organization. No text claims that Safe Signal or T-Mobile can reverse, monitor or report anything on the subscriber's behalf. Messages are template-only; they need no model and no stored content.
+**Messaging guardrails:** a security text that arrives right after a scam attempt looks a lot like a scam text, and once CallSafe is known, scammers will try to fake it. So every CallSafe text comes from one fixed sender, never asks for codes, passwords, money or personal information, contains no links or phone numbers, and points only to contact routes the subscriber already has. The invitation, enrollment and follow-up texts repeat the stop-and-check rule: *CallSafe only ever says stop and check. Any text saying a caller is fine, or asking for codes, money or info, is not us.* A text that follows this rule still proves nothing about who sent it. The rule works because the advice is safe even if forged: a fake that copies us gives safe advice, and a fake that says "go ahead" breaks the rule. The SHARED reply returns category-specific, independent steps: for a shared code, contact the organization through its official app or the number on your card and change the related password there; for remote access, disconnect the device from the internet and then contact the organization. No text claims that CallSafe or T-Mobile can reverse, monitor or report anything on the subscriber's behalf. Messages are template-only; they need no model and no stored content.
 
-**Illustrative policy (not learned truth):** an explicit request to share an OTP yields a high-risk *behavior* alert even if voice authenticity is unknown. A high Voice Evidence score alone causes no fraud warning. A context-dependent payment request can trigger verification advice if the intent model plus rules provide enough evidence; otherwise abstain. False positives and missed threats drive changes to thresholds, not intuition. Cases where Safe Signal sends nothing are listed in §8.2.
+**Illustrative policy (not learned truth):** an explicit request to share an OTP yields a high-risk *behavior* alert even if voice authenticity is unknown. A high Voice Evidence score alone causes no fraud warning. A context-dependent payment request can trigger verification advice if the intent model plus rules provide enough evidence; otherwise abstain. False positives and missed threats drive changes to thresholds, not intuition. Cases where CallSafe sends nothing are listed in §8.2.
 
 ### 4.5 Operator console, governance and measurable evals
 
@@ -195,7 +195,7 @@ The competitive hypothesis **[ASSUMPTION]** is **device-independent, carrier-ope
 - **No** final “the caller is safe,” “the voice is human,” “this is definitely a scam” claim.
 - **No** sending live OTPs, SSNs, phone numbers, medical records or financial information to third-party general-purpose LLM services.
 - **No** call blocking/termination solely because a model assigns a high risk score.
-- **No** Safe Signal text that says a caller is safe or that the subscriber was scammed, asks for information, contains links or phone numbers, or implies account monitoring, transaction reversal or reporting on their behalf.
+- **No** CallSafe text that says a caller is safe or that the subscriber was scammed, asks for information, contains links or phone numbers, or implies account monitoring, transaction reversal or reporting on their behalf.
 - **No** monitoring of calls the subscriber placed (outbound) in v1 (§8.2).
 - **No** model or agent that changes live policy on its own; every policy change needs operator approval (FR-25).
 - **No** new foundational multimodal training; no dependency on one untested “universal” voice model.
@@ -271,7 +271,7 @@ P0 items are never cut. If P0 itself is at risk, shrink the held-out batches (H1
 
 ## 8. Gated verification lifecycle (V1–V5)
 
-Safe Signal adopts the five-step evaluation lifecycle the team was given (workflow grounding, eval-driven design, AI testing and validation, traceability and monitoring, continuous improvement) as five verification gates. A gate passes only when its exit evidence exists and meets its pass criteria; the operator console's gate board (FR-24) shows status and links the evidence. **“We are doing better” is a claim the gates must earn twice:** once against the baselines (V3), and again for every change against the version it replaces (V5). Pass criteria below are proposed team thresholds, not observed performance. **[DECIDED]**
+CallSafe adopts the five-step evaluation lifecycle the team was given (workflow grounding, eval-driven design, AI testing and validation, traceability and monitoring, continuous improvement) as five verification gates. A gate passes only when its exit evidence exists and meets its pass criteria; the operator console's gate board (FR-24) shows status and links the evidence. **“We are doing better” is a claim the gates must earn twice:** once against the baselines (V3), and again for every change against the version it replaces (V5). Pass criteria below are proposed team thresholds, not observed performance. **[DECIDED]**
 
 ### 8.1 V1 — Workflow grounding (real-world context for meaningful evaluation)
 
@@ -287,7 +287,7 @@ Safe Signal adopts the five-step evaluation lifecycle the team was given (workfl
 - **Set business-specific success criteria:** SM-01–SM-11 and SM-C01–SM-C05 with the targets in §7; headline comparisons B vs K and C vs B.
 - **Define evaluation datasets and test scenarios:** the development set; sealed held-out batches H1 and H2 written by a non-rule-author (§9.1); hard benign negatives; codec-matched audio; multi-turn scripts.
 - **Establish risk thresholds and guardrails:** policy thresholds and model budgets; FR-15 prohibited labels; the SMS content contract (FR-16/23); per-call message limits (one alert per Risk Event category and one follow-up per call).
-- **Identify “do not act” scenarios.** Safe Signal sends nothing when:
+- **Identify “do not act” scenarios.** CallSafe sends nothing when:
   - the only evidence is Voice Evidence or the Reputation Signal;
   - the risky phrase is negated or is itself a warning (“never share your code”);
   - the policy abstains or models are unavailable (no “safe” message either; rule-based alerts still go out);
@@ -330,7 +330,7 @@ Safe Signal adopts the five-step evaluation lifecycle the team was given (workfl
 
 ### 8.6 Evaluation dimensions map
 
-| Dimension | How Safe Signal measures it | Where |
+| Dimension | How CallSafe measures it | Where |
 |---|---|---|
 | Business correctness | Right action on the right calls: alerts on risky requests, stays silent on benign calls and do-not-act cases | SM-01, SM-C01, §8.2 |
 | Accuracy & quality | Precision, recall and FPR for every arm; three-element SMS completeness | SM-01, SM-02, SM-11 |
@@ -365,7 +365,7 @@ Use only team-authored synthetic scripts, consented voice recordings, and proper
 
 ### 9.2 Four controlled arms
 
-- **A / Demo Baseline:** same mock Reputation Signal and established routing logic; no Safe Signal speech intelligence. Its recall reflects how mock reputation states were assigned, so it is shown for context only.
+- **A / Demo Baseline:** same mock Reputation Signal and established routing logic; no CallSafe speech intelligence. Its recall reflects how mock reputation states were assigned, so it is shown for context only.
 - **K / Keyword Baseline:** A plus ASR and the same request keyword lists that B's rules use, with no negation, context or dialogue state; any keyword hit warns. This is the strong naive comparator.
 - **B / Deterministic:** A plus ASR, Risk Events, stateful Python rules and policy.
 - **C / Full:** B plus the Intent Evidence model (and Voice Evidence, if it passed Gate 0), triggers T1–T4 and evidence fusion.
@@ -401,7 +401,7 @@ Fill bracketed values from the actual run and never round them up. If a number i
 | How do you know a change is an improvement? | At our sample sizes we can only show it didn't regress: scored on held-out calls, recall didn't fall and false alerts didn't rise, and an operator approved it. [No regression observed on n=...]. |
 | What's the false-alert rate on benign clinic, bank and pharmacy calls? | [SM-C01] per 100 on [N] held-out benign calls, [M] of which mention codes or payments. |
 | Won't people miss a text while the phone is at their ear? | Some will. The text's vibration and tone are the in-call cue, the warning sits in the first line for the lock-screen preview, and a stored follow-up arrives after the call. An audible in-call cue is the P1 fix (§11.2). |
-| Can't scammers fake a Safe Signal text? | Yes, which is why our texts only ever say stop and check: a fake that copies us gives safe advice, and one that says "go ahead" breaks our one rule. In production, sender verification is a carrier gate (G-05). |
+| Can't scammers fake a CallSafe text? | Yes, which is why our texts only ever say stop and check: a fake that copies us gives safe advice, and one that says "go ahead" breaks our one rule. In production, sender verification is a carrier gate (G-05). |
 | Why not a flash (Class 0) message? | We may add one as an attention cue where phones support it, but never as the only copy: providers describe flash messages as not saved to the inbox, and one notes the sender isn't shown, which removes the fixed-sender trust signal. |
 | What if T-Mobile never grants the API or routing? | Without audio routing the product doesn't run; it stays a prototype on replayed calls, and we've said so. Live Translation shows T-Mobile already routes call audio to network AI. The reputation feed is only supporting evidence. |
 | Is listening to the caller legal? | Subscriber opt-in is necessary but not sufficient; caller notice in all-party-consent states is a gate before any real customer (G-03). |
@@ -501,12 +501,12 @@ Synthetic replay (P0) / controlled VoIP call (P1)
 
 **Intervention SMS (illustrative; template `ALERT-OTP-01`):**
 ```json
-{"level":"action_warning","channel":"sms","template_id":"ALERT-OTP-01","message":"Safe Signal: caller is asking for a code. Don't share it. Hang up, call your bank's number yourself.","segments":1,"basis":["POL-OTP-01"],"certainty":"risk_pattern_detected","policy_version":"1.0"}
+{"level":"action_warning","channel":"sms","template_id":"ALERT-OTP-01","message":"CallSafe: caller is asking for a code. Don't share it. Hang up, call your bank's number yourself.","segments":1,"basis":["POL-OTP-01"],"certainty":"risk_pattern_detected","policy_version":"1.0"}
 ```
 
 **Follow-up SMS (illustrative; template `FU-OTP-01`):**
 ```json
-{"template_id":"FU-OTP-01","trigger":"action_warning","basis":["POL-OTP-01"],"message":"Safe Signal: your caller asked for a code. Codes unlock your account; banks never ask. Hang up, look up, call back. Reply SHARED or WRONG.","reply_keywords":["SHARED","WRONG"],"policy_version":"1.0"}
+{"template_id":"FU-OTP-01","trigger":"action_warning","basis":["POL-OTP-01"],"message":"CallSafe: your caller asked for a code. Codes unlock your account; banks never ask. Hang up, look up, call back. Reply SHARED or WRONG.","reply_keywords":["SHARED","WRONG"],"policy_version":"1.0"}
 ```
 
 **Reply keyword event (illustrative; no number or free text stored):**
@@ -542,7 +542,7 @@ If the team has a Java developer, building the messaging gateway as a small Spri
 
 **[GATE] Legal review** is required for recording/monitoring consent, telecom interception/wiretap rules, jurisdictions of all parties, vendor subprocessors, data residency, healthcare-adjacent content, messaging rules for carrier-originated texts (opt-in, opt-out keywords, sender identity) and access procedures. Subscriber opt-in is necessary but not sufficient: the caller is analysed too, and all-party-consent states (for example Washington, RCW 9.73.030) require more. Real use is gated on counsel-approved caller notice and jurisdiction handling (G-03); such a notice may also warn scammers off. Call content should not simply be labelled CPNI; CPNI treatment of carrier metadata needs separate review. **[GATE] Production security review** is required for provider signature validation, threat modeling, audit evidence and incident response. Any sensitive data inadvertently received by a demo must be discarded, not treated as an evaluation sample.
 
-**Privacy tradeoff vs smartphones:** existing on-device protections may keep audio on the handset. A carrier-side cloud model may increase exposure and infrastructure cost. Safe Signal cannot claim superior privacy simply because it is carrier-operated. This is a potential competitive disadvantage to be measured and mitigated.
+**Privacy tradeoff vs smartphones:** existing on-device protections may keep audio on the handset. A carrier-side cloud model may increase exposure and infrastructure cost. CallSafe cannot claim superior privacy simply because it is carrier-operated. This is a potential competitive disadvantage to be measured and mitigated.
 
 ## 13. Risks, mitigations and failure modes
 
@@ -558,7 +558,7 @@ If the team has a Java developer, building the messaging gateway as a small Spri
 | High | Benign OTP-related conversation triggers panic | Negation/context tests, high-specificity rules, hard benign negatives in the held-out batches, K-vs-B comparison, do-not-act fixtures (§8.2), false-positive counter-metrics |
 | High | Legitimate code request on a call the subscriber placed | Outbound calls excluded in v1 (§8.2); callback-scam gap documented |
 | High | Subscriber doesn't see the alert while the phone is at their ear | Vibration and tone as the in-call cue; warning in the first line for lock-screen previews; stored follow-up after the call; audible in-call cue (P1) |
-| High | Safe Signal texts look like phishing or get spoofed by scammers | One fixed sender; no links, numbers or requests for codes, money or info; texts only ever say stop and check, so a fake that copies us gives safe advice and one that says "go ahead" breaks the rule; enrollment texts teach this rule; carrier sender verification in production (G-05); output-contract tests (FR-16/23) |
+| High | CallSafe texts look like phishing or get spoofed by scammers | One fixed sender; no links, numbers or requests for codes, money or info; texts only ever say stop and check, so a fake that copies us gives safe advice and one that says "go ahead" breaks the rule; enrollment texts teach this rule; carrier sender verification in production (G-05); output-contract tests (FR-16/23) |
 | High | Older/low-tech subscriber cannot use the warning | Plain-language SMS that works on any phone, warning in the first line, comprehension check (SM-09), usability study (P1) |
 | High | Important legitimate call delayed/blocked | No pre-answer screening in P0; if the Screening Proxy is built, soft screening, timeout/bypass, allowlist/contacts as permitted, measure abandonment |
 | High | Voice model fails on 8 kHz telephone audio or unseen generators | Codec-matched Gate 0 test with kill criterion (§4.3), out-of-distribution test, insufficient-audio state; rules and intent pathway don't depend on it |
@@ -629,7 +629,7 @@ If the team has a Java developer, building the messaging gateway as a small Spri
 
 ## 17. External sources and attribution
 
-Public sources reviewed November 7, 2026. These support descriptions of existing products and integration constraints, **not measured Safe Signal results**.
+Public sources reviewed November 7, 2026. These support descriptions of existing products and integration constraints, **not measured CallSafe results**.
 
 1. BMAD Method, PRD template / essential spine: https://github.com/bmad-code-org/BMAD-METHOD/blob/main/skills/bmad-prd/assets/prd-template.md
 2. BMAD Method, skills and agents / PM and validation workflow: https://docs.bmad-method.org/reference/skills-and-agents/
@@ -787,22 +787,22 @@ All templates: ASCII GSM-7 only (straight apostrophes), <= 160 characters, no di
 
 | Template | Text |
 |---|---|
-| ENROLL | Safe Signal: reply YES to get a text if a caller asks for codes, money or access. No text doesn't mean safe. Reply STOP to end. |
-| R-YES | Safe Signal: you're in. Texts only when a caller asks for codes, money or access. Reply STOP to quit, HELP for help. Msg&data rates may apply. |
-| R-HELP | Safe Signal: we only ever say stop and check. We never ask for codes, money or info. Reply STOP to quit. |
-| ALERT-OTP-01 | Safe Signal: caller is asking for a code. Don't share it. Hang up, call your bank's number yourself. |
-| ALERT-PAY-01 | Safe Signal: caller is asking for money. Don't pay. Hang up, call them back on a number you know. |
-| ALERT-REMOTE-01 | Safe Signal: caller wants access to your device. Don't install anything. Hang up, call a number you know. |
-| FU-OTP-01 | Safe Signal: your caller asked for a code. Codes unlock your account; banks never ask. Hang up, look up, call back. Reply SHARED or WRONG. |
-| FU-PAY-01 | Safe Signal: your caller pushed for payment. Scammers rush you; real orgs let you call back. Hang up, look up, call back. Reply SHARED or WRONG. |
-| FU-REMOTE-01 | Safe Signal: your caller wanted access to your device. Real support doesn't cold-call. Hang up, look up, call back. Reply SHARED or WRONG. |
-| R-SHARED-OTP | Safe Signal: anyone can be fooled. Call your bank now using the number on your card and tell them a code was shared. |
-| R-SHARED-PAY | Safe Signal: anyone can be fooled. Call your bank or card issuer now using the number on your card and tell them. |
-| R-SHARED-REMOTE | Safe Signal: anyone can be fooled. Disconnect the device from the internet, then get help from a store or a number you know. |
-| R-WRONG | Safe Signal: thanks, counted. A person reviews any change, and it's tested before it goes live. |
-| R-STOP | Safe Signal: you're unsubscribed. No more texts. |
+| ENROLL | CallSafe: reply YES to get a text if a caller asks for codes, money or access. No text doesn't mean safe. Reply STOP to end. |
+| R-YES | CallSafe: you're in. Texts only when a caller asks for codes, money or access. Reply STOP to quit, HELP for help. Msg&data rates may apply. |
+| R-HELP | CallSafe: we only ever say stop and check. We never ask for codes, money or info. Reply STOP to quit. |
+| ALERT-OTP-01 | CallSafe: caller is asking for a code. Don't share it. Hang up, call your bank's number yourself. |
+| ALERT-PAY-01 | CallSafe: caller is asking for money. Don't pay. Hang up, call them back on a number you know. |
+| ALERT-REMOTE-01 | CallSafe: caller wants access to your device. Don't install anything. Hang up, call a number you know. |
+| FU-OTP-01 | CallSafe: your caller asked for a code. Codes unlock your account; banks never ask. Hang up, look up, call back. Reply SHARED or WRONG. |
+| FU-PAY-01 | CallSafe: your caller pushed for payment. Scammers rush you; real orgs let you call back. Hang up, look up, call back. Reply SHARED or WRONG. |
+| FU-REMOTE-01 | CallSafe: your caller wanted access to your device. Real support doesn't cold-call. Hang up, look up, call back. Reply SHARED or WRONG. |
+| R-SHARED-OTP | CallSafe: anyone can be fooled. Call your bank now using the number on your card and tell them a code was shared. |
+| R-SHARED-PAY | CallSafe: anyone can be fooled. Call your bank or card issuer now using the number on your card and tell them. |
+| R-SHARED-REMOTE | CallSafe: anyone can be fooled. Disconnect the device from the internet, then get help from a store or a number you know. |
+| R-WRONG | CallSafe: thanks, counted. A person reviews any change, and it's tested before it goes live. |
+| R-STOP | CallSafe: you're unsubscribed. No more texts. |
 
-**Enrollment card (printed at the table, shown on the stack slide):** Safe Signal analyses audio of your own calls only after you reply YES; texts are sent only when a call asks for codes, money or access; msg and data rates may apply; reply STOP to end, HELP for help. **Safe Signal only ever says stop and check. Any text saying a caller is fine, or asking for codes, money or info, is not us.**
+**Enrollment card (printed at the table, shown on the stack slide):** CallSafe analyses audio of your own calls only after you reply YES; texts are sent only when a call asks for codes, money or access; msg and data rates may apply; reply STOP to end, HELP for help. **CallSafe only ever says stop and check. Any text saying a caller is fine, or asking for codes, money or info, is not us.**
 
 ### 19.6 Evaluation (minimum honest version)
 - **Dev set:** 20 scam + 20 benign (at least 10 hard-benign), written by Track C in `scenarios/dev/`. Track A tunes rules only on it, reads it, and never edits it.

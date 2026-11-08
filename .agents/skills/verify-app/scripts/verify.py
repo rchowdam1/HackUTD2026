@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Safe Signal verification harness. Run through `make verify*` or:
+"""CallSafe verification harness. Run through `make verify*` or:
 
   env -u PYTHONPATH -u PYTHONHOME -u VIRTUAL_ENV uv run --with playwright==1.64.1 \\
       python .agents/skills/verify-app/scripts/verify.py <command>

@@ -265,7 +265,7 @@ def results_eval(ctx: Context):
     res = card(page, "^Held-out results")
     ui_assert(ctx, "results card heading names batch dev",
               lambda: pw_expect()(res.get_by_role("heading", level=2)).to_have_text("Held-out results · dev"))
-    for arm, title in (("K", "Keyword only (K)"), ("B", "Safe Signal rules (B)")):
+    for arm, title in (("K", "Keyword only (K)"), ("B", "CallSafe rules (B)")):
         c = data["arms"][arm]
         block = res.locator("div.arm").filter(has=page.get_by_role("heading", name=title))
         ui_assert(ctx, f"arm {arm} shows 'Scam calls caught: {c['TP']} of {c['TP'] + c['FN']}'",

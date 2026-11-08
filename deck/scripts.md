@@ -1,7 +1,7 @@
-# Safe Signal: talk tracks
+# CallSafe: talk tracks
 
 ## 30-second version
-"A scam call can get past every caller-ID filter and then simply ask for your code. Safe Signal listens only on calls you've opted into, and when the caller asks for a code, money or access to your device, it texts you one line: what they're asking for and one safe step, which is to hang up and call back on a number you know. After the call, a second text teaches you the trick. We don't ask you to trust AI. We tell you what the caller just asked for, give one step that's safe even if we're wrong, and teach you the trick so you catch it next time, on any phone."
+"A scam call can get past every caller-ID filter and then simply ask for your code. CallSafe listens only on calls you've opted into, and when the caller asks for a code, money or access to your device, it texts you one line: what they're asking for and one safe step, which is to hang up and call back on a number you know. After the call, a second text teaches you the trick. We don't ask you to trust AI. We tell you what the caller just asked for, give one step that's safe even if we're wrong, and teach you the trick so you catch it next time, on any phone."
 
 ## 3-minute version (timed to PRD §19.1)
 

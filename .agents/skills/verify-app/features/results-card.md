@@ -20,7 +20,7 @@ Preconditions:
 
 - **Pending.** The check renames the sandbox's `results/latest.json` to `latest.json.verify-aside`. `GET /results/latest` returns exactly `{"status": "pending"}`; the `Held-out results` card contains `Results pending`; `Where we fail` contains no `Missed`.
 - **Eval CLI.** In the sandbox run `python -m eval.run --arms K,B --batch dev` (sandbox env, `PYTHONPATH` = sandbox). Exit 0; `results/latest.json` has `batch: dev` and arms K and B; `GET /results/latest` bytes equal the file bytes.
-- **Card.** Reload the console. The card heading reads `Held-out results · dev`; the `Keyword only (K)` and `Safe Signal rules (B)` blocks contain `Scam calls caught: TP of TP+FN` and `hard_benign_fp of hard_benign_n` from the file; `Where we fail` contains `Missed FN of TP+FN scam calls` for arm B.
+- **Card.** Reload the console. The card heading reads `Held-out results · dev`; the `Keyword only (K)` and `CallSafe rules (B)` blocks contain `Scam calls caught: TP of TP+FN` and `hard_benign_fp of hard_benign_n` from the file; `Where we fail` contains `Missed FN of TP+FN scam calls` for arm B.
 - **Proof.** `artifacts/results.eval-cli-to-card--eval-stdout.txt` (command, exit code, output), `artifacts/results.eval-cli-to-card--latest.json`, `screenshots/results.*`.
 
 ## Gotchas

@@ -1,4 +1,4 @@
-"""Launch, doctor and clean up an isolated Safe Signal instance for verification.
+"""Launch, doctor and clean up an isolated CallSafe instance for verification.
 
 Isolation model: the app hard-wires its SQLite DB and results file to paths under
 the repo root (`data/`, `results/`), so verification never runs the app from the
@@ -228,7 +228,7 @@ def launch(run_id: str, sandbox: Path, evidence: Path, profile: str, ui: bool, l
             inst["procs"].append({"name": "vite", "pid": vite.pid})
             inst["console"] = f"http://127.0.0.1:{cport}"
             _write_state(inst)
-            _wait_http(inst["console"] + "/", vite, vlog, 60, ok=lambda r: r.status_code == 200 and "Safe Signal" in r.text)
+            _wait_http(inst["console"] + "/", vite, vlog, 60, ok=lambda r: r.status_code == 200 and "CallSafe" in r.text)
     except BaseException:  # partial launch: stop what we started before the caller moves on
         stop(inst, log)
         raise

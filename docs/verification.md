@@ -1,6 +1,6 @@
 # Verification guide
 
-Safe Signal has an agent-driven verification system modeled on pstack's `create-verification-skill` and `maintain-verification-skill` (plus the formal pair). It launches the real app, operates it the way the operator, the subscriber's phone and the Photon bridge do, and reports for each check whether the feature actually works, with evidence a reviewer can open.
+CallSafe has an agent-driven verification system modeled on pstack's `create-verification-skill` and `maintain-verification-skill` (plus the formal pair). It launches the real app, operates it the way the operator, the subscriber's phone and the Photon bridge do, and reports for each check whether the feature actually works, with evidence a reviewer can open.
 
 This guide is for people. Agents should read the skills directly; they are the source of truth and are kept in sync by lint:
 

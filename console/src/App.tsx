@@ -36,7 +36,7 @@ function Login({ onLogin }: { onLogin: () => void }) {
         (await api.login(password)) ? onLogin() : setError(true);
       }}
     >
-      <h1>Safe Signal</h1>
+      <h1>CallSafe</h1>
       <input type="password" placeholder="Operator password" value={password} onChange={(e) => setPassword(e.target.value)} autoFocus />
       <button type="submit">Log in</button>
       {error && <p className="error">Wrong password</p>}
@@ -63,7 +63,7 @@ function Console() {
   return (
     <div className="console">
       <header>
-        <h1>Safe Signal</h1>
+        <h1>CallSafe</h1>
         <span className="tag">replayed call through the live ingestion path</span>
         {FIXTURES && <span className="tag warn">fixture replay</span>}
         <span className="status">{sessionLabel(state)}</span>
@@ -216,7 +216,7 @@ function ResultsCard({ results }: { results: Results }) {
   const arm = (name: string, c?: ArmCounts) =>
     c && (
       <div className="arm" key={name}>
-        <h3>{name === "K" ? "Keyword only (K)" : name === "B" ? "Safe Signal rules (B)" : name}</h3>
+        <h3>{name === "K" ? "Keyword only (K)" : name === "B" ? "CallSafe rules (B)" : name}</h3>
         <p>
           Hard-benign false alerts: <b>{c.hard_benign_fp} of {c.hard_benign_n}</b>
         </p>

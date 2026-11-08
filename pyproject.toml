@@ -1,7 +1,7 @@
 [project]
 name = "safe-signal"
 version = "0.1.0"
-description = "Safe Signal: in-call scam-request alerts by SMS (HackUTD 2026)"
+description = "CallSafe: in-call scam-request alerts by SMS (HackUTD 2026)"
 requires-python = ">=3.11,<3.12"
 dependencies = [
     "fastapi>=0.115",

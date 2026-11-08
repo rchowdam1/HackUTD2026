@@ -1,6 +1,6 @@
-# Safe Signal (HackUTD 2026)
+# CallSafe (HackUTD 2026)
 
-Safe Signal texts you during a call when the caller asks for a code, money or access to your device. The text names the request and gives one safe step. The demo replays two calls through the live pipeline: a clinic call that must stay silent, and a bank call that turns into a request for a one-time passcode (OTP). An operator console shows the transcript, why an alert fired, and the held-out results. `PRD.md` §19 is the build spec.
+CallSafe texts you during a call when the caller asks for a code, money or access to your device. The text names the request and gives one safe step. The demo replays two calls through the live pipeline: a clinic call that must stay silent, and a bank call that turns into a request for a one-time passcode (OTP). An operator console shows the transcript, why an alert fired, and the held-out results. `PRD.md` §19 is the build spec.
 
 ## Stack
 

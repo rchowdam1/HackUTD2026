@@ -31,7 +31,7 @@ import maint as M  # noqa: E402
 FORMAL_SKILL = HERE.parents[1] / "verify-pipeline-formal" / "SKILL.md"
 FORMAL_FILES = ["backend/app/pipeline.py", "backend/app/ingest/__init__.py", "backend/app/api/demo.py"]
 
-BRIEF = """You are a read-only source reviewer for the Safe Signal repo at {repo}. Do not edit files, run the app, or run git commands that change state.
+BRIEF = """You are a read-only source reviewer for the CallSafe repo at {repo}. Do not edit files, run the app, or run git commands that change state.
 Feature: {name}. Its verification recipe is {doc}; read it first.
 Source paths this feature covers: {paths}.
 {changed}Explain from source how this user-facing feature works now, then compare with the recipe.
