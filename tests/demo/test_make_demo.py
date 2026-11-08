@@ -168,12 +168,15 @@ def test_dead_quick_tunnel_is_replaced_and_the_number_repointed(env, monkeypatch
     monkeypatch.setattr(demo, "tunnel_answers", lambda b: True)
     monkeypatch.setattr(demo, "point_webhooks", lambda number, base: pointed.append(base))
     monkeypatch.setattr(demo, "stop", lambda procs: stopped.extend(procs))
+    modes = []
+    monkeypatch.setattr(demo, "sms_mode", lambda port, set_to=None: modes.append(set_to) or "real")
     app = DeadProc(["uvicorn"])
 
     tunnel, new_app, base = demo.recover_tunnel(8000, app, old)
 
     assert base == new and demo.os.environ["PUBLIC_BASE_URL"] == new and pointed == [new]
     assert stopped == [app] and new_app.cmd[0] == "uvicorn" and tunnel.cmd == ["cloudflared"]
+    assert modes == [None, "real"]  # read before the restart, set back after it
 
 
 def test_webhooks_stay_put_when_the_tunnel_does_not_answer(env, monkeypatch):

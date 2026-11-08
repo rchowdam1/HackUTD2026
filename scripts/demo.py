@@ -276,6 +276,19 @@ def expose(base: str) -> None:
             "the app (use Start live conversation or a replay)")
 
 
+def sms_mode(port: int, set_to: str | None = None) -> str | None:
+    """Read (or set) the backend's SMS mode as the operator; None if the backend can't be asked."""
+    try:
+        with httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=5) as c:
+            if c.post("/login", json={"password": os.environ["OPERATOR_PASSWORD"].strip()}).status_code != 200:
+                return None
+            if set_to:
+                c.post("/demo/sms-mode", json={"mode": set_to})
+            return c.get("/state").json().get("sms_mode")
+    except httpx.HTTPError:
+        return None
+
+
 def recover_tunnel(port: int, app: subprocess.Popen, base: str) -> tuple[subprocess.Popen, subprocess.Popen, str]:
     """A dropped tunnel ends the call in progress; bring up a new one so the next call works without a restart."""
     say("tunnel exited; starting a new one")
@@ -284,10 +297,14 @@ def recover_tunnel(port: int, app: subprocess.Popen, base: str) -> tuple[subproc
     if new_base != base:
         # A quick tunnel gets a new hostname, and the backend signs and checks Twilio webhooks against it.
         say("new tunnel hostname: restarting the backend (the console reconnects by itself)")
+        mode = sms_mode(port)  # in memory only, so carry the operator's choice across the restart
         stop([app])
         app = backend(port)
         if not demo_up.wait_healthy(app, f"http://127.0.0.1:{port}/health"):
             say("backend did not come back after the tunnel restart")
+        elif mode:
+            sms_mode(port, mode)
+            say(f"SMS mode kept: {mode}")
     expose(new_base)
     return tunnel, app, new_base
 
