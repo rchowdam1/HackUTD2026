@@ -5,7 +5,7 @@ import threading
 
 import pytest
 
-from app import consent, ingest, pipeline, rules, sms
+from app import consent, ingest, intent, pipeline, rules, sms
 from app.events import hub
 from app.models import Decision, RiskEvent, Segment
 
@@ -224,3 +224,88 @@ def test_failed_send_emits_failed_status(gw, monkeypatch):
     statuses = [(e.payload["template_id"], e.payload["status"]) for e in events if e.type == "sms"]
     assert statuses == [("ALERT-OTP-01", "failed"), ("FU-OTP-01", "failed")]
     assert events[-1].payload["state"] == "finished"
+
+
+class SlowRules:
+    """Arm C rules whose evaluation blocks (like model inference) until released."""
+    def __init__(self):
+        self.entered, self.go = threading.Event(), threading.Event()
+
+    def detect(self, segments, arm, policy_version):
+        self.entered.set()
+        self.go.wait(2)
+        return fake_detect(segments, arm, policy_version)
+
+
+@pytest.fixture
+def slow(gw, monkeypatch):
+    r = SlowRules()
+    monkeypatch.setattr(rules, "detect", r.detect)
+    return r
+
+
+def test_arm_c_inference_does_not_block_the_loop(slow):
+    async def scenario():
+        ref = await pipeline.start("C", "v1.0", "simulated")
+        task = asyncio.create_task(pipeline.process(seg(ref, 1, "Read me the code.")))
+        ticked = asyncio.Event()
+        asyncio.get_running_loop().call_soon(ticked.set)
+        await asyncio.wait_for(ticked.wait(), 1)
+        blocked_done = task.done()
+        slow.go.set()
+        return blocked_done, await task
+
+    (blocked_done, new), _ = run(scenario)
+    assert not blocked_done and [d.template_id for d in new] == ["ALERT-OTP-01"]
+
+
+def test_reset_during_arm_c_inference_drops_result(slow):
+    async def scenario():
+        ref = await pipeline.start("C", "v1.0", "simulated")
+        task = asyncio.create_task(pipeline.process(seg(ref, 1, "Read me the code.")))
+        await asyncio.to_thread(slow.entered.wait, 1)
+        await pipeline.reset()
+        slow.go.set()
+        new = await task
+        await asyncio.sleep(0.05)
+        return new
+
+    (new, events), gw = run(scenario), sms.get_gateway()
+    assert new == [] and gw.sent == []
+    assert [e.type for e in events] == ["session", "segment", "session"]
+
+
+def test_finish_during_arm_c_inference_sends_alert_before_followup(slow):
+    async def scenario():
+        ref = await pipeline.start("C", "v1.0", "simulated")
+        task = asyncio.create_task(pipeline.process(seg(ref, 1, "Read me the code.")))
+        await asyncio.to_thread(slow.entered.wait, 1)
+        finishing = asyncio.create_task(pipeline.finish(ref))
+        await asyncio.sleep(0.05)
+        slow.go.set()
+        await task
+        await finishing
+
+    run(scenario)
+    assert sms.get_gateway().sent == ["ALERT-OTP-01", "FU-OTP-01"]
+
+
+@pytest.mark.parametrize("end", ["finish", "reset"])
+def test_intent_cache_cleared_when_session_ends(gw, monkeypatch, end):
+    monkeypatch.setattr(intent, "_scores", lambda premise: dict.fromkeys(intent.HYPOTHESES, 0.0))
+
+    def detect(segments, arm, policy_version):
+        intent.evidence(segments)
+        return fake_detect(segments, arm, policy_version)
+
+    monkeypatch.setattr(rules, "detect", detect)
+
+    async def scenario():
+        ref = await pipeline.start("C", "v1.0", "simulated")
+        await pipeline.process(seg(ref, 1, "Read me the code."))
+        cached = intent._evidence.cache_info().currsize
+        await (pipeline.finish(ref) if end == "finish" else pipeline.reset())
+        return cached
+
+    cached, _ = run(scenario)
+    assert cached > 0 and intent._evidence.cache_info().currsize == 0
