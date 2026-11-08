@@ -1,0 +1,24 @@
+{
+  "id": "dev_scam_15",
+  "set": "dev",
+  "label": "scam",
+  "hard_benign": false,
+  "category": "payment",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "Your identity was used to open accounts. To protect your cash, withdraw it today.",
+      "audio": null
+    },
+    {
+      "speaker": "subscriber",
+      "text": "All of it?",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "Yes, then deposit it at the Bitcoin machine at the gas station near you.",
+      "audio": null
+    }
+  ]
+}

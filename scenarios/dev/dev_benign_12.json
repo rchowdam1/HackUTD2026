@@ -1,0 +1,19 @@
+{
+  "id": "dev_benign_12",
+  "set": "dev",
+  "label": "benign",
+  "hard_benign": true,
+  "category": "none",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "Hi, this is the school front office. Your son left his lunch money at home.",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "We covered it today, so there's nothing you need to do.",
+      "audio": null
+    }
+  ]
+}

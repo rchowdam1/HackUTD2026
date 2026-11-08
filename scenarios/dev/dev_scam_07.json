@@ -1,0 +1,19 @@
+{
+  "id": "dev_scam_07",
+  "set": "dev",
+  "label": "scam",
+  "hard_benign": false,
+  "category": "otp",
+  "turns": [
+    {
+      "speaker": "subscriber",
+      "text": "I got a text with a code just now. Is that from you?",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "Yes, that's us. Go ahead and read the code out so we can finish up.",
+      "audio": null
+    }
+  ]
+}

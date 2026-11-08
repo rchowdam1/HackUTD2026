@@ -1,0 +1,19 @@
+{
+  "id": "dev_benign_19",
+  "set": "dev",
+  "label": "benign",
+  "hard_benign": false,
+  "category": "none",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "Hey, the team meeting moved to three. Can you still make it?",
+      "audio": null
+    },
+    {
+      "speaker": "subscriber",
+      "text": "Yes, I'll be there.",
+      "audio": null
+    }
+  ]
+}

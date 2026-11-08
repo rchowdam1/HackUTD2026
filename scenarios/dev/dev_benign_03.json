@@ -1,0 +1,19 @@
+{
+  "id": "dev_benign_03",
+  "set": "dev",
+  "label": "benign",
+  "hard_benign": true,
+  "category": "none",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "Hey, it's Sam from IT. I reset your work laptop.",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "You'll get a login code by text. Type it in yourself, don't read it to anyone, including me.",
+      "audio": null
+    }
+  ]
+}

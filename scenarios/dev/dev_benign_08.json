@@ -1,0 +1,19 @@
+{
+  "id": "dev_benign_08",
+  "set": "dev",
+  "label": "benign",
+  "hard_benign": true,
+  "category": "none",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "Hey, it's your landlord. Just letting you know I got your rent payment.",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "Everything is settled for this month.",
+      "audio": null
+    }
+  ]
+}

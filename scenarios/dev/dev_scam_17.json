@@ -1,0 +1,19 @@
+{
+  "id": "dev_scam_17",
+  "set": "dev",
+  "label": "scam",
+  "hard_benign": false,
+  "category": "remote",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "I'm with the help desk. Go to the website I give you and enter the code on the screen.",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "That lets me see your screen and remove the problem.",
+      "audio": null
+    }
+  ]
+}

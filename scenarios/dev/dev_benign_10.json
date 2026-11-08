@@ -1,0 +1,19 @@
+{
+  "id": "dev_benign_10",
+  "set": "dev",
+  "label": "benign",
+  "hard_benign": true,
+  "category": "none",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "This is your internet provider confirming your technician visit on Thursday.",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "Our technicians come in person. We will never ask to remote into your computer.",
+      "audio": null
+    }
+  ]
+}

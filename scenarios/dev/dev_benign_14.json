@@ -1,0 +1,19 @@
+{
+  "id": "dev_benign_14",
+  "set": "dev",
+  "label": "benign",
+  "hard_benign": false,
+  "category": "none",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "Hi, this is the dental office. We need to move your cleaning to Wednesday at two.",
+      "audio": null
+    },
+    {
+      "speaker": "subscriber",
+      "text": "That works, thanks.",
+      "audio": null
+    }
+  ]
+}

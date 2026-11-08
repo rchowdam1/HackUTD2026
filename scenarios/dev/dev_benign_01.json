@@ -1,0 +1,19 @@
+{
+  "id": "dev_benign_01",
+  "set": "dev",
+  "label": "benign",
+  "hard_benign": true,
+  "category": "none",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "This is an automated fraud alert from your bank. Did you make a purchase at a gas station today?",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "Press one for yes. We will never ask you for a code or your PIN.",
+      "audio": null
+    }
+  ]
+}

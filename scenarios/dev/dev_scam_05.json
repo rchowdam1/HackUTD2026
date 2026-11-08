@@ -1,0 +1,19 @@
+{
+  "id": "dev_scam_05",
+  "set": "dev",
+  "label": "scam",
+  "hard_benign": false,
+  "category": "otp",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "Hi, I saw your couch listing and I want to buy it.",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "Before I drive over I need to know you're real. You should get a code from the app, can you tell me what it is?",
+      "audio": null
+    }
+  ]
+}

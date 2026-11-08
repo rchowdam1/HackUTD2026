@@ -1,0 +1,19 @@
+{
+  "id": "dev_scam_08",
+  "set": "dev",
+  "label": "scam",
+  "hard_benign": false,
+  "category": "otp",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "Sorry to bother you, I typed your number into my account by mistake.",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "You probably just got my login code. Could you tell me what it says so I can get in?",
+      "audio": null
+    }
+  ]
+}

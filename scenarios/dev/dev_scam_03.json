@@ -1,0 +1,19 @@
+{
+  "id": "dev_scam_03",
+  "set": "dev",
+  "label": "scam",
+  "hard_benign": false,
+  "category": "otp",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "This is account security. I will never ask for your password.",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "I only need the one-time passcode we just texted you so I can lock the account.",
+      "audio": null
+    }
+  ]
+}

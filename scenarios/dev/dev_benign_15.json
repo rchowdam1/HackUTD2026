@@ -1,0 +1,19 @@
+{
+  "id": "dev_benign_15",
+  "set": "dev",
+  "label": "benign",
+  "hard_benign": false,
+  "category": "none",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "Are we still on for dinner Saturday?",
+      "audio": null
+    },
+    {
+      "speaker": "subscriber",
+      "text": "Yes, seven o'clock at the usual place.",
+      "audio": null
+    }
+  ]
+}

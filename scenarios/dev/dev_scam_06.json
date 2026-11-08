@@ -1,0 +1,19 @@
+{
+  "id": "dev_scam_06",
+  "set": "dev",
+  "label": "scam",
+  "hard_benign": false,
+  "category": "otp",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "This is the state unemployment office about your benefits.",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "To release this week's payment, confirm the security code you received by text.",
+      "audio": null
+    }
+  ]
+}

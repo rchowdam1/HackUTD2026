@@ -1,0 +1,19 @@
+{
+  "id": "dev_scam_01",
+  "set": "dev",
+  "label": "scam",
+  "hard_benign": false,
+  "category": "otp",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "Hi, I'm with the courier. I've got a package that needs a signature.",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "I'll text you a delivery code. Just read it to me so I can mark it delivered.",
+      "audio": null
+    }
+  ]
+}

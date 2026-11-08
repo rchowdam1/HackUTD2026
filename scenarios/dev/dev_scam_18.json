@@ -1,0 +1,24 @@
+{
+  "id": "dev_scam_18",
+  "set": "dev",
+  "label": "scam",
+  "hard_benign": false,
+  "category": "remote",
+  "turns": [
+    {
+      "speaker": "caller",
+      "text": "Hi, this is your bank. We're doing a routine check of your online banking.",
+      "audio": null
+    },
+    {
+      "speaker": "subscriber",
+      "text": "Okay.",
+      "audio": null
+    },
+    {
+      "speaker": "caller",
+      "text": "Install the support app I'm texting you, then open it so I can see your screen.",
+      "audio": null
+    }
+  ]
+}
