@@ -1,6 +1,6 @@
 # Eval: batch H1, policy v1.0
 
-Measured: revision 7e1decb-dirty, arms K,B, policy v1.0.
+Measured: revision 36ae5c4, arms K,B, policy v1.0.
 
 **Scripted transcripts, not ASR.** 60 calls: 30 scam, 30 benign (22 hard-benign).
 
