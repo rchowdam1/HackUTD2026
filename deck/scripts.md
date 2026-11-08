@@ -5,20 +5,21 @@
 
 ## 3-minute version (timed to PRD §19.1)
 
+The demo runs arm B with simulated SMS: texts appear in the console's phone frame and judges reply with its on-screen buttons. The Twilio trial account can't send our texts. Real SMS works through Twilio once the account is upgraded and registered; the code is ready (signed webhooks, fails closed). If asked, say so plainly.
+
 **0:00-0:20 Problem (slide 1)**
 "This call got past Scam Shield. The number looks fine. Thirty seconds in, the caller says: read me the code we just sent you. That's the moment the money goes, and nothing on your phone says a word."
 
 **0:20-0:40 Replay 1, clinic (console)**
-"Here's a clinic call. It mentions a code, but it tells you not to share it." (Phone stays silent.) "No alert. The console says 'no alert, not a safety verdict'. Silence never means a call is safe."
+"Here's a clinic call. It mentions a code, but it tells you not to share it." (The phone frame stays empty.) "No alert. The console says 'no alert, not a safety verdict'. Silence never means a call is safe."
 
-**0:40-1:50 Replay 2, bank (console plus phone)**
-"Now a bank fraud call. It starts out normal..." (The caller asks for the code and the phone buzzes.) "That buzz is the alert: 'caller is asking for a code. Don't share it. Hang up, call your bank's number yourself.' It names the request and gives one safe step." (The replay ends, the call ends automatically, and the follow-up arrives.) "After the call, the follow-up explains the trick: banks never ask for codes." (Hand over the phone with the thread open.) "Say we got it wrong. Type WRONG." (The console counter ticks.) "That goes to a person, and any change is tested before it goes live."
-- If a text hasn't arrived 10 s after it was sent: flip the SMS mode toggle to simulated and say "switching to simulated SMS for the hall".
+**0:40-1:50 Replay 2, bank (console phone frame)**
+"Now a bank fraud call. It starts out normal..." (The caller asks for the code and the alert lands in the phone frame.) "That's the alert: 'caller is asking for a code. Don't share it. Hang up, call your bank's number yourself.' It names the request and gives one safe step." (The replay ends, the call ends automatically, and the follow-up arrives.) "After the call, the follow-up explains the trick: banks never ask for codes." (Point the judge to the reply buttons under the phone frame.) "Say we got it wrong. Press WRONG." (The console counter ticks.) "That goes to a person, and any change is tested before it goes live."
 
 **1:50-2:25 Why panel and one number (console, then slide 3)**
-"Every alert cites the rule that fired, here in the 'Why this alert' panel. The obvious way to build this is keyword matching. On calls that only mention codes or money, keywords alerted on 6 of 22; we alerted on none of 22. But we caught only 5 of 30 of the scams. That's 60 held-out scripted calls written blind by an AI agent that never saw the rules. It's small, and we say so." (Point to the "Where we fail" card.) "Here's what we still miss: scams that ask in words our rules weren't written for. We catch 19 of 20 on the calls we tuned on and 5 of 30 on calls we never saw. That gap is our next job, and it's why a person reviews every change."
+"Every alert cites the rule that fired, here in the 'Why this alert' panel. The obvious way to build this is keyword matching. We tested both on 6,228 scripted calls written blind by AI agents that never saw our code. Keywords alerted on 64% of harmless calls. Our rules alerted on 0.9%, and caught 66% of the scams. They're scripts, not real calls, so no production claim." (Point to the "Where we fail" card.) "Here's what we still miss: about a third of scams, asked in words our rules weren't written for. An opt-in model from TypeSafe caught 99%, but it sends call text off the laptop, and its API is out of credit today."
 
 **2:25-3:00 Stack and next steps (slide 4)**
-"It's whisper speech-to-text and pure-Python rules, with Twilio for the texts. We store counts, not audio, transcripts or numbers. T-Mobile already runs AI inside calls on any phone with Live Translation. Next we route on that path, add an in-call audio prompt, gate it on consent, and verify the sender. We don't ask you to trust AI. We tell you what the caller just asked for, give one step that's safe even if we're wrong, and teach you the trick so you catch it next time, on any phone."
+"It's whisper speech-to-text and pure-Python rules, with Twilio texts, simulated here. We store counts, not audio, transcripts or numbers. T-Mobile already runs AI inside calls on any phone with Live Translation. Next we route on that path, add an in-call audio prompt, gate it on consent, and verify the sender. We don't ask you to trust AI. We tell you what the caller just asked for, give one step that's safe even if we're wrong, and teach you the trick so you catch it next time, on any phone."
 
-**Reset between judges:** press the console Reset button. It never changes consent. If the phone was STOPped, text START from it or switch to the spare phone. Only ever ask judges to type WRONG.
+**Reset between judges:** press the console Reset button. It never changes consent. If someone pressed STOP in the phone frame, press YES to re-enroll. (With real SMS, a STOPped phone texts START, or switch to the spare phone.) Only ever ask judges to press WRONG.

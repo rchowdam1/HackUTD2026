@@ -11,26 +11,28 @@ For subscribers who opt in by text, CallSafe follows the call's transcript. When
 ## How we built it
 - FastAPI backend, single process, asyncio pipeline with an SSE event hub
 - faster-whisper `small.en` on CPU for speech-to-text, with a labelled cached-transcript fallback
-- Pure-Python rules: a keyword baseline (K) and context rules (B) that check who is speaking, the direction of the request and negation ("don't share it")
-- Twilio Programmable Messaging behind an `SmsGateway` interface, plus a simulated gateway the operator can switch to
-- SQLite holding consent (salted hashes of numbers) and counts only; no audio, transcripts or raw numbers stored
+- Pure-Python rules: a keyword baseline (K) and context rules (B) that check who is speaking, the direction of the request and negation ("don't share it"). The demo runs B.
+- Optional arm C: the same rules plus TypeSafe's Jev API. Opt-in; it sends each caller turn and up to three turns before it to api.typesafe.ai, and any API failure falls back to B for that turn
+- Twilio Programmable Messaging behind an `SmsGateway` interface (webhooks check Twilio's signature and fail closed), plus a simulated gateway the operator can switch to
+- SQLite holding consent (HMAC hashes of numbers) and counts only; no audio, transcripts or raw numbers stored, and call text is dropped from memory when the call ends
 - React + TypeScript + Vite operator console
 - Demo call voices generated offline with Qwen3-TTS (synthetic voices)
-- Evaluation: a 40-call dev set for tuning, and 60 held-out scripted calls (H1) written by an AI agent in a separate context that never saw the rules, the rule tests or any results, sealed by hash before scoring
+- Evaluation: a 40-call dev set for tuning, 60 held-out scripted calls (H1) written by an AI agent in a separate context that never saw the rules, the rule tests or any results, then three larger blind sets (594, 1990 and 6228 calls) written by isolated AI agents with no repo access. The held-out sets were sealed by hash before scoring.
 
 ## Results
-On H1 (60 scripted calls, scored on scripted transcripts rather than ASR): keyword baseline caught 9 of 30 scams (30.0%, 95% CI 16.6% to 47.9%) with 6 of 22 false alerts on hard-benign calls; CallSafe's rules caught 5 of 30 (16.6%, 95% CI 7.3% to 33.6%) with 0 of 22 false alerts (upper bound 14.9%); adding the intent model caught 5 of 30 with 1 of 22. Paired, 4 calls were right only under keywords and 6 only under our rules, so we call no win. The same rules catch 19 of 20 scams on the dev set they were tuned on: they don't yet generalise to new wording, and closing that gap is the main open problem. This sample is too small for a production claim.
+All numbers are scored on AI-written scripted transcripts, not ASR and not real calls, so we make no production claim. On the largest blind set (H4: 6228 calls, 3117 scams and 3111 harmless calls), the keyword baseline caught 2629 of 3117 scams (84.3%, 95% CI 83.0% to 85.6%) but alerted on 2001 of 3111 harmless calls (64.4%). CallSafe's rules (B, the demo) caught 2056 of 3117 (65.9%, 95% CI 64.2% to 67.7%) with 27 of 3111 false alerts (0.9%, 95% CI 0.5% to 1.3%). Arm C caught 3094 of 3117 (99.2%) with 9 of 3111 false alerts (0.3%), measured on the branch before it merged; it sends call text to TypeSafe and is currently unavailable because the API is out of credit. On H1 (60 calls; we read these transcripts while diagnosing, so they're no longer fully blind), keywords caught 27 of 30 with 13 of 22 false alerts on hard-benign calls, and B caught 18 of 30 with 0 of 22; paired, we call no win. On the dev set the rules were tuned on, B catches 20 of 20 with no false alerts. B still misses about a third of blind scams; arm C closes most of that gap, at the cost of sending call text off the machine.
 
 ## What's honest about the demo
 - Calls are **replayed** recordings, not live phone calls.
 - The carrier signal and routing are **mocked**; this is not a carrier integration.
-- SMS is [real, via Twilio to a team phone | simulated in the console]. [Pick one at submission.]
+- SMS is **simulated** in the console: texts appear in a phone frame and replies are on-screen buttons. Twilio's trial account can't send our texts. Real SMS through Twilio is built and works once the account is upgraded and registered.
+- The demo runs arm B, so call text stays on the laptop. Arm C would send it to TypeSafe.
 - Accuracy numbers come from scripted transcripts, not speech recognition.
 
 ## Challenges
 - Telling "never share this code" apart from "read me the code": the words match, but the direction of the request is opposite.
 - Keeping the advice safe even when we're wrong, and never telling anyone a call is safe.
-- Keeping the evaluation honest: the held-out set is written blind, sealed by hash, and reported with denominators and confidence intervals.
+- Keeping the evaluation honest: the held-out sets are written blind, sealed by hash, and reported with denominators and confidence intervals.
 - faster-whisper's `transcribe` returns a lazy generator, so decoding happened inside the event loop until we consumed it in a worker thread.
 - A `data/` ignore rule silently dropped a test audio fixture.
 - Windows timers wake up to about 15 ms early, which made a real-time replay test flaky.
@@ -41,4 +43,5 @@ On H1 (60 scripted calls, scored on scripted transcripts rather than ASR): keywo
 - An in-call audio prompt
 - A consent gate, with caller notice in all-party-consent states
 - Sender verification for alert texts
-- A fresh held-out set (H2) and an intent model checked against the rules
+- Real SMS: an upgraded Twilio account with a registered number (10DLC or toll-free)
+- Closing B's gap on new wording without sending call text off the machine
