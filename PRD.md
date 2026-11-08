@@ -1,21 +1,21 @@
 ---
 title: "CallSafe — Product Requirements Document"
-version: "1.4"
+version: "1.5"
 status: "Hackathon product specification and build plan, revised after two validation reviews, the SMS/operator-console operating model, and four model-council reviews; integration and production assumptions unvalidated"
 created: "2026-11-07"
-updated: "2026-11-07"
+updated: "2026-11-08"
 owner: "CallSafe hackathon team"
 method: "BMAD-aligned PM PRD: essential spine + enterprise/privacy adaptations + five-gate verification lifecycle"
 ---
 
 # CallSafe
-## Product Requirements Document | Hackathon v1.4
+## Product Requirements Document | Hackathon v1.5
 
 **One-line pitch:** *Protect the person, not just the phone number.*
 
 **Product thesis.** A phone number's reputation can't tell you what a caller will ask once you pick up. CallSafe listens, only with the subscriber's opt-in, for the moment a call turns dangerous (a request for a code, password, SSN, money or remote access), texts the subscriber one clear, safe next step, and follows up after the call. There is nothing to install and no browser to open: it works on any phone that can receive a text. T-Mobile's fraud and scam protection team runs the service from an operator console, and every claim that we are doing better has to pass five verification gates (§8). Delivered at the carrier layer, the same protection could reach subscribers whose phones lack on-device scam detection. **[ASSUMPTION]**
 
-**Scope.** The hackathon demonstrates the pipeline on replayed and controlled calls with mocked carrier signals, sends real texts to a team-owned test phone, and reports measured results against the comparison arms in §9. Real carrier integration and broader device coverage are future work behind gates G-01 to G-07 (§15). We are not claiming to have invented AI scam detection; Google, Samsung and Apple already ship versions of it (§1.3).
+**Scope.** The hackathon demonstrates the pipeline on replayed and controlled calls with mocked carrier signals, sends texts to a team-owned test phone (simulated in the console until the Twilio account is upgraded, §19.1), and reports measured results against the comparison arms in §9. Real carrier integration and broader device coverage are future work behind gates G-01 to G-07 (§15). We are not claiming to have invented AI scam detection; Google, Samsung and Apple already ship versions of it (§1.3).
 
 | Item | Decision |
 |---|---|
@@ -147,11 +147,11 @@ The competitive hypothesis **[ASSUMPTION]** is **device-independent, carrier-ope
 | **FR-12** | Invoke models only through versioned triggers. **T1 ambiguity:** a rule matched below `high` confidence, or negation/context is unresolved. **T2 weak-signal accumulation:** two or more weak cues from versioned lexicons (relationship or authority claim, urgency, secrecy, payment or value transfer) within a rolling window, with no rule match. **T3 audit sampling:** a configured fraction of windows on calls with no rule match. **T4 voice check:** if FR-10 is enabled, one early window per session plus any T1/T2 window. Window sizes, cue counts and sampling rates are policy parameters, tuned only on the development set. | P0 | Each trigger has a fixture that fires it and a near-miss fixture that doesn't; a call with no rule match still enters the T3 audit path. |
 | **FR-13** | Enforce per-session and global model budgets and bounded queues. On timeout/unavailable, emit model-unavailable rather than safe. | P0 | Simulated GPU saturation does not produce “safe” results or unbounded queue growth. |
 
-**Model-selection gate [GATE]:** an open-source/open-weight checkpoint is eligible only if its code and weights may be used under the actual hackathon/deployment terms, run on available compute, and pass independent telephone-quality, unseen-generator and unseen-scenario evaluations. Candidate anti-spoof baselines include AASIST and XLS-R/wav2vec 2.0 + AASIST. A separate pretrained text classification/NLI model can bootstrap Intent Evidence; its scam-domain quality must be measured. Do not imply that any model is already licensed, deployed, or proven generalizable.
+**Model-selection gate [GATE]:** an open-source/open-weight checkpoint is eligible only if its code and weights may be used under the actual hackathon/deployment terms, run on available compute, and pass independent telephone-quality, unseen-generator and unseen-scenario evaluations. Candidate anti-spoof baselines include AASIST and XLS-R/wav2vec 2.0 + AASIST. Intent Evidence comes from the TypeSafe Jev API (§4.3), a hosted service rather than weights we run; its scam-domain quality must be measured. Do not imply that any model is already licensed, deployed, or proven generalizable.
 
 **Voice Evidence kill criterion [DECIDED]:** Twilio Media Streams deliver 8 kHz μ-law mono audio, while AASIST-family checkpoints are typically trained on 16 kHz research corpora such as ASVspoof. Upsampling cannot restore the missing bandwidth. At Gate 0, evaluate the candidate on a small codec-matched set (team-recorded genuine and synthetic clips round-tripped through 8 kHz μ-law). Drop FR-10 from the build if EER on that set is 25% or worse, or later if the §9.2 ablation shows zero or negative incremental contribution. The 25% figure is a proposed team threshold, not a literature value. Intent Evidence and the deterministic rules do not depend on this pathway.
 
-**Intent Evidence contract [DECIDED]:** the input is the rolling transcript window from the current session (the last few turns plus the triggering span), processed in-session and never sent to a third-party general-purpose LLM service (§5). The output is one category from a versioned list (`credential_or_code_request`, `payment_or_transfer_request`, `remote_access_request`, `authority_or_relationship_claim_with_urgency`, `none`) or `abstain`, plus a `confidence_class`. The first candidate is a zero-shot NLI checkpoint scored against one hypothesis template per category. If the team enters the NVIDIA track (§6.1), a self-hosted Nemotron model is a second candidate, run on redacted windows (digit strings and names masked before inference) and judged by the same V3 criteria. A small fine-tuned classifier is a post-hackathon option, and only if a licensed scam-domain dataset is available.
+**Intent Evidence contract [DECIDED, revised v1.5]:** arm C uses the TypeSafe Jev API (`https://api.typesafe.ai/v1/systemone`, pinned `jev-1.14.0`), which replaced the DeBERTa zero-shot NLI model in #71. The input is each caller turn plus up to 3 prior turns, speaker-labelled, and that call text **is sent to api.typesafe.ai**: "call text never leaves the machine" holds for arms K and B, not C. Arm C is opt-in: it runs only with `INTENT_MODEL=on` and `TYPESAFE_API_KEY` set, and an INFO log line states the data flow. The build asks Jev on every caller turn rather than through the FR-12 triggers. Each caller turn is one bundled request (18 questions) on a keep-alive client, with one retry inside a 1.5 s turn budget. Code, not the model, maps the answers to a per-category outcome: evidence the lexicon also saw (`C-INTENT-*-01`), model-only evidence (`C-INTENT-OTP-SOLO`, `C-INTENT-PAY-SOLO`, `C-INTENT-REMOTE-SOLO`, low confidence), a veto of B's request on that turn, or nothing. Any API failure is never a "no": that turn falls back to arm B. The demo runs arm B. As of 2026-11-08 01:45 CST the API returns HTTP 402 (out of credit), so arm C currently equals arm B and can't be demoed or re-measured until credit is added. A small fine-tuned classifier is a post-hackathon option, and only if a licensed scam-domain dataset is available.
 
 **Lead with rules [DECIDED]:** if C adds no true warnings over B on the held-out paraphrase scenarios, or adds more false alerts than true warnings, B is presented as the product and the intent model as an experiment that didn't help, with the numbers shown.
 
@@ -193,7 +193,7 @@ The competitive hypothesis **[ASSUMPTION]** is **device-independent, carrier-ope
 - **No** recording or analyzing real customer calls without appropriate permission, notice and legal review.
 - **No** subscriber app, browser page or in-app UI; subscribers interact only through calls and SMS.
 - **No** final “the caller is safe,” “the voice is human,” “this is definitely a scam” claim.
-- **No** sending live OTPs, SSNs, phone numbers, medical records or financial information to third-party general-purpose LLM services.
+- **No** sending live OTPs, SSNs, phone numbers, medical records or financial information to third-party general-purpose LLM services. Exception: arm C sends call text to the TypeSafe Jev API (§4.3); it is off unless turned on, and the demo runs arm B.
 - **No** call blocking/termination solely because a model assigns a high risk score.
 - **No** CallSafe text that says a caller is safe or that the subscriber was scammed, asks for information, contains links or phone numbers, or implies account monitoring, transaction reversal or reporting on their behalf.
 - **No** monitoring of calls the subscriber placed (outbound) in v1 (§8.2).
@@ -385,7 +385,7 @@ The subscriber side of the demo is a real, team-owned test phone, shown on scree
 5. **Evidence and limits (50 s):** The gate board shows V1–V5 with evidence links. Show A/K/B/C numbers led by B vs K, C vs B and hard-benign false alerts. Then the promotion: WRONG replies cluster on one rule, policy v1.1 is scored on H1 reused, labelled as such (SM-10; H2 dropped, §19.6), the operator approves, and the audit record appears. Show degraded mode in one click.
 6. **Close (20 s):** “We don't replace Scam Shield or on-device protection. Calls that pass number filters can still turn into a request for a code or a transfer; we catch the request, text one independent next step to any phone, and follow up afterward. Our numbers are against our own baselines only; lift over Scam Shield or Pixel would need carrier routing we don't have.”
 
-**Replay framing:** label replayed calls on screen as “replayed call through the live ingestion path,” and never present replay as a live or carrier call. Use consented recordings of real voices at 8 kHz so the replay doesn't sound synthetic. If real SMS delivery fails at Gate 0, the console's phone-frame view labeled “simulated SMS” stands in, and the demo says so.
+**Replay framing:** label replayed calls on screen as “replayed call through the live ingestion path,” and never present replay as a live or carrier call. Use consented recordings of real voices at 8 kHz so the replay doesn't sound synthetic. If real SMS delivery fails at Gate 0, the console's phone-frame view labeled “simulated SMS” stands in, and the demo says so. **v1.5:** this is the current case; the Twilio trial account can't send custom bodies, so the demo runs in simulated SMS mode (§19.1).
 
 ### 9.4 Hard questions and prepared answers
 
@@ -406,7 +406,7 @@ Fill bracketed values from the actual run and never round them up. If a number i
 | What if T-Mobile never grants the API or routing? | Without audio routing the product doesn't run; it stays a prototype on replayed calls, and we've said so. Live Translation shows T-Mobile already routes call audio to network AI. The reputation feed is only supporting evidence. |
 | Is listening to the caller legal? | Subscriber opt-in is necessary but not sufficient; caller notice in all-party-consent states is a gate before any real customer (G-03). |
 | Why would anyone opt into carrier-side audio analysis? | Some people won't, and that's fine. It's opt-in by reply text, STOP ends it, and we store no audio, transcripts or raw numbers (only consent state and counts), but it is a real privacy cost compared with on-device processing (§12). Whether enough people opt in is unproven (G-07). |
-| Is the call we just saw live? | No. It's a replayed recording sent through the same ingestion path a live call would use; the text on the phone is real. [If the P1 live call works: show it and say which parts are live.] |
+| Is the call we just saw live? | No. It's a replayed recording sent through the same ingestion path a live call would use. The texts are simulated in the console's phone frame, labelled so, because our Twilio trial account can't send custom bodies. [If Twilio is upgraded: the text on the phone is real. If the P1 live call works: show it and say which parts are live.] |
 
 ## 10. Cross-cutting nonfunctional requirements
 
@@ -468,9 +468,9 @@ Synthetic replay (P0) / controlled VoIP call (P1)
 | Transcription | Existing streaming ASR service or local packaged ASR | Pretranscribed replay for deterministic troubleshooting (clearly labeled) |
 | Rules/policy | Python state machine + YAML/JSON versioned policy tables and SMS templates in git | No LLM control of final safety action |
 | Acoustic model | Existing licensed AASIST-family checkpoint (candidate only; P1, cut if the Gate 0 kill criterion fails) | Alternative pretrained speech anti-spoof checkpoint after benchmark |
-| Intent model | Existing licensed NLI checkpoint; self-hosted Nemotron as a second candidate on the NVIDIA track | Bounded LLM fallback only if absolutely necessary and permitted; not required for demo |
+| Intent model | TypeSafe Jev API for arm C, opt-in; sends call text to TypeSafe (§4.3, §19.3) | Arm B on any API failure; not required for demo (the demo runs arm B) |
 | Model serving | Single Docker service / background workers; GPU if available (Brev credits on the NVIDIA track) | CPU-suitable checkpoints or prerecorded model-inference fixtures labeled as simulation |
-| State and audit | In-memory session state; SQLite for consent (salted hash of the number), aggregates, reply counts and policy history in the hackathon build (§19.3) | PostgreSQL and an audit log before any pilot |
+| State and audit | In-memory session state; SQLite for consent (HMAC of the number), aggregates, reply counts and policy history in the hackathon build (§19.3) | PostgreSQL and an audit log before any pilot |
 | Operator console | React + TypeScript; the product's only UI | Minimal responsive browser app |
 | Ops | Docker, GitHub Actions/pytest, Prometheus-compatible counters; Grafana optional | Basic metrics JSON if schedule tight |
 | Evaluation | pytest + scikit-learn + CSV/JSON artifact; MLflow optional | Versioned local reports sufficient |
@@ -484,7 +484,7 @@ Synthetic replay (P0) / controlled VoIP call (P1)
 
 **Messaging constraints [GATE]:**
 - **Class 0 flash SMS.** Providers describe flash SMS as shown immediately but not saved to the inbox, with only the latest message visible, and one notes the sender isn't shown; handset support varies. It is offered by SMS API providers, so it isn't a carrier-only signal, and trust has to come from the fixed sender and content rules (§4.4). It is never the only copy and is tested on the demo handsets before use.
-- **Sender setup.** US SMS from an API provider may need number registration or verification, and trial accounts may prefix messages or limit recipients. Check at Gate 0. If delivery to the test phone isn't reliable, the demo falls back to a phone-frame view in the console labeled “simulated SMS.”
+- **Sender setup.** US SMS from an API provider may need number registration or verification, and trial accounts may prefix messages or limit recipients. Check at Gate 0. If delivery to the test phone isn't reliable, the demo falls back to a phone-frame view in the console labeled “simulated SMS.” **Result (v1.5):** the trial account can't send custom bodies and has no number. Real SMS needs an upgraded account plus 10DLC or toll-free registration, which takes days, so the demo runs in simulated SMS mode.
 - **Production.** Alerts come from the carrier's own SMS center with a fixed, published sender (G-05).
 
 ### 11.3 Policy and API contracts
@@ -514,7 +514,7 @@ Synthetic replay (P0) / controlled VoIP call (P1)
 {"event":"sms_reply","keyword":"WRONG","template_id":"ALERT-OTP-01","policy_version":"1.0","counted":true}
 ```
 
-**Permissions:** `/console/*`, `/events/aggregate` and `/health` require authenticated operator access (a single operator credential in the demo); `/call/session` and `/sms/inbound` accept only signed/validated provider events; promotion endpoints require an operator approval recorded in the audit log. API routes are provisional architecture contracts, not endpoints already deployed.
+**Permissions:** `/console/*` and `/events/aggregate` require authenticated operator access (in the build, `/health` is open and is one of the three routes the tunnel exposes, §19.3) (a single operator credential in the demo); `/call/session` and `/sms/inbound` accept only signed/validated provider events; promotion endpoints require an operator approval recorded in the audit log. API routes are provisional architecture contracts, not endpoints already deployed.
 
 ### 11.4 Production alignment with T-Mobile's public engineering signals
 
@@ -538,7 +538,7 @@ If the team has a Java developer, building the messaging gateway as a small Spri
 
 **Data classes:** caller/customer numbers, email, SSN, voiceprints, call content, medical or financial context, and account identifiers are sensitive. Telephone audio and transcripts themselves can contain PII even when the displayed event is redacted.
 
-**Required design:** consent and notice are stateful; only controlled/consented audio enters the pipeline; audio is kept in short-lived memory where feasible; transcript snippets are processed transiently; raw content is not retained by default; alert and follow-up texts carry only the risk category and next step; subscriber phone numbers are used only to route SMS and are never shown in the console or written to logs; reply text is discarded after keyword matching; metrics use non-reidentifying synthetic run IDs, not merely unsalted hashed phone numbers; console access is limited to the operator credential in the demo and to least-privilege roles before any pilot; logs never include credentials or transcript content. SMS bodies transit the SMS provider; in the hackathon they contain only template text sent to team-owned phones. A documented deletion/retention matrix must exist before any real pilot.
+**Required design:** consent and notice are stateful; only controlled/consented audio enters the pipeline; audio is kept in short-lived memory where feasible; transcript snippets are processed transiently; raw content is not retained by default; alert and follow-up texts carry only the risk category and next step; subscriber phone numbers are used only to route SMS and are never shown in the console or written to logs; reply text is discarded after keyword matching; metrics use non-reidentifying synthetic run IDs, not merely unsalted hashed phone numbers; console access is limited to the operator credential in the demo and to least-privilege roles before any pilot; logs never include credentials or transcript content. SMS bodies transit the SMS provider; in the hackathon they contain only template text sent to team-owned phones. With arm C on, each caller turn and up to 3 prior turns transit the TypeSafe API (§4.3); arm C is off unless turned on. A documented deletion/retention matrix must exist before any real pilot.
 
 **[GATE] Legal review** is required for recording/monitoring consent, telecom interception/wiretap rules, jurisdictions of all parties, vendor subprocessors, data residency, healthcare-adjacent content, messaging rules for carrier-originated texts (opt-in, opt-out keywords, sender identity) and access procedures. Subscriber opt-in is necessary but not sufficient: the caller is analysed too, and all-party-consent states (for example Washington, RCW 9.73.030) require more. Real use is gated on counsel-approved caller notice and jurisdiction handling (G-03); such a notice may also warn scammers off. Call content should not simply be labelled CPNI; CPNI treatment of carrier metadata needs separate review. **[GATE] Production security review** is required for provider signature validation, threat modeling, audit evidence and incident response. Any sensitive data inadvertently received by a demo must be discarded, not treated as an evaluation sample.
 
@@ -564,7 +564,9 @@ If the team has a Java developer, building the messaging gateway as a small Spri
 | High | Voice model fails on 8 kHz telephone audio or unseen generators | Codec-matched Gate 0 test with kill criterion (§4.3), out-of-distribution test, insufficient-audio state; rules and intent pathway don't depend on it |
 | High | Full pipeline underperforms the rules in ablation | Lead with rules (B) as the product; present the model as an experiment with its real numbers (§4.3) |
 | High | Inference saturation at peak traffic | Bounded queue, independent CPU rules, shed model jobs, visible degraded mode |
-| Medium | SMS sending blocked or delayed by provider registration or trial limits | Check at Gate 0; fallback to a labeled simulated-SMS view in the console (§11.2) |
+| Medium | SMS sending blocked or delayed by provider registration or trial limits | Check at Gate 0; fallback to a labeled simulated-SMS view in the console (§11.2). **Happened (v1.5):** the Twilio trial account can't send custom bodies and has no number; the demo runs in simulated SMS mode until the account is upgraded and 10DLC or toll-free registration completes |
+| Medium | Arm C's TypeSafe API is unavailable (out of credit: HTTP 402 as of 2026-11-08) | Any failure falls back to arm B for that turn, never a "no"; the demo runs arm B; quote only the last valid arm C measurement, labelled (§19.6) |
+| Medium | Arm C sends call text to a third party (TypeSafe) | Off unless `INTENT_MODEL=on` and `TYPESAFE_API_KEY` are set; an INFO log line states the data flow; arms K and B keep call text on the machine (§4.3) |
 | Medium | Class 0 flash SMS unsupported, not stored, or shown without a sender | Standard SMS is the P0 channel and always sent; Class 0 is an optional extra cue, tested on demo handsets first |
 | Medium | Audible in-call cue not deliverable inside a bridged call | SMS is the P0 channel; conference topology validated at G-05 before any audio-cue claim |
 | Medium | Improvement agent (P1) oversteps | Agent proposes only; no promotion rights, no sealed-batch or raw-content access; tool-use tests in V3 |
@@ -590,8 +592,8 @@ If the team has a Java developer, building the messaging gateway as a small Spri
 | G-02: Authorized controlled-call route for live monitoring (P1; P0 uses replay) | **Open** | Verify unidirectional-stream track mapping on the actual bridge, caller notice and bridge behavior (§11.2); telephony lead |
 | G-03: Consent, privacy, sector/legal review | **Open** | Security/privacy/legal approval before non-synthetic calls, including caller notice in all-party-consent states and a data-retention matrix |
 | G-04: Licensed pretrained checkpoints and hardware | **Open** | Test exact weights/license and benchmark speed; run the 8 kHz Voice Evidence kill criterion (§4.3); ML lead |
-| G-05: Subscriber messaging and warning delivery | **Open** | P0 sends real SMS to team-owned test phones through an SMS API. For real subscribers: carrier-originated sender identity and verification, opt-in/STOP/HELP compliance, Class 0 behavior on supported handsets, and (P1) the audible in-call cue topology; UX/telephony lead |
-| G-06: Model and user outcome benchmark | **Not yet executed** | Publish A/K/B/C results and the V5 promotion result (SM-10) from frozen policies on sealed held-out batches, with false positives and non-determinism; evaluation lead |
+| G-05: Subscriber messaging and warning delivery | **Open** | P0 sends real SMS to team-owned test phones through an SMS API; blocked for now because the Twilio trial account can't send custom bodies, so the demo runs in simulated SMS mode (§11.2). For real subscribers: carrier-originated sender identity and verification, opt-in/STOP/HELP compliance, Class 0 behavior on supported handsets, and (P1) the audible in-call cue topology; UX/telephony lead |
+| G-06: Model and user outcome benchmark | **Partly executed** | Arms scored on dev, H1 (reused) and blind sets H2–H4, scripted transcripts only (§19.6); arm C's last valid measurement is on H4 before a rebase; arm A is Out (§19.2). Remaining: the V5 promotion result (SM-10), and arm C on merged code once the TypeSafe API has credit; evaluation lead |
 | G-07: Device coverage, opt-in and carrier cost assumptions | **Unverified** | Carrier product owner must scope eligible populations, likely opt-in, and cost per monitored minute and per alert |
 
 **Build-ready determination:** the **mocked, controlled hackathon vertical slice is specified enough to implement**. **Carrier production implementation is not approved or represented as ready.**
@@ -624,6 +626,10 @@ If the team has a Java developer, building the messaging gateway as a small Spri
 - **D-24 [DECIDED, revised v1.4]:** Sponsor tracks: T-Mobile challenge only. NVIDIA, Photon, Nessie and Spacetime are skipped (§6.1).
 - **D-25 [ASSUMPTION]:** The hackathon architecture maps onto T-Mobile's publicly signaled stack (§11.4).
 - **D-26 [DECIDED]:** FR-18 (post-call summary) retired; there is no subscriber UI to host it, and FR-23 covers follow-up.
+- **D-27 [DECIDED, v1.5]:** Arm C uses the TypeSafe Jev API in place of the DeBERTa zero-shot model (#71). It is opt-in, sends call text to TypeSafe, and falls back to arm B on any failure (§4.3). The demo runs arm B.
+- **D-28 [DECIDED, v1.5]:** Photon (Spectrum iMessage bridge) was tried in #69 and removed in #81; real SMS is Twilio Programmable Messaging only, plus the simulated gateway.
+- **D-29 [DECIDED, v1.5]:** The message board (issue #1) is retired (#80). Tasks are GitHub issues; agents claim and talk on the issue or PR; gotchas go into code, tests or error messages.
+- **D-30 [DECIDED, v1.5]:** The demo runs in simulated SMS mode (console phone frame with reply buttons), because the Twilio trial account can't send custom bodies. The real-phone path returns only if the account is upgraded and 10DLC or toll-free registration completes. This supersedes the real-SMS part of D-16 for judging.
 
 **Traceability:** UJ-01 -> FR-02/03/04/05/07/08/15/26; UJ-02 -> FR-01/03/06/07/08/09/14/16/17/23/26; UJ-03 -> FR-01/06/10/11/12/13/14/15/16/17; UJ-04 -> FR-09/19/20/21/22/24/27; UJ-05 -> FR-20/24/25/26/27. Every active FR maps to at least one journey (FR-18 is retired), and every success measure in §7 names the FRs it verifies. Open gates G-01 through G-07 are not silently treated as decisions.
 
@@ -654,6 +660,14 @@ Public sources reviewed November 7, 2026. These support descriptions of existing
 21. Washington all-party consent statute, RCW 9.73.030: https://app.leg.wa.gov/rcw/default.aspx?cite=9.73.030
 
 ## 18. Change log
+
+**v1.5 (2026-11-08)**, brought in line with the built code:
+- **Arm C (§4.3, §5, §11.2, §12, §13, §19.2–§19.4, D-27):** TypeSafe Jev API replaced the DeBERTa zero-shot model (#71); opt-in, sends call text to TypeSafe, falls back to B; currently HTTP 402 (out of credit), so not demoed or re-measured.
+- **SMS (scope line, §9.3, §9.4, §11.2, §13, G-05, §19.1, §19.4, §19.7, D-28, D-30):** Twilio trial can't send custom bodies, so the demo runs in simulated SMS mode and the judge presses WRONG on the console phone frame; Photon tried (#69) and removed (#81).
+- **Evaluation (§19.6, §19.8, G-06):** dev, H1 (reused) and blind H2/H3/H4 described with current numbers; the 1:50 slide uses H4 B vs K. Earlier results, now history: H1 at `fefb2d3` K 9/30, B 5/30, C 5/30 (old K lexicon, pre-#71 rules); H2 (#71) B 69.8% caught / 3.1% false alerts, C 92.6% / 3.1%; H3 (#73) K 84.2% / 65.1%, B 67.8% / 1.4%, C 98.8% / 0.7%.
+- **Security and privacy (§19.3, §19.4):** consent stores an HMAC of the number (#75); transcript dropped at call end and on reset (#77); tunnel reaches only the SMS webhooks and `/health`; server-side sessions and `POST /logout`.
+- **Process (§19.10, D-29):** message board retired (#80); `[intent]` extra removed; the reset guarantee states the known in-flight send race.
+- **Risks (§13):** TypeSafe credit and data-flow rows; the SMS trial-limit risk marked as happened.
 
 **v1.4 (2026-11-07)**, four model-council reviews (hardening; education, trust and differentiation; build readiness; three-developer split) plus two final readiness checks:
 - **Build plan (new §19)** is authoritative for the hackathon: 3-minute judging loop, scope, frozen stack, contracts, SMS copy, evaluation, milestones, preflight, Q&A card, and the three-track split for three developers running many agents.
@@ -718,19 +732,20 @@ This section is what the team and its agents build from. Where it conflicts with
 |---|---|
 | 0:00-0:20 | Problem slide: a call passes Scam Shield, then asks for your code. |
 | 0:20-0:40 | Replay 1 (clinic, audio <= 15 s): mentions a code but says not to share it. Phone stays silent. Console: "no alert - not a safety verdict." |
-| 0:40-1:50 | Replay 2 (bank, audio <= 25 s): turns into an OTP request. Phone buzzes with the alert. Replay ends, end-call fires automatically, follow-up arrives. Hand the judge the phone with the SMS thread already open: "type WRONG." Console counter ticks. |
-| 1:50-2:25 | "Why this alert" panel, then one number: B vs K on hard-benign calls with counts. "Where we fail" card. |
+| 0:40-1:50 | Replay 2 (bank, audio <= 25 s): turns into an OTP request. The alert appears on the console phone frame (labelled "simulated SMS"). Replay ends, end-call fires automatically, follow-up arrives. The judge presses WRONG on the phone frame's reply buttons. Console counter ticks. If Twilio is upgraded, the same loop runs on the real phone: it buzzes, and the judge types WRONG in the open SMS thread. |
+| 1:50-2:25 | "Why this alert" panel, then one number: on 6228 blind scripted calls (H4), keywords alert on 64% of harmless calls; B alerts on 0.9% and catches 66% of scams. "Where we fail" card. |
 | 2:25-3:00 | Stack slide and future steps (carrier routing on the Live Translation path, in-call audio prompt, consent gate, sender verification). |
 - The console shows the live transcript in large type; the hall is too loud to rely on audio.
-- If a text hasn't arrived 10 s after it was sent, flip the console's **SMS mode toggle** to simulated and say so.
-- Q&A-only material: family-impersonation paraphrase (model path), gate board (a static deck slide, not a console view), full K/B/C table.
+- The demo runs in simulated SMS mode because the Twilio trial account can't send custom bodies (§11.2); say so. On the real-phone path, if a text hasn't arrived 10 s after it was sent, flip the console's **SMS mode toggle** to simulated and say so.
+- Q&A-only material: family-impersonation paraphrase (model path; unavailable while the TypeSafe API returns 402), gate board (a static deck slide, not a console view), full K/B/C table.
 
-**Reset:** one console button. It cancels any running replay and pending sends, invalidates the session and re-arms both replays. It never changes consent. If a phone was STOPped, text START from it (Twilio blocks sends after STOP) or switch to the spare phone. Judges are only ever asked to type WRONG.
+**Reset:** one console button. It cancels any running replay and pending sends, invalidates the session and re-arms both replays. It never changes consent. On the real-phone path, if a phone was STOPped, text START from it (Twilio blocks sends after STOP) or switch to the spare phone. Judges are only ever asked to press or type WRONG.
 
 ### 19.2 Scope
 **In (must work):** replay ingestion, ASR on demo clips, rules + policy (arms K and B), alert SMS, follow-up SMS, reply keywords, consent, SMS mode toggle (real / simulated with on-screen reply buttons), console (live transcript, Why panel, WRONG counter, reset, results card, login), eval on H1 for K and B with one-command report, preflight script.
-**Stretch, in this order:** intent model + arm C + family paraphrase scene; promotion screen listing changed cases (labelled "H1 reused, not a fresh held-out set"); hedged "not certain" alert for model-only detections.
+**Stretch, in this order:** intent model + arm C + family paraphrase scene (built on the TypeSafe Jev API, #71; opt-in, not in the demo, and unavailable while the API returns 402); promotion screen listing changed cases (labelled "H1 reused, not a fresh held-out set"); hedged "not certain" alert for model-only detections.
 **Out:** live telephony, screening proxy, voice anti-spoof model, Class 0 flash SMS, Kafka/Postgres/Prometheus, drift automation and the drift/feedback panel (FR-27), audit export, H2, SMS quiz, WHY keyword, family alerts, live-mic demo, arm A (reputation-only), load tests (FR-21, SM-07), health-metrics panel (FR-21), gate board console view (FR-24; Q&A uses a static slide).
+**Status (2026-11-08):** the demo runs arm B in simulated SMS mode; real SMS waits on an upgraded, registered Twilio account (§11.2).
 
 ### 19.3 Frozen stack
 | Concern | Choice |
@@ -739,11 +754,11 @@ This section is what the team and its agents build from. Where it conflicts with
 | Events | Pipeline work runs as asyncio tasks; a separate broadcast hub fans events out to SSE subscribers (`GET /events/stream`). SSE never consumes the work queue. |
 | ASR | `faster-whisper` `small.en`, CPU int8, model preloaded at startup. Pass WAV **paths** (library decodes and resamples); raw arrays must be 16 kHz. Fallback: cached transcript JSON per demo clip, labelled "cached transcript" in the console. |
 | Rules / policy | Pure Python; policy tables and SMS templates as YAML in `policy/v<version>/` |
-| Intent model (stretch) | `MoritzLaurer/deberta-v3-base-zeroshot-v2.0` (MIT) via `transformers` zero-shot pipeline, CPU, warmed at startup |
+| Intent model (stretch) | TypeSafe Jev API (`https://api.typesafe.ai/v1/systemone`, `jev-1.14.0`) via `httpx`, replacing the DeBERTa zero-shot model (#71). On only with `INTENT_MODEL=on` and `TYPESAFE_API_KEY`. One bundled request (18 questions) per caller turn with up to 3 prior turns, keep-alive client, one retry inside a 1.5 s turn budget; any failure = arm B for that turn. Sends call text to TypeSafe (§4.3). Currently HTTP 402 (out of credit). |
 | SMS | `SmsGateway` interface with two implementations: `TwilioGateway` (Programmable Messaging; inbound + status webhooks; signature validated against the exact public URL with Twilio's validator) and `SimulatedGateway` (console phone frame, labelled "simulated SMS", with YES/WRONG/SHARED/STOP buttons that go through the same inbound handler). Runtime toggle. |
-| Tunnel | Named `cloudflared` tunnel (stable URL), or a startup script that rewrites the Twilio webhook URL |
-| Storage | SQLite (`data/safesignal.db`): consent (salted SHA-256 of E.164 number + state), aggregates, reply counts, policy history. Send-to number comes from env `DEMO_PHONE` (and `SPARE_PHONE`). No transcripts, audio or raw numbers stored. |
-| Console | React + TypeScript + Vite; single operator password -> session cookie |
+| Tunnel | `cloudflared` (quick or named) via `make demo-up` (`scripts/demo_up`): tunnel -> `PUBLIC_BASE_URL` -> app on 127.0.0.1:8000 -> wait for `/health` -> point the Twilio number's webhook (skipped without Twilio vars). Through the tunnel only `/sms/inbound`, `/sms/status` and `/health` answer; everything else is 404. Login, console API and SSE are localhost-only. |
+| Storage | SQLite (`data/safesignal.db`): consent (HMAC(`CONSENT_SALT`, "consent-phone:" + E.164) + state, #75), aggregates, reply counts, policy history. Send-to number comes from env `DEMO_PHONE` (and `SPARE_PHONE`). No transcripts, audio or raw numbers stored; the call transcript is dropped from memory when the call finishes and on reset (#77). |
+| Console | React + TypeScript + Vite; single operator password -> server-side session cookie (hashed id, 12 h expiry; `POST /logout` revokes; `/login` throttled to 5 failures in 5 min) |
 | Eval | `python -m eval.run --arms K,B[,C] --batch H1|dev` -> `results/latest.json` + `.md`; paired B vs K counts when both arms are given |
 | Tests | pytest |
 | Demo voices | Qwen3-TTS, run offline by Track B from `voice/` with its own `voice/requirements.txt` (not an app dependency); output round-tripped through 8 kHz mu-law into `audio/demo/<id>/`. H+1 check: licence, weights download and generation on available hardware; fallback is team-recorded voices. Voices are synthetic: say so if a judge asks (this relaxes the §9.3 real-voice preference for the hackathon). |
@@ -766,21 +781,21 @@ Audio is required only for `demo` scenarios; audio paths resolve relative to `au
 **Decision engine (pure, Track A):** `decide(segments: list[Segment], arm: "K"|"B"|"C", policy_version) -> list[Decision]`. No SMS, DB, network or asyncio. Called incrementally by the pipeline with all segments so far, and once per scenario by eval. At most one `action_warning` per category per session (dedupe lives here).
 - **K** = the shared lexicon matched on any speaker's text, no speaker, negation or request-direction checks.
 - **B** = the same lexicon plus context rules (caller is the speaker, request direction, negation such as "don't share", dialogue state).
-- **C** = B plus intent model on trigger windows (stretch).
+- **C** = B plus TypeSafe Jev on each caller turn with up to 3 prior turns (stretch): it can veto B's request on that turn or add evidence (`C-INTENT-*-01` with lexicon support, `C-INTENT-*-SOLO` model-only). No answer = arm B.
 
 **Pipeline (Track A):** `backend/app/pipeline.py`
 - `start(arm, policy_version, sms_mode) -> session_ref`. Only one demo session may be active; starting a new one finishes the old one.
 - `process(segment) -> list[Decision]`: calls `decide`, publishes events, and asks the SMS gateway to send any new alert.
 - `finish(session_ref)`: idempotent. Drains accepted segments, then sends at most one follow-up (the first action warning's `followup_template_id`) if the phone is still opted in. Called automatically when a replay's last turn finishes, and by `POST /demo/end-call`.
 - `reset()`: cancels replay and pending sends, invalidates the session, emits `reset`. Preserves consent and aggregates.
-- Demo arm is **B** (C if stretch passes). Eval does **not** use the pipeline; it calls `decide` directly.
+- Demo arm is **B**. Eval does **not** use the pipeline; it calls `decide` directly.
 
 **Event envelope (SSE):** `{"event_id","session_ref":null|string,"type","payload"}` with types and payloads:
 `session` `{state:"running|finished|reset", arm, sms_mode}` · `segment` (Transcript segment) · `risk_event` (Risk Event) · `decision` (Decision) · `sms` `{message_id, template_id, status:"queued|sent|delivered|failed"}` · `reply` `{keyword, counted, wrong_count}` · `consent` `{state:"invited|active|stopped"}`
 
-**SMS gateway (Track B):** `send(template_id, session_ref) -> message_id`; checks consent first and refuses if not active. Webhooks `POST /sms/inbound`, `POST /sms/status`. Deduplicate inbound by `MessageSid`. Normalise keywords: trim, strip punctuation, case-insensitive (`"Wrong."` counts). `STOP|STOPALL|UNSUBSCRIBE|CANCEL|END|QUIT|STOP PLEASE|PLEASE STOP` -> stopped (Twilio also blocks these at its layer and may send its own reply). `START|YES` -> active. `SHARED` -> category-specific R-SHARED. `WRONG` -> R-WRONG + counter. `HELP` or anything else -> R-HELP. Replies attach to the latest session with an action warning.
+**SMS gateway (Track B):** `send(template_id, session_ref) -> message_id`; checks consent first and refuses if not active. Webhooks `POST /sms/inbound`, `POST /sms/status` validate `X-Twilio-Signature` and return 403 if `TWILIO_AUTH_TOKEN` or `PUBLIC_BASE_URL` is unset; only `DEMO_PHONE`/`SPARE_PHONE` senders are handled (others are dropped with an empty TwiML 200, so Twilio doesn't retry; `/sms/status` answers 204). Deduplicate inbound by `MessageSid`, durably in SQLite; a 5xx isn't marked seen, so Twilio retries. Normalise keywords: trim, strip punctuation, case-insensitive (`"Wrong."` counts). `STOP|STOPALL|UNSUBSCRIBE|CANCEL|END|QUIT|STOP PLEASE|PLEASE STOP` -> stopped (Twilio also blocks these at its layer and sends its own reply; in real mode the app sends no R-STOP). `START|YES` -> active. `SHARED` -> category-specific R-SHARED. `WRONG` -> R-WRONG + counter. `HELP` or anything else -> R-HELP. Replies attach to the latest session with an action warning.
 
-**Console API (Track B):** `POST /login`, `GET /events/stream`, `POST /demo/run/{scenario_id}`, `POST /demo/end-call`, `POST /demo/reset`, `POST /demo/sms-mode`, `GET /results/latest`, `GET /aggregates`.
+**Console API (Track B):** `POST /login`, `POST /logout`, `GET /events/stream`, `POST /demo/run/{scenario_id}`, `POST /demo/end-call`, `POST /demo/reset`, `POST /demo/sms-mode`, `GET /results/latest`, `GET /aggregates`.
 
 ### 19.5 SMS copy (frozen)
 All templates: ASCII GSM-7 only (straight apostrophes), <= 160 characters, no digits, links or double quotes, nothing quoted from the call. `ALERT-*` <= 20 words. A lint test enforces this. Send from a non-trial Twilio account or confirm the trial prefix is off; otherwise measure the real segment count and don't claim one segment.
@@ -805,12 +820,24 @@ All templates: ASCII GSM-7 only (straight apostrophes), <= 160 characters, no di
 **Enrollment card (printed at the table, shown on the stack slide):** CallSafe analyses audio of your own calls only after you reply YES; texts are sent only when a call asks for codes, money or access; msg and data rates may apply; reply STOP to end, HELP for help. **CallSafe only ever says stop and check. Any text saying a caller is fine, or asking for codes, money or info, is not us.**
 
 ### 19.6 Evaluation (minimum honest version)
-- **Dev set:** 20 scam + 20 benign (at least 10 hard-benign), written by Track C in `scenarios/dev/`. Track A tunes rules only on it, reads it, and never edits it.
-- **H1:** 30 scam + 30 benign, at least 20 hard-benign. Written by Rithik, who is not on the rules or intent work, starting at H+0, outside the shared tree until sealed. Sealing = commit `scenarios/H1/` plus `scenarios/H1.sha256` = sha256 over the sorted file contents. Rules/intent agents never read `scenarios/H1`. `eval.run` refuses to score H1 if the hash doesn't match.
+- **Dev set:** 20 scam + 20 benign (13 hard-benign), written by Track C in `scenarios/dev/`. Track A tunes rules only on it, reads it, and never edits it.
+- **H1:** 30 scam + 30 benign (22 hard-benign). Written by Rithik's agent with no access to the rules, outside the shared tree until sealed. H1 transcripts were read while diagnosing in #71, so later H1 numbers are labelled "H1 reused" and are not fully blind. Sealing = commit `scenarios/H1/` plus `scenarios/H1.sha256` = sha256 over the sorted file contents. Rules/intent agents never read `scenarios/H1`. `eval.run` refuses to score H1 if the hash doesn't match.
 - **H1 runs on scenario text only** (`source:"script"`), no audio and no ASR. The report says "scripted transcripts, not ASR". ASR is checked only on demo clips.
 - **Labels:** a scenario is predicted positive iff any Decision is `action_warning`. TP/FN on scam, FP/TN on benign. `hard_benign` = a benign call containing a code, money or access phrase in a non-request use; the H1 author sets it.
 - **Report per arm:** TP/FP/FN/TN, recall with Wilson 95% CI, hard-benign false alerts "x of n (upper bound y%)", paired discordant counts B vs K. Call a win only at 5 or more one-directional discordant calls.
 - Demo scenarios are never in H1 or dev.
+- **Blind sets H2 (594 calls), H3 (1990) and H4 (6228):** each written blind by isolated AI agents with no repo access (H4: 25 authors, codex-sol + cursor-auto), label-reviewed, sealed by sha256 before scoring, stored outside the repo (`~/projects/Hackathon/safe-signal-H{2,3,4}` on Arnav's laptop), scored once, then retired to training data. Seal hashes: H2 `5ff3c53b...`, H3 `81a8a8c0...`, H4 `12c97213f185d3d7...`. These names are not the dropped promotion batch H2 of §8.5 and §9.1.
+- **Every set is AI-written scripts, scored as scripted transcripts:** not real calls, not ASR, and no production accuracy claim. K's lexicon was broadened in #71, so K numbers from before #71 aren't comparable.
+
+**Current results** (older numbers are history in §18):
+| Set | K caught | K false alerts | B caught | B false alerts | C |
+|---|---|---|---|---|---|
+| dev (40), main `ebcb159` | 20/20 | 11/20 (11 of 13 hard-benign) | 20/20 | 0/20 | — |
+| H1 reused (60), main `ebcb159` | 27/30 = 90.0% (CI 74.3-96.6) | 13/22 hard-benign | 18/30 = 60.0% (CI 42.3-75.5) | 0/22 hard-benign (upper bound 14.9%), 0/30 overall | not scored (TypeSafe 402) |
+| H4 blind (6228: 3117 scam / 3111 benign, 2478 hard-benign) | 2629/3117 = 84.3% (CI 83.0-85.6) | 2001/3111 = 64.4% (CI 62.6-66.0) | 2056/3117 = 65.9% (CI 64.2-67.7) | 27/3111 = 0.9% (CI 0.5-1.3) | 3094/3117 = 99.2% (CI 98.8-99.6) caught, 9/3111 = 0.3% (CI 0.1-0.6) false alerts, 0 API failures |
+
+- H1 paired B vs K: K-only 9, B-only 13; no win called (needs 5 or more discordant calls all one way). Report in `results/latest.{json,md}`.
+- H4 B is merged main code (`bfc510b`, same detection code as `ebcb159`). H4 C is the last **valid** arm C run, on the PR #79 branch before its rebase (`79b6b8d`); the rebase onto #75 moved B from 66.1% / 1.0% to 65.9% / 0.9%. C on merged code was scored, but TypeSafe returned 402 on 5029 turns so C fell back to B; that run (86.8% / 0.7%) is invalid and is never quoted as arm C.
 
 ### 19.7 Milestones (hours from dev start)
 - **H+0:** H1 author (Track C) starts. Skeleton PR (§19.10) merged by H+0:45.
@@ -824,21 +851,22 @@ All templates: ASCII GSM-7 only (straight apostrophes), <= 160 characters, no di
 - **Devpost:** submitted by 2026-11-07 23:00 CST, whatever milestone the build has reached.
 - **After freeze:** 10 timed table-loop rehearsals, hallway test (5 people, printed alert/follow-up/fake "go ahead" text), deck. Sleep rotation: none; the team works through the night.
 
-**Preflight (`scripts/preflight`, run before every judging block):** models cached and the app starts offline; cached-transcript fallback works; tunnel URL matches the Twilio webhook; one real test SMS round trip; both phones opted in; laptop on power, sleep disabled, on a phone hotspot.
+**Preflight (`scripts/preflight`, run before every judging block):** models cached and the app starts offline; cached-transcript fallback works; tunnel URL matches the Twilio webhook; one real test SMS round trip (skip with `--no-sms` while the demo runs in simulated SMS mode); both phones opted in; laptop on power, sleep disabled, on a phone hotspot.
 
 ### 19.8 Q&A card (one sentence each)
 - **Live Translation?** It proves T-Mobile can run AI inside calls on any phone; we point that same path at scam requests.
 - **Pixel already does this?** Pixel says "Likely scam" on some Android phones; we name the request, give a safe step, teach the trick, and reach any phone, including iPhones.
 - **Who reads a text mid-call?** The buzz is the interrupt and the text is one line; the follow-up exists because many won't read it until after; an in-call audio prompt on the Live Translation path is next.
-- **So you transcribe all my calls?** Only for opted-in subscribers, processed in memory; we store no audio, transcripts or numbers, only counts.
+- **So you transcribe all my calls?** Only for opted-in subscribers, processed in memory and dropped when the call ends; we store no audio, transcripts or raw numbers, only counts. The opt-in model arm (C), off in the demo, sends call text to TypeSafe.
 - **Can scammers fake your text?** Yes, which is why our texts only ever say stop and check; a fake that copies us gives safe advice, and one that says "go ahead" breaks our one rule.
 - **Is listening legal?** Subscriber opt-in is necessary but not sufficient; caller notice in all-party-consent states is a gate before any real customer.
-- **How good is it?** On 60 held-out scripted calls written by a teammate who never saw the rules: [numbers with denominators]. Too small for a production claim, and we say so.
+- **How good is it?** On 6228 blind scripted calls written by AI agents that never saw our code, keywords alert on 64% of harmless calls; our rules alert on 0.9% and catch 66% of scams. They're AI-written scripts, not real calls or ASR, so no production claim.
+- **Does the AI model help?** Arm C (TypeSafe Jev) caught 99.2% with 0.3% false alerts on the same set, measured before a final rebase; it sends call text to TypeSafe and its API is out of credit, so the demo runs the rules.
 - **What if the AI is wrong?** A false alarm costs one callback; silence is never a safety verdict; WRONG replies go to a human-approved, tested policy change.
 - **Why trust AI at all?** Rules decide, the model never acts alone, every alert cites a rule ID, and the advice is safe even if we're wrong.
 
 ### 19.9 PRD changes
-Applied to §1–§18 in v1.4; see the §18 change log.
+Applied to §1–§18 in v1.4 and v1.5; see the §18 change log.
 
 ### 19.10 Tracks (three developers, conflict-free)
 Every path has exactly one writing track. Inside a track, each agent owns one package directory plus its own `tests/<pkg>/`; no two agents share a file. Everyone else imports, never edits.
@@ -852,11 +880,11 @@ Every path has exactly one writing track. Inside a track, each agent owns one pa
 **Independence:** Rithik (C) writes H1 and never writes rules. A's agents never read `scenarios/H1/`. C's agents never read `backend/app/rules/` or `policy/`.
 
 **Integration rules**
-- **Skeleton PR (A lead, merged by H+0:45), before any other PR:** all §19.4 models; `main.py` auto-discovers routers from `app.api` and `app.sms`, so nobody edits it to add routes; a stub in every backend package (cached transcript ASR, `decide` returns none, `SimulatedGateway`, fake events); all dependencies declared (fastapi, uvicorn, pydantic, faster-whisper, twilio, pyyaml, httpx, pytest; `[intent]` extra for transformers); `make smoke` = pytest + OTP replay through the stubs, using an A-owned fixture in `tests/fixtures/` until C's demo scenarios merge. With stubs, the full loop runs from H+1, and real pieces replace stubs one PR at a time. A writes stubs inside B's backend directories (`sms/`, `consent/`, `api/`, `storage/`) only in this PR, and ownership passes to B the moment it merges. The skeleton writes nothing under `scenarios/`, `eval/`, `results/` or `console/`; C owns demo scenarios and caches from H+0. `GET /results/latest` (B) reads `results/latest.json` (C).
+- **Skeleton PR (A lead, merged by H+0:45), before any other PR:** all §19.4 models; `main.py` auto-discovers routers from `app.api` and `app.sms`, so nobody edits it to add routes; a stub in every backend package (cached transcript ASR, `decide` returns none, `SimulatedGateway`, fake events); all dependencies declared (fastapi, uvicorn, pydantic, faster-whisper, twilio, pyyaml, httpx, pytest; `[intent]` extra for transformers, removed in #71 when arm C moved to the TypeSafe API); `make smoke` = pytest + OTP replay through the stubs, using an A-owned fixture in `tests/fixtures/` until C's demo scenarios merge. With stubs, the full loop runs from H+1, and real pieces replace stubs one PR at a time. A writes stubs inside B's backend directories (`sms/`, `consent/`, `api/`, `storage/`) only in this PR, and ownership passes to B the moment it merges. The skeleton writes nothing under `scenarios/`, `eval/`, `results/` or `console/`; C owns demo scenarios and caches from H+0. `GET /results/latest` (B) reads `results/latest.json` (C).
 - **Bootstrap in parallel (first 45 min):** B scaffolds `console/` against A's event fixtures and starts the Twilio H+1 check; C commits the two demo scenarios (text + cached transcripts) and starts H1; B starts Qwen3-TTS setup and voices them as soon as the scripts land.
 - **Contract changes:** A only, PR titled `CONTRACT:`, additive fields with defaults, called out in the PR body, thumbs-up from B and C on the PR before merge.
 - **Dependencies:** Python deps only via A (others ask on A's task issue or PR). Console deps only via B.
-- **Late events after reset:** every queued task and event carries a session generation number; anything from an old generation is dropped and never sends SMS.
+- **Late events after reset:** every queued task and event carries a session generation number; anything from an old generation is dropped. A send is checked right before the gateway call, so queued sends from a reset call never start, but a send already in progress when Reset is pressed can still go out (known race, found by `make verify-formal`).
 - **Branches:** `<username>/<agent-name>` (e.g. `arnavprabhu/a-rules`), one worktree each, one PR per agent task, rebased on `origin/main` before merge.
 - **Merging:** each developer reviews and merges their own track's PRs, in windows at :00 and :30, order CONTRACT -> A -> B -> C. A PR merges only if `make smoke` passes on the rebased branch, so main always runs.
 - **Coordination:** no message board. Each task is a GitHub issue; an agent claims it there (branch + paths), asks owners on their issue or PR, and closes it with `Closes #<n>`. Gotchas go into code, tests or error messages (AGENTS.md).
@@ -875,4 +903,4 @@ Every path has exactly one writing track. Inside a track, each agent owns one pa
 
 **Slip plan:** A slips, demo on cached transcripts + K plus only B's negation rule (labelled); if that isn't ready either, skip the clinic replay and say so. Never run the clinic replay on plain K. B slips, simulated SMS phone frame. C slips, deck after H+12; H1 never shrinks below 30 + 30 without reporting the real denominators.
 
-*End of PRD. Product scope and build plan (v1.4) are final for hackathon development. The document is not a security approval, customer validation report, or guarantee of future T-Mobile integration.*
+*End of PRD. Product scope and build plan (v1.5) are final for hackathon development. The document is not a security approval, customer validation report, or guarantee of future T-Mobile integration.*
