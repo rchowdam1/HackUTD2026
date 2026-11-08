@@ -9,7 +9,7 @@ Every number here comes from one of two sources, named each time: the dev set (`
 - **The call is real.** The judge dials a Twilio number we own. Twilio forwards the call to the subscriber's phone (Arnav's, `DEMO_PHONE`) and sends both sides' audio to the laptop. It is not a carrier integration.
 - **Speech-to-text is real and local.** faster-whisper runs on the laptop.
 - **The AI is real and leaves the laptop.** The demo runs arm C: each caller turn, plus up to three turns before it, goes to OpenRouter (Perplexity Decider). The laptop stores no audio and no transcripts.
-- **The alert text is sent to Twilio for real, but it doesn't arrive.** Twilio accepts it, then US carriers block it: Twilio error 30034, because our number's 10DLC registration isn't done, and that takes days. The console's Phone panel (tagged "real SMS") mirrors every text we sent, and once Twilio reports back the bubble and the Why panel read "Not delivered: carrier blocked (Twilio 30034, number not registered yet)". Say it plainly: Twilio took it, the carrier refused it. Never say a text arrived on a phone.
+- **The alert text is sent to Twilio for real, but it doesn't arrive.** Twilio accepts it, then US carriers block it: Twilio error 30034, because our number's 10DLC registration isn't done, and that takes days. The console's Phone panel (tagged "real SMS") mirrors every text we sent, and once Twilio reports back the bubble reads "Blocked by carrier (30034)". Say it plainly: Twilio took it, the carrier refused it. Never say a text arrived on a phone.
 - **Speed:** the target is the alert text sent within 2 seconds of the end of the caller's flagged sentence. The Why panel's "Speed" line shows how long it took. Say "the console shows how long it took", never a number.
 
 ## 3-minute version: the live call
@@ -17,7 +17,7 @@ Every number here comes from one of two sources, named each time: the dev set (`
 **Before the judge arrives:**
 - Console open and logged in; the opt-in prompt answered **Yes** (consent active).
 - **SMS mode: real** (the "real" button is lit and the Phone panel reads "real SMS"). If it says simulated, the Twilio and 30034 lines below are false: switch it or don't say them.
-- Arm C on (`INTENT_MODEL=on`, OpenRouter key set). Once the call starts, the header reads "call running · rules + AI (Perplexity Decider)".
+- Arm C on (`INTENT_MODEL=on`, OpenRouter key set). Once the call starts, the call clock reads "Rules + Perplexity Decider".
 - Arnav's phone unlocked, ringer on, **not on speaker**. The spare phone and the printed scripts on the table.
 
 Timings below are `say -r 150` machine reads of the spoken lines (150 words per minute) plus the call itself; pointing and pauses aren't in them. Rehearse once with a stopwatch and write the real times next to these.
@@ -87,12 +87,12 @@ Use it for a second judge at the table, or when the AI is down: rules catch this
 Never pretend a lower rung is a live phone call.
 
 ## Console labels this script quotes
-Checked against this branch's console: "Run grandson", "Start live conversation", "Caller" / "You", "End call", "Reset", "Log out", "SMS mode" real/simulated, the header "call running · rules + AI (Perplexity Decider)" and "Monitoring off · Turn on", the transcript tags "Phone call" / "Live mic" / "cached transcript", the Why panel's "Caught by", "Speed" and "Alert text: …", the Phone panel's "real SMS" tag, "AI unavailable, rules only", and the 30034 wording above.
+Checked against this branch's console: "Run grandson", "Start live conversation", "Caller" / "You", "End call", "Reset", "Log out", "SMS mode" real/simulated, the header "call running" and "Monitoring off · Turn on", the call clock "Rules + Perplexity Decider", the transcript tags "Phone call" / "Live mic" / "cached transcript", the Why panel's "Caught by", "Speed", the Phone panel's "real SMS" tag, "AI unavailable, rules only", and the 30034 wording above.
 
 ## Reset between judges
 - Hang up both phones.
 - Press the console **Reset** button. It cancels the call session and pending sends and clears the transcript. It never changes consent.
 - If the header says "Monitoring off" (someone said STOP or No), press **Turn on** next to it. If a phone texted STOP for real, Twilio blocks texts to it until it texts START, so use the spare phone instead.
 - Check **SMS mode** is still **real**.
-- Check the arm: on the next call the header must read "call running · rules + AI (Perplexity Decider)". If it doesn't, say the demo is running on rules only and use the bank script.
+- Check the arm: on the next call the call clock must read "Rules + Perplexity Decider". If it doesn't, say the demo is running on rules only and use the bank script.
 - Put the printed scripts back face up for the next judge.

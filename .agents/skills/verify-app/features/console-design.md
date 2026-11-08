@@ -5,7 +5,7 @@ The console follows `DESIGN.md` (Light Mirror): three columns (controls, the liv
 ## Sub-features
 
 - `design.fit-and-accent` runs the bank replay to its end, then at 1440x900 and 1920x1080: no page scroll, three columns, the alert bubble fully inside the phone screen, no magenta outside the allowed elements and no `--magenta` text under 24px. The results band shows every arm's hard-benign false alerts from `GET /results/latest` and says the dev batch is the tuning set.
-- `ticker.turns` runs the bank replay to its end: one `turn` SSE event per transcript line; the ticker lists one entry per turn (speaker, AI verdict, `decided in N ms`) plus one per text, with an ALERT entry for the alert text; it scrolls by default and stops under `prefers-reduced-motion`.
+- `ticker.turns` runs the bank replay to its end: one `turn` SSE event per transcript line; the ticker lists one entry per turn (speaker, AI verdict, `N ms` to decide) plus one per text, with an ALERT entry for the alert text; it scrolls by default and stops under `prefers-reduced-motion`.
 
 ## How to get to it (user POV)
 

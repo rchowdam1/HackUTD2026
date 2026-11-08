@@ -102,7 +102,7 @@ Use `font-variant-numeric: tabular-nums` on the page so timers and counts don't 
 **Buttons.**
 - Primary: a pill (`border-radius: 999px`), `--magenta` fill, white 16px/600 label, at least 48px tall. One per screen.
 - Secondary: a pill with a 1px `--field` outline and transparent fill.
-- Control rows (Run clinic, Run bank, End call): full-width list rows at least 48px tall, laid out as icon, label, then a mono hint on the right. The bank row's text is `--magenta-text`. Reset sits last behind a dashed rule, in `--danger`.
+- Control rows (Run clinic, Run bank, End call): full-width list rows at least 48px tall, laid out as icon then label (no hints: the label says it). The bank row's text is `--magenta-text`. Reset sits last behind a dashed rule, in `--danger`.
 - Toggle (SMS mode): mono uppercase pills. The on state is filled `--ink` with `--ground` text; the off state has a `--ink-4` outline. Set `aria-pressed` on both.
 - Reply keys (YES / WRONG / SHARED / STOP): four mono pills, 44px tall, with WRONG filled magenta.
 
@@ -124,7 +124,7 @@ Keep it quiet. The only continuous motion is the ticker. The transcript types in
 
 - Focus ring: `outline: 1px solid var(--magenta); outline-offset: 3px` on every control.
 - Targets are at least 44px tall, with at least 6px between them.
-- The WRONG counter has `role="status" aria-atomic="true"` and announces "N WRONG replies counted", not a bare number.
+- The WRONG counter has `role="status" aria-atomic="true"` and announces "N WRONG replies", not a bare number.
 - Decorative dots and icons get `aria-hidden="true"`. Icon-only buttons get `aria-label`.
 - Sections use `aria-labelledby` pointing at their label text, and the transcript is an `<ol>`.
 - Results ship as a real `<table>` or `<dl>`; charts are optional extras.

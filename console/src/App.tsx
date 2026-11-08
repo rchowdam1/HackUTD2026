@@ -30,7 +30,7 @@ function statusWords(sms: SmsPayload): string {
   // The simulated gateway's texts ("SIM…" ids) land in this frame at once but are never status-updated past queued.
   if (sms.status === "queued" && sms.message_id.startsWith("SIM")) return "Sent (simulated)";
   if (sms.status !== "failed" || !sms.error_code) return STATUS_WORDS[sms.status];
-  if (sms.error_code === CARRIER_BLOCKED) return "Not delivered: carrier blocked (Twilio 30034, number not registered yet)";
+  if (sms.error_code === CARRIER_BLOCKED) return "Blocked by carrier (30034)";
   return `Not delivered (Twilio ${sms.error_code})`;
 }
 // The transcript note under the line an alert / follow-up text went out after.
@@ -41,7 +41,6 @@ const MARKER_WORDS: [string, string][] = [
 const MARKER_STATUS: Record<SmsPayload["status"], string> = { queued: "sent", sent: "sent", delivered: "delivered", failed: "not delivered" };
 // The intent model behind arm C: app.intent.MODEL (perplexity/pplx-decider-v1.2-20261016).
 const MODEL_NAME = "Perplexity Decider";
-const ARM_WORDS: Record<string, string> = { K: "keywords only", B: "rules only", C: `rules + AI (${MODEL_NAME})` };
 const DETECTOR_WORDS: Record<string, string> = { K: "Keywords only", B: "Rules only (AI off)", C: `Rules + ${MODEL_NAME}` };
 // What the caller wanted, as the AI's sentence ends: "99.9% sure the caller wants money".
 const WANTS_WORDS: Record<RiskEvent["category"], string> = { otp: "a code", payment: "money", remote: "access to your device" };
@@ -307,10 +306,6 @@ function Console({ onLoggedOut, askOptIn, onOptInDone }: { onLoggedOut: (why: st
         <ResultsBand wrongCount={state.wrongCount} />
       </main>
       <Ticker state={state} />
-      <footer className="footer">
-        <span>CallSafe · texts you during a call when the caller asks for a code, money or access</span>
-        <span>No alert detected never means safe</span>
-      </footer>
       {askOptIn && hydrated && state.consent !== "active" && <OptInPrompt onDone={onOptInDone} />}
     </div>
   );
@@ -337,7 +332,7 @@ function Monitoring({ consent }: { consent: State["consent"] }) {
 
 function sessionLabel(s: State): string {
   if (!s.session) return "idle";
-  if (s.session.state === "running") return `call running · ${ARM_WORDS[s.session.arm ?? ""] ?? s.session.arm}`;
+  if (s.session.state === "running") return "call running";
   return s.session.state === "finished" ? "call ended" : "reset";
 }
 
@@ -402,19 +397,14 @@ function CallClock({ state }: { state: State }) {
   );
 }
 
-function ControlRow({ label, hint, icon, className, onClick }: { label: string; hint: string; icon: string; className?: string; onClick: (() => void) | null }) {
-  const id = `hint-${label.replace(/\W+/g, "-").toLowerCase()}`;
+function ControlRow({ label, icon, className, onClick }: { label: string; icon: string; className?: string; onClick: (() => void) | null }) {
   return (
     <li>
-      <button className={`row ${className ?? ""}`} disabled={FIXTURES || !onClick} aria-describedby={id} onClick={onClick ?? undefined}>
+      <button className={`row ${className ?? ""}`} disabled={FIXTURES || !onClick} onClick={onClick ?? undefined}>
         <span className="icon" aria-hidden="true">
           {icon}
         </span>
         <span className="row-label">{label}</span>
-        {/* hidden from the name (checks and screen readers find "Run bank"), still read as the description */}
-        <span className="hint" id={id} aria-hidden="true">
-          {hint}
-        </span>
       </button>
     </li>
   );
@@ -440,14 +430,13 @@ function Controls({ state, dispatch, player, onStartLive, children }: {
         Controls
       </h2>
       <ul className="rows">
-        <ControlRow label="Run clinic" hint="harmless" icon="▶" onClick={() => run("clinic")} />
-        <ControlRow label="Run bank" hint="asks for a code" icon="▶" className="primary-row" onClick={() => run("bank")} />
-        <ControlRow label="Run grandson" hint="asks for money" icon="▶" onClick={() => run("family")} />
-        <ControlRow label="Start live conversation" hint="laptop mic" icon="●" onClick={onStartLive} />
+        <ControlRow label="Run clinic" icon="▶" onClick={() => run("clinic")} />
+        <ControlRow label="Run bank" icon="▶" className="primary-row" onClick={() => run("bank")} />
+        <ControlRow label="Run grandson" icon="▶" onClick={() => run("family")} />
+        <ControlRow label="Start live conversation" icon="●" onClick={onStartLive} />
         {children}
         <ControlRow
           label="End call"
-          hint="hang up"
           icon="■"
           onClick={() => {
             player.current.flush();
@@ -456,7 +445,6 @@ function Controls({ state, dispatch, player, onStartLive, children }: {
         />
         <ControlRow
           label="Reset"
-          hint="clear screen"
           icon="↺"
           className="danger"
           onClick={() => {
@@ -561,6 +549,8 @@ const SPEAKER_WORDS: Record<Speaker, string> = { caller: "Caller", subscriber: "
 function Transcript({ state, live, transcribing }: { state: State; live: Map<string, number>; transcribing: boolean }) {
   // The line that carried the request (the Why panel quotes the same one).
   const flaggedAt = new Map(state.risks.map((r) => [r.span_seq[r.span_seq.length - 1], r.category] as const));
+  // A rule hit underlines the words it matched, once the line has finished typing.
+  const spansAt = new Map(state.risks.filter((r) => r.source === "rule").map((r) => [r.span_seq[r.span_seq.length - 1], r.match_spans] as const));
   const cached = state.segments.some((s) => s.source === "cached");
   // A note for each alert / follow-up text, right after the line that was last when it was sent.
   const markers = state.bubbles.flatMap((b) => {
@@ -570,7 +560,14 @@ function Transcript({ state, live, transcribing }: { state: State; live: Map<str
   const end = useRef<HTMLOListElement>(null);
   const last = state.segments[state.segments.length - 1];
   useEffect(() => {
-    end.current?.lastElementChild?.scrollIntoView({ block: "end" });
+    const ol = end.current;
+    if (!ol) return;
+    const scroll = () => ol.lastElementChild?.scrollIntoView({ block: "end" });
+    scroll();
+    // Lines grow after they arrive (typing, the alert marker, underlines), so keep the newest in view.
+    const grown = new ResizeObserver(scroll);
+    grown.observe(ol);
+    return () => grown.disconnect();
   }, [state.segments.length, markers.length, last?.text]);
   return (
     <section className="card transcript" aria-labelledby="transcript-label">
@@ -592,7 +589,9 @@ function Transcript({ state, live, transcribing }: { state: State; live: Map<str
                 <span className="dot" aria-hidden="true" />
                 <span className="who">{SPEAKER_WORDS[s.speaker]}</span>
                 <span className="text">
-                  <TypedText text={s.text} wordMs={live.get(segKey(s))} />
+                  <TypedText text={s.text} wordMs={live.get(segKey(s))}>
+                    {spansAt.has(s.seq) ? <Highlighted text={s.text} spans={spansAt.get(s.seq)!} /> : undefined}
+                  </TypedText>
                 </span>
                 {category && <span className="rel">{REQUEST_TAG[category]}</span>}
               </p>
@@ -614,7 +613,7 @@ function Transcript({ state, live, transcribing }: { state: State; live: Map<str
 
 // Reveals a line one word per `wordMs` (undefined: all at once), like a streamed chat reply. Words shown are
 // computed from the clock, not counted ticks, so throttled timers can't fall behind the event hold in Console.
-function TypedText({ text, wordMs }: { text: string; wordMs: number | undefined }) {
+function TypedText({ text, wordMs, children }: { text: string; wordMs: number | undefined; children?: ReactNode }) {
   const all = words(text);
   const [start] = useState(() => Date.now());
   const [, tick] = useState(0);
@@ -624,14 +623,13 @@ function TypedText({ text, wordMs }: { text: string; wordMs: number | undefined 
     const t = setTimeout(() => tick((n) => n + 1), Math.max(0, (shown + 1) * wordMs - (Date.now() - start))); // next word boundary
     return () => clearTimeout(t);
   });
-  if (shown >= all.length) return <>{text}</>;
+  if (shown >= all.length) return <>{children ?? text}</>;
   return <span className="typing">{all.slice(0, shown).join(" ")}</span>;
 }
 
 function WhyPanel({ state, arrived }: { state: State; arrived: Map<string, number> }) {
   const alert = state.decisions.find((d) => d.level === "action_warning");
   const sms = alert && state.bubbles.find((b) => b.kind === "out" && b.sms.template_id === alert.template_id);
-  const told = useTemplateText(sms && alert ? alert.template_id : null);
   if (!alert) {
     return (
       <section className="card why" aria-labelledby="why-label" tabIndex={0}>
@@ -639,7 +637,7 @@ function WhyPanel({ state, arrived }: { state: State; arrived: Map<string, numbe
           <span>Why this alert</span>
         </h2>
         <p className="quiet">{state.session?.state === "finished" ? "No alert detected" : "No alert yet"}</p>
-        <p className="quiet">CallSafe texts only when a caller asks for a code, money or access to your device.</p>
+        <p className="quiet">Texts you only when a caller asks for a code, money or device access.</p>
       </section>
     );
   }
@@ -658,17 +656,6 @@ function WhyPanel({ state, arrived }: { state: State; arrived: Map<string, numbe
         <span>Why this alert</span>
       </h2>
       <dl>
-        <dt>Request</dt>
-        <dd className="request">{risk ? CATEGORY_WORDS[risk.category] : alert.template_id}</dd>
-        {line && (
-          <>
-            <dt>{line.speaker === "caller" ? "Caller said" : "You said"}</dt>
-            <dd className="quote">
-              {/* An AI catch has no matched words: the whole line is the request. */}
-              &ldquo;<Highlighted text={line.text} spans={risk.source === "intent" ? [[0, line.text.length]] : risk.match_spans} />&rdquo;
-            </dd>
-          </>
-        )}
         <dt>Caught by</dt>
         <dd>{risk ? caughtBy(risk) : "-"}</dd>
         {speedMs !== null && (
@@ -685,16 +672,9 @@ function WhyPanel({ state, arrived }: { state: State; arrived: Map<string, numbe
             <dd>{DANGER_WORDS[risk.category]}</dd>
           </>
         )}
-        {told && (
-          <>
-            <dt>We texted</dt>
-            <dd>{told.replace(/^CallSafe:\s*(\w)/, (_, c: string) => c.toUpperCase())}</dd>
-          </>
-        )}
       </dl>
-      <p className={`dispatch ${out?.status ?? ""}`}>
-        {optedOut ? "Monitoring opt-in: No. No text sent" : out ? `Alert text: ${statusWords(out)}` : "Alert text not dispatched yet"}
-      </p>
+      {/* The phone shows the text and its status; only say why there is none. */}
+      {optedOut && <p className="dispatch">Monitoring opt-in: No. No text sent</p>}
     </section>
   );
 }
@@ -751,7 +731,7 @@ function Phone({ bubbles, simulated, off }: { bubbles: Bubble[]; simulated: bool
           {simulated ? "simulated SMS" : "real SMS"}
         </span>
       </h2>
-      {blocked && <p className="note">Real texts are blocked by carriers until our number's registration clears; this frame shows what was sent.</p>}
+      {blocked && <p className="note">Carriers block our texts until the number is registered.</p>}
       <div className="frame">
         <div className="screen" tabIndex={0} role="log" aria-label="Texts on the phone">
           {off ? <p className="empty">Call monitoring is off.</p> : bubbles.length === 0 && <p className="empty">No texts yet.</p>}
@@ -824,15 +804,9 @@ function ResultsBand({ wrongCount }: { wrongCount: number | null }) {
         <p className="quiet">{results === null && !FIXTURES ? "Loading results…" : "Results pending"}</p>
       ) : (
         <div className="results-grid">
-          <div className="results-hero">
-            <p className="hero-sm">{best[1].hard_benign_fp}</p>
-            <p className="lead">
-              of {best[1].hard_benign_n} hard harmless calls falsely flagged by {best[0]}
-            </p>
-          </div>
           <table>
             <caption>
-              {batch}: {calls} scripted calls the rules were tuned on. Scripted transcripts, not real calls; no production claim.
+              {batch}: {calls} scripted calls the rules were tuned on. Not real calls.
             </caption>
             <thead>
               <tr>
@@ -846,7 +820,7 @@ function ResultsBand({ wrongCount }: { wrongCount: number | null }) {
             </thead>
             <tbody>
               <tr>
-                <th scope="row">False alerts, hard harmless calls</th>
+                <th scope="row">False alerts</th>
                 {rows.map(([name, c]) => (
                   <td key={name}>{ofN(c.hard_benign_fp, c.hard_benign_n)}</td>
                 ))}
@@ -862,7 +836,7 @@ function ResultsBand({ wrongCount }: { wrongCount: number | null }) {
         </div>
       )}
       <p className="wrong-count" role="status" aria-atomic="true">
-        <span className="n">{wrongCount ?? 0}</span> WRONG replies counted
+        <span className="n">{wrongCount ?? 0}</span> WRONG replies
       </p>
     </section>
   );
@@ -870,10 +844,10 @@ function ResultsBand({ wrongCount }: { wrongCount: number | null }) {
 
 const AI_CATEGORY: Record<RiskEvent["category"], string> = { otp: "code", payment: "money", remote: "access" };
 function aiWords(t: TurnPayload): string {
-  if (t.ai === "off") return "Rules only";
+  if (t.ai === "off") return "rules only";
   if (t.ai === "unavailable") return "AI unavailable";
   const pct = t.score === null ? "" : ` ${percent(t.score)}`;
-  return t.ai === "request" && t.category ? `AI: ${AI_CATEGORY[t.category]}${pct}` : `AI: no request${pct}`;
+  return t.ai === "request" && t.category ? `AI ${AI_CATEGORY[t.category]}${pct}` : `AI no request${pct}`;
 }
 function templateWords(id: string): string {
   if (id.startsWith("ALERT-")) return "Alert text";
@@ -888,14 +862,13 @@ function tickerItems(s: State): TickerItem[] {
   const sms = (afterSeq: number) =>
     s.bubbles.flatMap((b): TickerItem[] => {
       if (b.kind !== "out" || b.afterSeq !== afterSeq) return [];
-      // A replay line is timed from when it came in (its audio starts then); a live turn from when it ended.
-      const after = s.session?.source?.startsWith("replay:") ? "after the line came in" : "after the turn ended";
-      const latency = b.sms.latency_ms == null ? "" : ` · ${(b.sms.latency_ms / 1000).toFixed(2)} s ${after}`;
+      // The Why panel's Speed row says what the seconds are measured from.
+      const latency = b.sms.latency_ms == null ? "" : ` · ${(b.sms.latency_ms / 1000).toFixed(2)} s`;
       const tag = b.sms.template_id.startsWith("ALERT-") ? "alert" : "sms";
       return [{ key: `sms-${b.sms.message_id || b.sms.template_id}`, tag, text: `${templateWords(b.sms.template_id)} · ${statusWords(b.sms)}${latency}` }];
     });
   const turns = s.turns.flatMap((t): TickerItem[] => [
-    { key: `turn-${t.seq}`, tag: "turn", text: `${t.speaker === "caller" ? "Caller" : "You"} · ${aiWords(t)} · decided in ${t.decided_ms} ms` },
+    { key: `turn-${t.seq}`, tag: "turn", text: `${SPEAKER_WORDS[t.speaker]} · ${aiWords(t)} · ${t.decided_ms} ms` },
     ...sms(t.seq),
   ]);
   return [...sms(0), ...turns];
