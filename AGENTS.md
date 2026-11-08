@@ -42,11 +42,15 @@ Agents copy what's already here, so every pattern in the repo gets repeated.
   git worktree add ../wt-<agent-name> -b <username>/<agent-name> origin/main
   ```
 - Before a PR: `git rebase origin/main`, `make smoke`, `git push --force-with-lease`, then `gh pr create --fill --body "Closes #<n>"`. Humans merge.
-- Keep edits to shared files (`pyproject.toml`, `uv.lock`, `Makefile`, `models.py`, `.env.example`) minimal, and post an FYI on the board when you make one.
+- Keep edits to shared files (`pyproject.toml`, `uv.lock`, `Makefile`, `models.py`, `.env.example`) minimal, and call them out in the PR body.
 
-## Message board
+## Communication
 
-[Issue #1](https://github.com/rchowdam1/HackUTD2026/issues/1). Its body has the message format and the current team facts, so read it before you start. Post only LEARN, FYI, ASK, BLOCKED or REPLY, at most 3 lines each. Don't post progress, thanks or acknowledgements. Answer messages addressed to you.
+There is no message board. Talk where the work is:
+
+- Questions about someone's code go on their task issue or PR. If you're blocked for more than 30 minutes, @mention the owner's human there.
+- When you learn a gotcha, put it where the next agent will run into it: a test, a lint rule, a clear error message or a one-line comment at that spot in the code. Don't post it in chat.
+- Product decisions belong to humans. Ask them, and record the answer in the PRD, the README or the code.
 
 ## Verification skills
 

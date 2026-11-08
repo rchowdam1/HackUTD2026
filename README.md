@@ -8,7 +8,8 @@ CallSafe texts you during a call when the caller asks for a code, money or acces
 - Speech to text: faster-whisper `small.en` on CPU, with a cached transcript as fallback.
 - Rules and SMS templates: YAML files in `policy/v1.0`.
 - Storage: SQLite in `data/`, which holds only hashed phone numbers.
-- SMS: Photon Spectrum iMessage (Bun bridge in `hackutd/`), or a simulated phone.
+- SMS: Photon Spectrum iMessage (Bun bridge in `hackutd/`), or a simulated phone. The demo runs on the simulated phone.
+- Arm C adds the TypeSafe Jev API (an external call, so call text leaves the machine). It needs `INTENT_MODEL=on` and `TYPESAFE_API_KEY`; without them C equals B and the app logs a warning.
 - Operator console: React + TypeScript + Vite (`console/`).
 - Evaluation scripts: `eval/`.
 - Tooling: `uv` and pytest.
@@ -41,4 +42,4 @@ make verify-formal   # TLA+ model check of the call-session pipeline
 
 ## Working in this repo
 
-Agents and humans follow [AGENTS.md](AGENTS.md): each works on their own branch and worktree, uses the message board (issue #1), and works from task issues.
+Agents and humans follow [AGENTS.md](AGENTS.md): each works on their own branch and worktree, and works from task issues. There is no message board.
