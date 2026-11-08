@@ -166,13 +166,21 @@ def test_request_logged_only_in_debug_and_never_the_text_or_key(jev, caplog):
     ("otp", {"otp_code": 0.8}, True, "confirm"),  # any of the category's request Nouls (OR)
     ("otp", {"otp": 0.6}, True, None),  # not likely enough, lexicon or not
     ("otp", {"otp": 0.9, "warning": 0.4}, True, None),  # a raised guard blocks a likely request
-    ("otp", {"otp": 0.9, "reported": 0.4}, False, None),
-    ("otp", {"otp": 0.98, "warning": 0.9}, False, "solo"),  # ... but not a near-certain one
+    ("otp", {"otp": 0.9, "reported": 0.6}, False, None),
+    ("otp", {"otp": 0.9, "reported": 0.45}, False, "solo"),  # "reported" has a higher bar
+    ("otp", {"otp": 0.96, "warning": 0.5}, False, "solo"),  # a near-certain request passes a raised guard
+    ("otp", {"otp": 0.99, "warning": 0.9}, False, None),  # ... but not a sure warning
+    ("otp", {"otp": 0.9, "done": 0.9}, False, "solo"),  # "done" is not a guard for codes
     ("otp", {"otp": 0.9, "reported": 0.6, "pressure": 0.8}, False, "solo"),  # pressure overrules guards
     ("otp", {"otp": 0.8, "reported": 0.6, "pressure": 0.8}, False, None),  # ... only for a sure request
+    ("otp", {"otp": 0.9, "warning": 0.5, "pressure": 0.9}, False, None),  # ... and never a warning
     ("payment", {"pay_send": 0.9, "self_service": 0.9}, False, "solo"),  # "buy the cards yourself" is a scam
     ("payment", {"payment": 0.9, "known_payee": 0.6}, True, None),  # "pay the plumber when he's done"
     ("remote", {"rem_install": 0.9, "self_service": 0.9}, True, None),  # "update it yourself" is not
+    ("remote", {"remote": 0.99, "self_service": 0.9}, True, None),  # ... however sure the install is
+    ("remote", {"rem_install": 0.9, "self_service": 0.9, "pressure": 0.9}, True, None),  # ... or pressed
+    ("remote", {"rem_install": 0.9, "self_service": 0.7}, True, "confirm"),  # do-it-yourself must be near-sure
+    ("remote", {"rem_access": 0.9, "self_service": 0.9}, False, "solo"),  # letting the caller in is not DIY
     ("remote", {"remote": 0.9, "known_payee": 0.9}, False, "solo"),  # guards are per category
     ("remote", {"remote": 0.2, "otp": 0.99}, False, None),  # categories are judged separately
 ])
@@ -182,10 +190,13 @@ def test_judge(category, nouls, lexicon_seen, expected):
 
 @pytest.mark.parametrize("nouls, expected", [
     ({"otp": 0.5, "warning": 0.9}, "veto"),  # the rules read a warning as a request
-    ({"otp": 0.9, "done": 0.5}, "veto"),
-    ({"otp": 0.98, "warning": 0.9}, None),  # a near-certain request: the rules stand
-    ({"otp": 0.9, "reported": 0.5, "pressure": 0.9}, None),  # a pressed request: the rules stand
+    ({"otp": 0.6, "reported": 0.6}, "veto"),
+    ({"otp": 0.96, "warning": 0.5}, None),  # a near-certain request: the rules stand
+    ({"otp": 0.99, "warning": 0.9}, "veto"),  # ... unless the caller is surely warning
+    ({"otp": 0.9, "reported": 0.6, "pressure": 0.9}, None),  # a pressed request: the rules stand
     ({"otp": 0.1}, None),  # no guard raised: the rules stand even if Jev sees no request
+    ({"otp": 0.1, "self_service": 0.9}, "veto"),  # Jev sees no request, only "do it yourself"
+    ({"otp": 0.5, "self_service": 0.9}, None),  # ... only when Jev sees no request
 ])
 def test_judge_veto_of_rule_requests(nouls, expected):
     assert intent.judge({**NO, **nouls}, "otp", True, rule_fired=True) == expected

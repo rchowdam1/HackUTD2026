@@ -8,6 +8,12 @@ from app.rules import decide, detect
 V = "v1.0"
 
 
+@pytest.fixture(autouse=True)
+def model_off(monkeypatch):
+    """Arm C here is B plus a stubbed (or absent) model: never call the live API, even under INTENT_MODEL=on."""
+    monkeypatch.delenv("INTENT_MODEL", raising=False)
+
+
 def call(*turns, ref=None):
     """turns: plain strings are the caller; ("subscriber", text) tuples are the subscriber."""
     out = []

@@ -9,7 +9,7 @@ Arms (tables in policy/<version>/rules.yaml and lexicon.yaml):
 - B: a caller request, in the caller's direction, not negated or hedged, whose
   object is a lexicon term in the same turn or (for "read it to me") a recent turn.
 - C: B plus TypeSafe Jev judgments (app.intent) on caller turns, for categories without
-  evidence yet: Jev's guards can veto a turn's B request (a warning, a report, a done deal),
+  evidence yet: Jev's guards can veto a turn's B request (a warning, a report, a done deal, do it yourself),
   and Jev adds C-INTENT-*-01 when it finds a request in a category the lexicon saw, or the
   model-only C-INTENT-*-SOLO when the lexicon didn't. If the model is off or a call fails, C = B.
 Evidence is category wording and rule ids only, never call text.
