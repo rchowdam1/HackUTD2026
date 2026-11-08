@@ -8,7 +8,7 @@ CallSafe texts you during a call when the caller asks for a code, money or acces
 - Speech to text: faster-whisper `small.en` on CPU, with a cached transcript as fallback.
 - Rules and SMS templates: YAML files in `policy/v1.0`.
 - Storage: SQLite in `data/`, which holds only hashed phone numbers.
-- SMS: Photon Spectrum iMessage (Bun bridge in `hackutd/`), or a simulated phone.
+- SMS: Twilio Programmable Messaging, or a simulated phone.
 - Operator console: React + TypeScript + Vite (`console/`).
 - Evaluation scripts: `eval/`.
 - Tooling: `uv` and pytest.
@@ -19,7 +19,7 @@ CallSafe texts you during a call when the caller asks for a code, money or acces
 make install                      # uv sync
 make run                          # backend on :8000 (needs OPERATOR_PASSWORD, SESSION_SECRET, CONSENT_SALT set)
 cd console && npm ci && npm run dev   # operator console; proxies the API to :8000
-make demo-up                      # demo laptop: app (127.0.0.1 only) + Photon bridge (docs/photon-live.md)
+make demo-up                      # demo laptop: tunnel (Twilio webhooks only) + app on 127.0.0.1 (docs/twilio-live.md)
 scripts/preflight                 # go/no-go before judging
 python -m eval.run --arms K,B --batch dev   # writes results/latest.json and .md
 ```
