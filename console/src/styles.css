@@ -91,9 +91,11 @@ button:disabled { opacity: 0.45; cursor: default; }
   .col { min-height: 0; }
   .transcript { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .transcript ol { flex: 1; min-height: 0; overflow-y: auto; }
+  /* The Why panel scrolls before the phone shrinks: the alert bubble is the payoff and must stay whole. */
   .why { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
-  .phone { flex: 1 1 auto; min-height: 220px; display: flex; flex-direction: column; }
-  .phone .frame { min-height: 0; flex: 1 1 auto; max-height: 560px; display: flex; }
+  .phone { flex: 1 0 auto; display: flex; flex-direction: column; }
+  /* A fixed base height, not the thread's: otherwise a long thread would claim the whole column. */
+  .phone .frame { height: 200px; flex: 1 0 auto; max-height: 560px; display: flex; }
   .phone .screen { min-height: 0; overflow-y: auto; }
 }
 

@@ -638,7 +638,21 @@ function Phone({ bubbles, simulated, off }: { bubbles: Bubble[]; simulated: bool
   const blocked = bubbles.some((b) => b.kind === "out" && b.sms.error_code === CARRIER_BLOCKED);
   const thread = useRef<HTMLOListElement>(null);
   useEffect(() => {
-    thread.current?.lastElementChild?.scrollIntoView({ block: "end" });
+    const ol = thread.current;
+    if (!ol) return;
+    // Newest first, except the follow-up that lands right after the alert must not scroll the alert away.
+    const scroll = () => {
+      const shown = [...ol.children].filter((_, i) => {
+        const b = bubbles[i];
+        return !(b?.kind === "out" && b.sms.template_id.startsWith("FU-"));
+      });
+      (shown.pop() ?? ol.lastElementChild)?.scrollIntoView({ block: "end" });
+    };
+    scroll();
+    // A bubble grows when its template text arrives after it was first drawn.
+    const grown = new ResizeObserver(scroll);
+    grown.observe(ol);
+    return () => grown.disconnect();
   }, [bubbles]);
   return (
     <section className="card phone" aria-labelledby="phone-label">
