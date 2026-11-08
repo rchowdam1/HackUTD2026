@@ -1,8 +1,8 @@
 """Preflight checks run before every judging block (PRD §19.7). Entry point: `scripts/preflight [--no-sms]`.
 
-Real texts go through the local Photon Spectrum bridge (hackutd/, docs/photon-live.md); nothing is public.
-The round trip needs the operator: after the test text arrives, reply HELP from DEMO_PHONE when
-prompted (waits PREFLIGHT_REPLY_TIMEOUT_S, default 120s) so the bridge's inbound path is proven too.
+Real texts go through Twilio (docs/twilio-live.md). The SMS round trip needs the operator: after the test
+text arrives, reply HELP from DEMO_PHONE when prompted (waits PREFLIGHT_REPLY_TIMEOUT_S, default 120s)
+so the inbound webhook is proven too.
 
 Prints one line per check, `PASS|FAIL|SKIP <name> - <detail>`, with a `fix:` line under
 each FAIL, and exits 1 if anything failed. Reads `.env` at the repo root (existing
@@ -17,17 +17,18 @@ import re
 import sys
 import time
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SECRET_VARS = ("PHOTON_BRIDGE_TOKEN", "PROJECT_SECRET", "TYPESAFE_API_KEY", "CONSENT_SALT", "OPERATOR_PASSWORD",
+SECRET_VARS = ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TYPESAFE_API_KEY", "CONSENT_SALT", "OPERATOR_PASSWORD",
                "SESSION_SECRET")
-PHONE_VARS = ("PHOTON_LINE", "DEMO_PHONE", "SPARE_PHONE")
-BRIDGE_URL = "http://127.0.0.1:8787"  # default PHOTON_BRIDGE_URL
+PHONE_VARS = ("TWILIO_FROM", "DEMO_PHONE", "SPARE_PHONE")
+TWILIO_VARS = ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM")
 # Routes the live demo needs (docs/track-b-brief.md), with the task that adds them.
 DEMO_ROUTES = {
-    "/sms/inbound": "b-photon #68", "/login": "b-api #19",
+    "/sms/inbound": "b-sms #17", "/login": "b-api #19",
     "/events/stream": "b-api #19", "/demo/run/{scenario_id}": "b-api #19", "/demo/reset": "b-api #19",
 }
 DEMO_ALERTS = {"bank": ["ALERT-OTP-01"], "clinic": []}  # expected decisions per cached demo replay
@@ -70,10 +71,11 @@ def mask_phone(number: str) -> str:
 
 
 def scrub(text: str, env: dict) -> str:
-    """Remove secret values and phone numbers from text before printing."""
+    """Remove secret values, Twilio account SIDs and phone numbers from text before printing."""
     for var in SECRET_VARS:
         if len(env.get(var) or "") >= 4:
             text = text.replace(env[var], "***")
+    text = re.sub(r"AC[0-9a-fA-F]{32}", "AC***", text)
     return re.sub(r"\+\d{8,15}", lambda m: mask_phone(m.group()), text)
 
 
@@ -160,25 +162,47 @@ def http_get(url: str):
     return httpx.get(url, timeout=10, follow_redirects=False)
 
 
-def _bridge(env: dict) -> str:
-    return (env.get("PHOTON_BRIDGE_URL") or BRIDGE_URL).strip().rstrip("/")
-
-
-def check_bridge(env: dict) -> Result:
-    """The Spectrum bridge (hackutd/) is up on localhost. It is never exposed: no tunnel, no public webhook."""
-    if missing(env, ("PHOTON_BRIDGE_TOKEN",)):
-        return Result("FAIL", "bridge", "PHOTON_BRIDGE_TOKEN is not set (real SMS mode is off)",
-                      "set PHOTON_BRIDGE_TOKEN in .env (`openssl rand -hex 16`), see docs/photon-live.md")
-    base = _bridge(env)
+def check_tunnel(env: dict) -> Result:
+    base = (env.get("PUBLIC_BASE_URL") or "").strip().rstrip("/")
+    if not base:
+        return Result("FAIL", "tunnel", "PUBLIC_BASE_URL is not set",
+                      "run `make demo-up` (writes the quick tunnel URL), or set it to your named tunnel's https URL")
+    if not base.startswith("https://"):
+        return Result("FAIL", "tunnel", f"PUBLIC_BASE_URL is not https: {base}",
+                      "use the https tunnel URL (Twilio signatures are validated against it)")
     try:
         r = http_get(base + "/health")
-        ok = r.status_code == 200 and r.json().get("ok") is True
+        ok = r.status_code == 200 and r.json().get("status") == "ok"
         detail = f"GET {base}/health -> {r.status_code}"
     except Exception as e:
         ok, detail = False, f"GET {base}/health failed: {type(e).__name__}: {e}"
     if not ok:
-        return Result("FAIL", "bridge", detail, "start the stack with `make demo-up` (it starts the bridge)")
-    return Result("PASS", "bridge", f"Photon bridge up at {base}")
+        return Result("FAIL", "tunnel", detail,
+                      "start the stack with `make demo-up` (app + tunnel)")
+    return Result("PASS", "tunnel", f"{base}/health ok")
+
+
+def twilio_client(env: dict):
+    from twilio.rest import Client
+    return Client(env["TWILIO_ACCOUNT_SID"], env["TWILIO_AUTH_TOKEN"])
+
+
+def check_webhook(env: dict) -> Result:
+    need = missing(env, TWILIO_VARS + ("PUBLIC_BASE_URL",))
+    if need:
+        return Result("FAIL", "webhook", f"not set: {', '.join(need)}", f"fill {', '.join(need)} in .env")
+    want = env["PUBLIC_BASE_URL"].strip().rstrip("/") + "/sms/inbound"
+    numbers = twilio_client(env).incoming_phone_numbers.list(phone_number=env["TWILIO_FROM"], limit=1)
+    if not numbers:
+        return Result("FAIL", "webhook", "TWILIO_FROM is not a phone number on this Twilio account",
+                      "set TWILIO_FROM to the account's number (E.164)")
+    url, method = numbers[0].sms_url or "", (numbers[0].sms_method or "").upper()
+    if url != want or method != "POST":
+        return Result("FAIL", "webhook", f"Twilio number's messaging webhook is {method} {url or '(empty)'}, "
+                      f"expected POST {want}",
+                      f"Twilio console > Phone Numbers > the TWILIO_FROM number > Messaging > "
+                      f"'A message comes in': Webhook, HTTP POST, {want}")
+    return Result("PASS", "webhook", f"Twilio SMS webhook = POST {want}")
 
 
 def check_consent(env: dict) -> Result:
@@ -195,29 +219,37 @@ def check_consent(env: dict) -> Result:
     if off:
         detail = ", ".join(f"{var} {mask_phone(env[var])} is {s}" for var, s in off.items())
         return Result("FAIL", "consent", detail, "text YES from each listed phone to the CallSafe number, "
-                      "with `make demo-up` running")
+                      "with `make demo-up` running (app + tunnel)")
     return Result("PASS", "consent", "DEMO_PHONE and SPARE_PHONE are active")
 
 
-def check_sms(env: dict, consent_ok: bool) -> Result:
-    """Send R-HELP to DEMO_PHONE through the bridge. Spectrum sends no delivery receipts, so PASS means the
-    bridge accepted it; the reply check proves the phone got it."""
-    import httpx
-    need = missing(env, ("PHOTON_BRIDGE_TOKEN", "DEMO_PHONE"))
+def check_sms(env: dict, consent_ok: bool, timeout_s: float = SMS_TIMEOUT_S, poll_s: float = 1.0) -> Result:
+    """Send R-HELP to DEMO_PHONE via Twilio and wait for status `delivered`."""
+    need = missing(env, TWILIO_VARS + ("DEMO_PHONE",))
     if need:
         return Result("FAIL", "sms", f"not set: {', '.join(need)}", f"fill {', '.join(need)} in .env")
     if not consent_ok:
         return Result("FAIL", "sms", "not sent: DEMO_PHONE is not confirmed opted in",
                       "fix the consent check first (we never text a phone that hasn't opted in)")
     from app.policy import templates
+    client = twilio_client(env)
     to = mask_phone(env["DEMO_PHONE"])
-    r = httpx.post(_bridge(env) + "/send", json={"to": env["DEMO_PHONE"], "text": templates.get("R-HELP")},
-                   headers={"x-bridge-token": env["PHOTON_BRIDGE_TOKEN"]}, timeout=SMS_TIMEOUT_S)
-    if r.status_code != 200:
-        return Result("FAIL", "sms", f"bridge refused R-HELP to {to} (HTTP {r.status_code})",
-                      "read the bridge log; `Target not allowed` = register the phone as a project user in the "
-                      "Photon dashboard; else demo in simulated SMS mode")
-    return Result("PASS", "sms", f"R-HELP to {to} accepted by the bridge (no delivery receipts)")
+    t0 = time.monotonic()
+    msg = client.messages.create(to=env["DEMO_PHONE"], from_=env["TWILIO_FROM"], body=templates.get("R-HELP"))
+    status = msg.status
+    while time.monotonic() - t0 < timeout_s:
+        status = client.messages(msg.sid).fetch().status
+        if status == "delivered":
+            return Result("PASS", "sms", f"R-HELP delivered to {to} in {time.monotonic() - t0:.1f}s")
+        if status in ("failed", "undelivered", "canceled"):
+            m = client.messages(msg.sid).fetch()
+            return Result("FAIL", "sms", f"R-HELP to {to} {status} (Twilio error {m.error_code})",
+                          "look the error code up at twilio.com/docs/api/errors; if the phone sent STOP, "
+                          "text START from it; else demo in simulated SMS mode")
+        time.sleep(poll_s)
+    return Result("FAIL", "sms", f"R-HELP to {to} not delivered after {timeout_s:.0f}s (last status {status})",
+                  "check the phone has signal and Twilio console > Monitor > Messaging logs; "
+                  "else demo in simulated SMS mode")
 
 
 def wait_for_reply(password: str, timeout_s: float, on_ready, client=None) -> bool:
@@ -252,6 +284,7 @@ def check_reply(env: dict, sms_ok: bool, timeout_s: float = REPLY_TIMEOUT_S) -> 
         return Result("FAIL", "sms-reply", f"not set: {', '.join(need)}",
                       "fill OPERATOR_PASSWORD in .env (preflight logs in to watch the app's reply events)")
     to = mask_phone(env["DEMO_PHONE"])
+    start = datetime.now(timezone.utc) - timedelta(seconds=5)
 
     def prompt():
         print(f"  >> now reply HELP from DEMO_PHONE {to} to the CallSafe number "
@@ -264,9 +297,15 @@ def check_reply(env: dict, sms_ok: bool, timeout_s: float = REPLY_TIMEOUT_S) -> 
         return Result("FAIL", "sms-reply", f"cannot watch {APP_URL}/events/stream: {type(e).__name__}: {e}",
                       "start the app with `make run` (port 8000); a 401 means OPERATOR_PASSWORD or "
                       "SESSION_SECRET in .env differ from the running app's")
-    return Result("FAIL", "sms-reply", f"no reply from {to} reached the app within {timeout_s:.0f}s",
-                  "reply from the DEMO_PHONE handset itself when prompted; read the bridge log for "
-                  "`backend rejected inbound`; if the phone sent STOP, text START; else demo in simulated SMS mode")
+    inbound = twilio_client(env).messages.list(from_=env["DEMO_PHONE"], to=env["TWILIO_FROM"],
+                                               date_sent_after=start, limit=1)
+    if inbound:
+        return Result("FAIL", "sms-reply", f"Twilio received the reply from {to} but the app never handled it",
+                      "Twilio console > Monitor > Logs > Errors: 11200 = tunnel/app unreachable; a 403 in the "
+                      "app log = PUBLIC_BASE_URL differs from the URL Twilio signs; see the webhook check")
+    return Result("FAIL", "sms-reply", f"no reply from {to} reached Twilio within {timeout_s:.0f}s",
+                  "reply from the DEMO_PHONE handset itself when prompted; if it sent STOP, text START; "
+                  "else demo in simulated SMS mode")
 
 
 def check_power(root: Path = POWER_SUPPLY) -> Result:
@@ -293,7 +332,8 @@ def run_checks(env: dict, send_sms: bool = True) -> list[Result]:
         _safe("model", check_model),
         _safe("app-offline", check_app),
         _safe("cached-replay", check_replay),
-        _safe("bridge", check_bridge, env),
+        _safe("tunnel", check_tunnel, env),
+        _safe("webhook", check_webhook, env),
         _safe("consent", check_consent, env),
     ]
     if send_sms:

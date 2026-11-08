@@ -1,24 +1,69 @@
-"""Start the demo stack: app on 127.0.0.1:8000 + Photon Spectrum bridge (PRD §19.3, #68).
+"""Start the demo stack: cloudflared tunnel -> PUBLIC_BASE_URL -> app on 127.0.0.1:8000 -> Twilio webhook
+(PRD §19.3, #78, docs/twilio-live.md).
 
-Nothing is published to the internet: the bridge reaches Photon over the SDK's own outbound
-connection, so no tunnel or public webhook is needed (docs/photon-live.md). The app starts first and
-the bridge only once /health answers, so inbound texts (STOP) are not dropped at startup. The bridge
-is skipped when PHOTON_BRIDGE_TOKEN is unset (simulated SMS only).
+Named tunnel when CLOUDFLARED_TUNNEL is set (PUBLIC_BASE_URL must already be its stable https URL);
+otherwise a quick tunnel, whose random trycloudflare.com URL is written to .env as PUBLIC_BASE_URL.
+The app only answers /sms/inbound, /sms/status and /health through the tunnel (app.main), so the
+operator console and API stay local. Once /health answers, the TWILIO_FROM number's "A message comes in"
+webhook is pointed at PUBLIC_BASE_URL/sms/inbound, so inbound texts (STOP) are not dropped at startup
+(skipped when Twilio vars are unset: simulated SMS only).
 Ctrl-C stops both. Never prints numbers or secrets.
 """
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
+import threading
 import time
 import urllib.request
 
-from preflight_checks import REPO_ROOT, load_env
+from preflight_checks import REPO_ROOT, TWILIO_VARS, load_env, missing
 
 PORT = 8000
 ENV_FILE = REPO_ROOT / ".env"
-BRIDGE_DIR = REPO_ROOT / "hackutd"
+QUICK_URL = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
+
+
+def find_quick_url(line: str) -> str | None:
+    m = QUICK_URL.search(line)
+    return m.group(0) if m else None
+
+
+def set_env_line(text: str, key: str, value: str) -> str:
+    """Replace (or append) KEY=... in .env text, keeping every other line as is."""
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if line.strip().removeprefix("export ").split("=", 1)[0].strip() == key:
+            lines[i] = f"{key}={value}"
+            break
+    else:
+        lines.append(f"{key}={value}")
+    return "\n".join(lines) + "\n"
+
+
+def start_tunnel() -> tuple[subprocess.Popen, str]:
+    target = f"http://127.0.0.1:{PORT}"
+    name = os.environ.get("CLOUDFLARED_TUNNEL", "").strip()
+    if name:
+        base = os.environ.get("PUBLIC_BASE_URL", "").strip().rstrip("/")
+        if not base.startswith("https://"):
+            sys.exit("CLOUDFLARED_TUNNEL is set: set PUBLIC_BASE_URL in .env to that tunnel's https hostname")
+        return subprocess.Popen(["cloudflared", "tunnel", "--no-autoupdate", "run", "--url", target, name]), base
+    proc = subprocess.Popen(["cloudflared", "tunnel", "--no-autoupdate", "--url", target],
+                            stderr=subprocess.PIPE, text=True)
+    deadline = time.monotonic() + 30
+    for line in proc.stderr:
+        if url := find_quick_url(line):
+            threading.Thread(target=proc.stderr.read, daemon=True).start()  # drain so the pipe never fills
+            ENV_FILE.write_text(set_env_line(ENV_FILE.read_text() if ENV_FILE.exists() else "",
+                                             "PUBLIC_BASE_URL", url))
+            return proc, url
+        if time.monotonic() > deadline:
+            break
+    proc.kill()
+    sys.exit("cloudflared quick tunnel printed no trycloudflare.com URL within 30 s")
 
 
 def wait_healthy(app: subprocess.Popen, url: str, timeout_s: float = 120) -> bool:
@@ -35,29 +80,36 @@ def wait_healthy(app: subprocess.Popen, url: str, timeout_s: float = 120) -> boo
     return False
 
 
-def start_bridge() -> subprocess.Popen | None:
-    if not os.environ.get("PHOTON_BRIDGE_TOKEN"):
-        print("demo_up: PHOTON_BRIDGE_TOKEN unset; no Photon bridge, simulated SMS only", flush=True)
-        return None
-    subprocess.run(["bun", "install", "--silent"], cwd=BRIDGE_DIR, check=True)
-    print("demo_up: Photon bridge (hackutd/) -> 127.0.0.1:8787", flush=True)
-    return subprocess.Popen(["bun", "start"], cwd=BRIDGE_DIR)
+def point_webhook(base: str) -> None:
+    need = missing(dict(os.environ), TWILIO_VARS)
+    if need:
+        print(f"demo_up: Twilio webhook not set ({', '.join(need)} unset); simulated SMS only", flush=True)
+        return
+    from twilio.rest import Client
+    client = Client(os.environ["TWILIO_ACCOUNT_SID"], os.environ["TWILIO_AUTH_TOKEN"])
+    numbers = client.incoming_phone_numbers.list(phone_number=os.environ["TWILIO_FROM"], limit=1)
+    if not numbers:
+        sys.exit("TWILIO_FROM is not a phone number on this Twilio account")
+    numbers[0].update(sms_url=f"{base}/sms/inbound", sms_method="POST")
+    print(f"demo_up: Twilio SMS webhook = POST {base}/sms/inbound", flush=True)
 
 
 def main() -> int:
     load_env(ENV_FILE)
     procs: list[subprocess.Popen] = []
     try:
+        tunnel, base = start_tunnel()
+        procs.append(tunnel)
+        os.environ["PUBLIC_BASE_URL"] = base  # beats .env: uvicorn's --env-file never overrides set vars
+        print(f"demo_up: tunnel {base} -> 127.0.0.1:{PORT} (only /sms/inbound, /sms/status, /health)", flush=True)
         app = subprocess.Popen(["uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", str(PORT),
                                 *(["--env-file", str(ENV_FILE)] if ENV_FILE.exists() else [])])
         procs.append(app)
         if not wait_healthy(app, f"http://127.0.0.1:{PORT}/health"):
-            print("demo_up: app did not become healthy; not starting the bridge", file=sys.stderr, flush=True)
+            print("demo_up: app did not become healthy; not pointing the Twilio webhook", file=sys.stderr, flush=True)
             return 1
-        print(f"demo_up: app on http://127.0.0.1:{PORT} (localhost only)", flush=True)
-        bridge = start_bridge()
-        if bridge:
-            procs.append(bridge)
+        print(f"demo_up: app on http://127.0.0.1:{PORT}", flush=True)
+        point_webhook(base)
         return app.wait()
     except KeyboardInterrupt:
         return 0

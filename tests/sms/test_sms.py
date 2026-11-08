@@ -309,6 +309,17 @@ def test_status_webhook_emits_mapped_status(client, events, twilio):
         (message_id, "sent"), (message_id, "delivered"), (message_id, "failed")]
 
 
+def test_tunnel_reaches_only_twilio_webhooks_and_health(client, events):
+    via_tunnel = {"Cf-Connecting-Ip": "203.0.113.7"}
+    for method, path in [("POST", "/login"), ("GET", "/events/stream"), ("POST", "/demo/reset"),
+                         ("GET", "/sms/outbox"), ("POST", "/sms/simulate-inbound"), ("GET", "/state")]:
+        assert client.request(method, path, headers=via_tunnel).status_code == 404, path
+    assert client.get("/health", headers=via_tunnel).status_code == 200
+    params = {"MessageSid": "SMt", "Body": "HELP", "From": DEMO}
+    r = client.post("/sms/inbound", data=params, headers={**signed("/sms/inbound", params), **via_tunnel})
+    assert r.status_code == 200 and "<Response>" in r.text
+
+
 # --- operator routes -----------------------------------------------------------
 
 def test_operator_routes_need_login(client):
