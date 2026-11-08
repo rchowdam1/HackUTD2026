@@ -124,7 +124,10 @@ function Console({ onLoggedOut, askOptIn, onOptInDone }: { onLoggedOut: (why: st
   const [stream, setStream] = useState<"connecting" | "live" | "stale">(FIXTURES ? "live" : "connecting");
   const [error, setError] = useState<string | null>(null);
   const live = useRef(new Map<string, number>()); // ms per word for segments that arrived over the stream; hydrated ones don't type
-  const player = useRef<Player>({ interrupt: () => {}, flush: () => {} }); // set by the stream effect; the controls call it
+  const player = useRef<Player>({ interrupt: () => {}, flush: () => {}, resume: () => {} }); // set by the stream effect; the controls call it
+  const [hardStop, setHardStop] = useState<string | null>(null); // the alert template the caller is on hold for
+  const monitoring = useRef(false); // read by the stream effect: no hold for a subscriber who opted out
+  monitoring.current = state.consent === "active";
   const arrived = useRef(new Map<string, number>()); // receive time per segment / sms, before the typing hold
   // Live mic conversation (#100): the session this tab started, the open mic, and turns still being transcribed.
   const [liveRef, setLiveRef] = useState<string | null>(null);
@@ -179,6 +182,9 @@ function Console({ onLoggedOut, askOptIn, onOptInDone }: { onLoggedOut: (why: st
     let gate = 0;
     let held: ReturnType<typeof setTimeout> | undefined;
     let audio: HTMLAudioElement | null = null;
+    // Hard stop (demo): on an alert the caller is put on hold; their next lines wait until the warning has played.
+    let onHold = false;
+    let source: string | null | undefined;
     const stopAudio = () => {
       audio?.pause();
       audio = null;
@@ -194,11 +200,19 @@ function Console({ onLoggedOut, askOptIn, onOptInDone }: { onLoggedOut: (why: st
           audio.play().catch(() => {}); // muted tab or autoplay block: the line still types out on time
         }
       }
+      if (e.type === "session" && e.payload.state === "running") source = e.payload.source;
       dispatch(e);
+      // A real phone call can't be held from the console yet (that needs the Twilio conference bridge).
+      if (e.type === "decision" && e.payload.level === "action_warning" && e.payload.template_id && source !== "phone" && monitoring.current) {
+        onHold = true;
+        stopAudio();
+        setHardStop(e.payload.template_id);
+      }
     };
     const pump = () => {
       clearTimeout(held);
-      while (queue.length) {
+      // On hold only the conversation waits; the alert text still lands on the phone.
+      while (queue.length && !(onHold && queue[0].type === "segment")) {
         const wait = gate - Date.now();
         if (wait > 0) {
           held = setTimeout(pump, wait);
@@ -208,7 +222,12 @@ function Console({ onLoggedOut, askOptIn, onOptInDone }: { onLoggedOut: (why: st
       }
     };
     // Reset / a new call: drop what is still held for the old one and go silent at once.
+    const release = () => {
+      onHold = false;
+      setHardStop(null);
+    };
     const interrupt = () => {
+      release();
       queue = [];
       gate = 0;
       clearTimeout(held);
@@ -216,11 +235,18 @@ function Console({ onLoggedOut, askOptIn, onOptInDone }: { onLoggedOut: (why: st
     };
     // End call: go silent and show everything already received now.
     const flush = () => {
+      release();
       stopAudio();
       gate = 0;
       pump();
     };
-    player.current = { interrupt, flush };
+    // Back to the call: the rest of the conversation plays on from where it was held.
+    const resume = () => {
+      release();
+      gate = Date.now();
+      pump();
+    };
+    player.current = { interrupt, flush, resume };
     const paced = (e: Event) => {
       if (e.type === "session" && e.payload.state !== "finished") interrupt();
       queue.push(e);
@@ -307,6 +333,16 @@ function Console({ onLoggedOut, askOptIn, onOptInDone }: { onLoggedOut: (why: st
       </main>
       <Ticker state={state} />
       {askOptIn && hydrated && state.consent !== "active" && <OptInPrompt onDone={onOptInDone} />}
+      {hardStop && (
+        <HardStop
+          templateId={hardStop}
+          onResume={() => player.current.resume()}
+          onHangUp={() => {
+            player.current.flush();
+            api.endCall();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -410,7 +446,7 @@ function ControlRow({ label, icon, className, onClick }: { label: string; icon: 
   );
 }
 
-type Player = { interrupt: () => void; flush: () => void };
+type Player = { interrupt: () => void; flush: () => void; resume: () => void };
 
 function Controls({ state, dispatch, player, onStartLive, children }: {
   state: State;
@@ -898,5 +934,56 @@ function Ticker({ state }: { state: State }) {
         </div>
       )}
     </section>
+  );
+}
+
+// What CallSafe says to the subscriber while the caller is on hold, per alert template family.
+const HOLD_SCRIPT: [string, string][] = [
+  ["ALERT-OTP", "This is CallSafe. We've put your caller on hold. They asked for a security code, and your bank never asks for that. Don't share it. Hang up and call your bank yourself."],
+  ["ALERT-PAY", "This is CallSafe. We've put your caller on hold. They asked you to send money, which is a common scam. Don't pay anyone. Hang up and call your family on a number you know."],
+  ["ALERT-REMOTE", "This is CallSafe. We've put your caller on hold. They want access to your device. Don't install anything. Hang up and call the company on a number you know."],
+];
+const SPEAK_MS_PER_WORD = 400; // if speech never ends (no voice, headless), resume after about the time it would take
+
+// The hard stop (demo): the caller is held, the subscriber hears a spoken warning, then decides.
+function HardStop({ templateId, onResume, onHangUp }: { templateId: string; onResume: () => void; onHangUp: () => void }) {
+  const script = (HOLD_SCRIPT.find(([p]) => templateId.startsWith(p)) ?? HOLD_SCRIPT[0])[1];
+  const resume = useRef(onResume);
+  resume.current = onResume;
+  useEffect(() => {
+    const done = () => resume.current();
+    const say = new SpeechSynthesisUtterance(script);
+    say.rate = 1.05;
+    say.onend = done;
+    say.onerror = done; // no voice to play: nothing to hold the call for
+    speechSynthesis.cancel();
+    speechSynthesis.speak(say);
+    const fallback = setTimeout(done, 1500 + words(script).length * SPEAK_MS_PER_WORD);
+    return () => {
+      say.onend = say.onerror = null;
+      speechSynthesis.cancel();
+      clearTimeout(fallback);
+    };
+  }, [script]);
+  return (
+    <div className="modal-backdrop hold-backdrop">
+      <section className="modal hold" role="alertdialog" aria-modal="true" aria-labelledby="hold-title" aria-describedby="hold-script">
+        <p className="label-text">
+          <span className="dot live-alert" aria-hidden="true" /> Caller on hold
+        </p>
+        <h2 id="hold-title">Possible scam. Listen.</h2>
+        <p id="hold-script" className="script">
+          &ldquo;{script}&rdquo;
+        </p>
+        <div className="modal-actions">
+          <button className="secondary" onClick={onHangUp}>
+            Hang up
+          </button>
+          <button className="primary" onClick={onResume} autoFocus>
+            Return to call
+          </button>
+        </div>
+      </section>
+    </div>
   );
 }

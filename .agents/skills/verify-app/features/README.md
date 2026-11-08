@@ -47,6 +47,7 @@ Each feature file starts with an H1 title and one paragraph describing the user-
 - [Enrollment invite](./enrollment-invite.md) covers `POST /sms/invite` for the demo and spare phones and hashed-only storage.
 - [Fixture replay](./fixture-replay.md) covers the console's backend-free `?fixtures` mode.
 - [Live mic](./live-mic.md) covers the console's browser-mic conversation: Start, Caller / You turns, alert mid-call, follow-up on End call.
+- [Hard stop](./hard-stop.md) covers the demo hold: on an alert the caller is held, a spoken warning plays, and the operator returns to the call or hangs up.
 - [Console design](./console-design.md) covers the DESIGN.md layout at 1440x900 and 1920x1080 (no page scroll, magenta only where allowed, the results band from `results/latest.json`) and the per-turn ticker, including reduced motion.
 - [ASR replay](./asr-replay.md) covers whisper transcription of the demo audio when `REPLAY_SOURCE=asr`.
 - [Preflight](./preflight.md) covers the offline parts of `scripts/preflight`.

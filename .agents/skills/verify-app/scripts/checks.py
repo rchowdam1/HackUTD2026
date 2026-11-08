@@ -33,6 +33,7 @@ UI_HANDLES = [
     "SMS mode", "simulated SMS", "Live transcript", "cached transcript", "No call yet.",
     "Why this alert", "No alert detected", "Caller asked for a code", "Caught by", "CallSafe rules",
     "Start live conversation", "Caller", "tap to stop", "Live mic", "Transcribing...",
+    "Possible scam. Listen.", "Return to call", "Hang up", "They asked for a security code",
     "Why it matters", "Whoever has the code can get into your account", "Speed", "Verdict", "Call time",
     "fixture replay", "call ended", "call running", "No texts yet.",
     "Opt in to call monitoring?", "Not now", "Monitoring on", "real SMS", "Alert text", "Follow-up text",
@@ -159,6 +160,18 @@ def replay_end_s(ctx: Context, scenario: str) -> float:
 
 def events_for(ctx: Context, since: int, ref: str, type_: str | None = None) -> list[dict]:
     return [e for e in ctx.tap.since(since) if e.get("session_ref") == ref and (type_ is None or e["type"] == type_)]
+
+
+def hold_dialog(page):
+    return page.get_by_role("alertdialog", name="Possible scam. Listen.")
+
+
+def return_to_call(ctx: Context, page) -> None:
+    """An alert puts the caller on hold (the console's hard stop); the operator returns to the call."""
+    hold = hold_dialog(page)
+    hold.wait_for(timeout=30_000)
+    click(ctx, page, "Return to call", scope=hold)
+    hold.wait_for(state="hidden")
 
 
 def start_replay_ui(ctx: Context, page, button: str, since: int) -> tuple[str, float]:
@@ -408,6 +421,7 @@ def replay_bank(ctx: Context):
     dec = ctx.wait_event(lambda e: e["session_ref"] == ref and e["type"] == "decision", mark, 35, "decision")["payload"]
     ctx.expect(dec["level"] == "action_warning" and dec["template_id"] == "ALERT-OTP-01"
                and dec["followup_template_id"] == "FU-OTP-01", "decision is ALERT-OTP-01 with follow-up FU-OTP-01", dec)
+    return_to_call(ctx, page)
     ctx.wait_event(lambda e: e["session_ref"] == ref and e["type"] == "session" and e["payload"]["state"] == "finished",
                    mark, 40, "session finished (auto end-call)")
     evs = events_for(ctx, mark, ref)
@@ -986,6 +1000,7 @@ def live_mic_ui(ctx: Context):
                "the turn is transcribed as the caller asking for a code", seg)
     dec = ctx.wait_event(lambda e: e["session_ref"] == ref and e["type"] == "decision", mark, 15, "decision")["payload"]
     ctx.expect(dec["template_id"] == "ALERT-OTP-01", "ALERT-OTP-01 from the spoken turn", dec)
+    return_to_call(ctx, page)
     tr = card(page, "^Live transcript")
     ui_assert(ctx, "transcript card shows the 'Live mic' tag", lambda: pw_expect()(tr.get_by_text("Live mic", exact=True)).to_be_visible())
     ui_assert(ctx, "transcript shows the spoken turn", lambda: pw_expect()(tr).to_contain_text(seg["text"]))
@@ -1062,7 +1077,7 @@ def negative_control(ctx: Context):
 # DESIGN.md "one accent, one meaning": magenta only on the request CallSafe acted on, the alert, the WRONG key and
 # the single primary action. Elements under these may be magenta; anything else is a violation.
 MAGENTA_ALLOWED = (".line.flagged, .line .rel, .verdict .headline.alerted, .primary-row, "
-                   ".bubble.in, .pill.wrong, .ttag.alert, .primary, .field")
+                   ".bubble.in, .pill.wrong, .ttag.alert, .primary, .field, .modal.hold")
 MAGENTA_AUDIT = """allowed => {
   const MAG = ["rgb(226, 0, 116)", "rgb(200, 0, 106)"];
   const name = el => el.tagName.toLowerCase() + (el.className && typeof el.className === "string" ? "." + el.className.trim().split(/\\s+/).join(".") : "");
@@ -1088,6 +1103,7 @@ def run_bank_to_end(ctx: Context):
     page = open_console(ctx)
     mark = ctx.tap.mark()
     ref, _ = start_replay_ui(ctx, page, "Run bank", mark)
+    return_to_call(ctx, page)
     ctx.wait_event(lambda e: e["session_ref"] == ref and e["type"] == "session" and e["payload"]["state"] == "finished",
                    mark, 40, "session finished")
     # The console types each line over its audio; 'call ended' shows once the last line is done.
@@ -1151,3 +1167,33 @@ def ticker_turns(ctx: Context):
                "prefers-reduced-motion stops the ticker")
     page.emulate_media(reduced_motion="no-preference")
     ctx.shot("ticker")
+
+
+# --- hard-stop --------------------------------------------------------------------------------
+
+@check("hardstop.hold-and-resume", "hard-stop", ui=True)
+def hardstop_hold(ctx: Context):
+    ctx.api_reset()
+    ctx.ensure_opted_in()
+    page = open_console(ctx)
+    mark = ctx.tap.mark()
+    ref, _ = start_replay_ui(ctx, page, "Run bank", mark)
+    hold = hold_dialog(page)
+    ui_assert(ctx, "the alert puts the caller on hold", lambda: pw_expect()(hold).to_be_visible(timeout=30_000))
+    ui_assert(ctx, "the spoken warning names the code request",
+              lambda: pw_expect()(hold.locator("#hold-script")).to_contain_text("They asked for a security code"))
+    tr = card(page, "^Live transcript")
+    held = tr.locator("p.line").count()
+    ui_assert(ctx, "the alert text still lands on the phone while the caller is held",
+              lambda: pw_expect()(card(page, "^Phone").locator(".bubble.out").first).to_have_text(ctx.templates["ALERT-OTP-01"]))
+    page.wait_for_timeout(3000)
+    ctx.expect(tr.locator("p.line").count() == held, "the caller's next line waits while on hold", held)
+    ctx.shot("on-hold")
+    click(ctx, page, "Return to call", scope=hold)
+    ui_assert(ctx, "Return to call closes the hold", lambda: pw_expect()(hold).to_be_hidden())
+    last = transcript_lines(ctx, "bank")[-1]["text"]
+    ui_assert(ctx, "the conversation plays on after the hold",
+              lambda: pw_expect()(tr).to_contain_text(last, timeout=20_000))
+    ctx.wait_event(lambda e: e["session_ref"] == ref and e["type"] == "session" and e["payload"]["state"] == "finished",
+                   mark, 40, "session finished")
+    ctx.shot("resumed")

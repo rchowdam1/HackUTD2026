@@ -184,6 +184,11 @@ button:disabled { opacity: 0.45; cursor: default; }
 .modal-backdrop { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 16px; background: var(--scrim); }
 .modal { width: min(620px, 100%); background: var(--ground); border: 1px solid var(--line); border-radius: 4px; padding: 40px; box-shadow: 0 24px 60px rgba(20, 20, 19, 0.08); }
 .modal h2 { font: 300 40px/1.1 var(--display); text-wrap: balance; margin-bottom: 28px; }
+.hold-backdrop { background: rgba(239, 236, 231, 0.82); }
+.modal.hold h2 { color: var(--magenta); margin: 10px 0 18px; }
+.modal.hold .script { font: 300 22px/1.4 var(--display); color: var(--ink-2); }
+.modal.hold .label-text { display: inline-flex; align-items: center; gap: 8px; color: var(--magenta-text); }
+.dot.live-alert { color: var(--magenta); animation: blink 1.2s steps(1) infinite; }
 .choices li { display: grid; grid-template-columns: 96px 1fr; gap: 14px; padding: 14px 0; border-top: 1px solid var(--line); }
 .choices li:last-child { border-bottom: 1px solid var(--line); }
 .modal-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 28px; }
@@ -219,6 +224,7 @@ button:disabled { opacity: 0.45; cursor: default; }
   .typing::after { animation: none; }
   .ticker { overflow-x: auto; }
   .ticker-track { animation: none; }
+  .dot.live-alert { animation: none; }
   .ticker-list[aria-hidden] { display: none; }
 }
 
