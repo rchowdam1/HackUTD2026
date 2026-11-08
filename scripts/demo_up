@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
-# Start tunnel + Twilio webhook + app on :8000 (PRD §19.3). Usage: scripts/demo_up  (see docs/twilio-live.md)
+# Start tunnel + Photon webhook + app on :8000 (PRD §19.3). Usage: scripts/demo_up  (see docs/photon-live.md)
 cd "$(dirname "$0")/.." || exit 1
 exec env -u PYTHONPATH -u PYTHONHOME -u VIRTUAL_ENV uv run python scripts/demo_up.py "$@"
