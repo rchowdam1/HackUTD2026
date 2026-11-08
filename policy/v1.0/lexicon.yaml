@@ -49,10 +49,13 @@ categories:
     - 'payments?'
     - '(overdue|past[- ]due|outstanding|unpaid|remaining) (balance|bill|amount|invoice|taxes|tax|fine|fees?)'
     - '\$ ?\d[\d,.]*|\d[\d,.]* ?(dollars|bucks|grand)|(hundred|thousand) (dollars|bucks)|dollars'
+    - '(a|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|twenty|thirty|forty|fifty|\d+) (hundred|thousand|grand)'
+    - 'visa|mastercard|amex|american express|discover card'
+    - 'fees?'
   remote:
     # Named remote-access tools.
     - 'anydesk|any desk|teamviewer|team viewer|ultraviewer|logmein|log me in|quick ?assist|rustdesk|screenconnect|connectwise|splashtop|supremo|zoho assist|support ?assist'
-    - 'remote (access|desktop|support|control|session|software|app|tool|connection|repair|assistan(t|ce)|inspection|helper|login|view(er)?)'
+    - 'remote (access|desktop|support|control|session|software|app|tool|connection|repair|assistan(t|ce)|inspection|helper|login|view(er)?|management|admin(istration)?)'
     - 'remotely'
     # Seeing or controlling the device.
     - 'screen ?shar(e|ing)|shar(e|ing) (your|the|my|whole|entire)( whole| entire)? screen'
@@ -61,11 +64,15 @@ categories:
     - "(let|allow) (it|me|us|him|them|the app|the program)( to)? (connect|in|access|control|into|take)"
     - "(click|tap|press|hit|say|select) (on )?(allow|accept|trust|yes|join|connect|start|run|install)"
     # Software or a link the caller supplies.
+    - '(from|on) (our|my) (site|website|link|page|portal|server)'
     - "(app|apps|file|program|software|link|tool|profile|update|extension|helper|viewer|installer|site|website|page|address|portal)( that| which)?( \\w+){0,2}? (i|we)( am|'m|m| will|'ll|ll)? (send|sending|sent|text|texting|texted|give|giving|gave|tell|told)"
     - '(access to|control of|into|in to|onto) your (computer|device|phone|laptop|pc|screen|machine|system|tablet|mac|desktop)'
     - '(see|view|watch|control|access|operate) (your|the) (screen|computer|desktop|laptop|phone|device|pc)'
     - 'take (over|control)|full control|(full|all|accessibility|admin|administrator) (access|permissions?)'
-    - '(connect|log ?in|logon|get in|remote|dial) (to|into|in to|onto) (your|the) (computer|device|phone|laptop|pc|machine|system|screen|mac)'
+    - '(connect|log ?in|logon|get in|remote|dial|hop|jump|get) (to|into|in to|onto|on) (your|the) (computer|device|phone|laptop|pc|machine|system|screen|mac|network|router)'
+    - "(i|we) (need|have|got|want) to (connect|remote in|log ?in|get in)\\b"
+    - '(so|then|and) (i|we|he|she|they|our \\w+|my \\w+) can (see|access|control|get into|connect|take over|log in)'
+    - 'screen (mirroring|mirror|casting)|(unknown|untrusted|third[- ]party) (sources|apps)'
     - '(join|start) (the |a |my |our )?(support |remote |screen )?session|session (code|id|number)'
     - 'support (code|session|website|site|portal|page|link|tool|app|software)'
     - 'incoming (connection|request)|(accessibility|developer) (options|settings|access|permissions?)'

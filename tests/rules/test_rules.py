@@ -99,6 +99,40 @@ PAIRS = {
     "remote hedge someone may": ("ALERT-REMOTE-01",
                                  "You need to install AnyDesk.",
                                  "Someone may call and say you need to install AnyDesk."),
+    # Semantic-class broadening (#67): objects without the classic keywords, indirect forms.
+    "otp what is it": ("ALERT-OTP-01",
+                       "Is your account PIN still the same? What is it?",
+                       "Is your account PIN still the same? Good."),
+    "otp what it says": ("ALERT-OTP-01",
+                         "The app will text you a code. Just shoot me back what it says.",
+                         "The app will text you a code. Just type in what it says."),
+    "otp policy statement": ("ALERT-OTP-01",
+                             "I need you to read me your PIN.",
+                             "Nobody here will ever ask you to read us your PIN."),
+    "pay you'll send": ("ALERT-PAY-01",
+                        "You'll send two thousand dollars to the holding account.",
+                        "You'll get a text when the two thousand dollars arrive."),
+    "pay amount in words": ("ALERT-PAY-01",
+                            "I need eleven hundred for the flight.",
+                            "I needed eleven hundred for the flight, but I sorted it out."),
+    "pay how will you pay": ("ALERT-PAY-01",
+                             "The fee is three hundred. How will you be paying?",
+                             "The fee is waived. You won't be paying anything."),
+    "pay reported wish": ("ALERT-PAY-01",
+                          "Send me the money by Zelle.",
+                          "Mom said you wanted to send me money, but please don't."),
+    "pay wire fraud": ("ALERT-PAY-01",
+                       "Wire the money to the escrow account today.",
+                       "Wire fraud is common at closings, so call your title company."),
+    "remote hop on": ("ALERT-REMOTE-01",
+                      "Let my technician hop on your computer for a minute.",
+                      "My technician can't hop on your computer, so bring it in."),
+    "remote sideload": ("ALERT-REMOTE-01",
+                        "Install our app and allow unknown sources.",
+                        "Never install apps from unknown sources."),
+    "remote negated object": ("ALERT-REMOTE-01",
+                              "Click the link and share your screen with me.",
+                              "Click the link in your email. You don't need to share your screen."),
 }
 
 
@@ -235,7 +269,7 @@ def test_arm_c_confirm_needs_lexicon_solo_has_its_own_id(monkeypatch):
     assert (d.template_id, d.basis) == ("ALERT-PAY-01", ["C-INTENT-PAY-01"])
     assert windows[:2] == [[1], [1, 2]]  # every caller turn, with its context window
     # The same judgment without the lexicon in the window does nothing.
-    assert decide(call("Grandma, the lawyer said it's fifteen hundred, okay?"), "C", V) == []
+    assert decide(call("Grandma, the lawyer said it's a lot, okay?"), "C", V) == []
     # A solo judgment maps to the model-only rule id.
     monkeypatch.setattr(intent, "judge", lambda ans, cat, seen: "solo" if cat == "payment" else None)
     (d,) = decide(call("Can you help me out, quick?"), "C", V)

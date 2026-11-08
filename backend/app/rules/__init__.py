@@ -63,12 +63,14 @@ def load_policy(policy_version: str) -> _Policy:
     cfg = yaml.safe_load((root / "rules.yaml").read_text())
     lexicon = yaml.safe_load((root / "lexicon.yaml").read_text())["categories"]
     frames = "|".join(f"(?:{f})" for f in cfg["frames"])
+    direct = "|".join(f"(?:{f})" for f in cfg["direct_frames"])
     categories = []
     for name, c in cfg["categories"].items():
         v = rf"(?P<v>{c['verbs']})\b"
         imperative = rf"(?:{cfg['fillers']}\b[\s,]*)*{v}"
         requests = (
             _rx(rf"\b(?:{frames})(?:\s+[\w']+){{0,2}}?\s+{v}"),  # can you (just) read
+            _rx(rf"\b(?:{direct})(?:\s+(?:just|then|now|also|simply))?\s+{v}"),  # you'll send
             _rx(rf"^\s*(?:{cfg['intro']}\b[^,]*,\s*)?{imperative}"),  # imperative: read me / buy
             _rx(rf"(?:,|\b(?:and|so)\b)\s+{imperative}"),  # a second step: install it and allow ...
             _rx(rf"\b{v}(?:\s+[\w']+){{0,4}}?\s+(?:me|us)\b"),  # read it back to me

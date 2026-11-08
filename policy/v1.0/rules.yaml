@@ -60,6 +60,9 @@ negated_object_end: ',|\b(and|then)\b'
 # "if anyone asks you to install ...", "he wanted me to buy gift cards".
 hedges:
   - 'if (someone|anyone|somebody|anybody|a caller|they|a stranger|people|a person|he|she|a guy)'
+  - 'if you (ever )?(get|receive|have|hear) (a|any|an) (call|text|message|email|voicemail)'
+  - 'ever (ask|asks|call|calls|request)'
+  - '(said|says|mentioned|told me) (that )?(you|they|he|she)'
   - '(anyone|someone|somebody|anybody|people|callers?|scammers?|crooks?) (who|that|claiming|pretending|saying|asking|going around)'
   - '(scammers?|fraudsters?|criminals?|crooks?|thieves|people|callers) (\w+ )?(ask|tell|say|want|try|call|pretend|claim|demand|get)'
   - '(someone|somebody|anyone|anybody|they|he|she|a guy|the guy|the caller|the man|the woman|the lady|a man|a woman) (\w+ )?(asked|told|said|wanted|tried|called|pretended|claimed|kept|demanded|was asking|were asking|got)'
@@ -101,8 +104,12 @@ frames:
   - 'be sure to'
   - 'remember to'
   - "it'?s (important|required|necessary|mandatory) (that you|to|you)"
+# Frames the verb must follow directly (optionally after one adverb): "you'll send ...",
+# but not "you'll get a text".
+direct_frames:
+  - "you'?(ll| will)"
 # Words allowed before an imperative verb at the start of a clause.
-fillers: "(this time|right now|for now|today|again|once more|ok|okay|yes|yeah|ya|yep|no|so|now|just|please|alright|all right|right|and|then|first|next|also|well|great|good|perfect|sir|ma'?am|maam|honey|sweetie|dear|grandma|grandpa|mom|dad|buddy|man|bro|um|uh|quickly|real quick|simply|kindly|go ahead and|you just|you)"
+fillers: "(this time|right now|for now|today|again|once more|ok|okay|yes|yeah|ya|yep|no(?=,)|so|now|just|please|alright|all right|right|and|then|first|next|also|well|great|good|perfect|sir|ma'?am|maam|honey|sweetie|dear|grandma|grandpa|mom|dad|buddy|man|bro|um|uh|quickly|real quick|simply|kindly|go ahead and|you just|you)"
 # An introductory phrase ending in a comma before an imperative: "to unlock it, read me ...".
 intro: '(to|before|after|once|when|whenever|as soon as|if|for|in order to)'
 
@@ -115,9 +122,10 @@ categories:
     c_rules: {confirm: C-INTENT-OTP-01, solo: C-INTENT-OTP-SOLO}
     k_event: code_mention
     b_event: code_request
-    verbs: 'read|tell|give|send|text|say|share|repeat|provide|forward|spell|recite|confirm|verify|call out|read off|read out'
+    verbs: 'read|tell|give|send|text|say|share|repeat|provide|forward|spell|recite|confirm|verify|call out|read off|read out|shoot|pass along|let me have'
     extra:
-      - "what('s| is| was| are| were)( [\\w']+){0,6}? (code|pin|password|passcode|digits|number|numbers|maiden name)"
+      - "what('?s| is| was| are| were)( [\\w']+){0,6}? (code|pin|password|passcode|digits|number|numbers|maiden name)"
+      - "what('?s| is| was| are| were) (it|that|this|they|them|showing|on there|on the screen)\\b"
       - "(i|we)('ll| will)?( (just|only|still|also|really))? (need|want|require|need to get|need to have)( [\\w'-]+){0,3}? (codes?|pins?|passwords?|passcodes?|otps?|digits?|numbers?|maiden name|answers?)"
       - "what (does|did|do) (it|that|this|they|the (text|message|screen|code|number)) (say|read|show)"
       - "what (code|number|numbers|digits|pin)( \\w+){0,2} (did|do|does|have) you( \\w+)? (get|see|have|receive|got)"
@@ -131,13 +139,14 @@ categories:
     c_rules: {confirm: C-INTENT-PAY-01, solo: C-INTENT-PAY-SOLO}
     k_event: payment_mention
     b_event: payment_request
-    verbs: 'buy|purchase|send|wire|transfer|pay|repay|pay back|settle|deposit|withdraw|move|load|mail|put|scratch|read|give|hand|hand over|donate|cover|take out|pull out|cash out|convert|get|pick up|bring|drop off|leave|feed|insert|scan|post|zelle|venmo'
+    verbs: 'buy|purchase|send|wire|transfer|pay|repay|pay back|settle|deposit|withdraw|move|load|mail|put|scratch|read|give|hand|hand over|donate|cover|take out|pull out|cash out|convert|pick up|drop off|leave|feed|insert|scan|post|zelle|venmo'
     extra:
       - "(i|we)('ll| will)?( can| could| just)? (take|process|charge|run|accept|collect|need)( \\w+){0,3}? (card|payment|cards|number|money|cash|fee|deposit|donation|\\d[\\d,]*)"
       - "(do|did) you have( \\w+){0,2} (debit|credit|bank|gift) card"
       - "count on you for"
+      - "how (will|would|do|are|can|did) you (be )?(like to )?(pay|paying|send|sending|cover|covering)"
       - "(help|chip in|contribute|pitch in)( me| us)?( out)? with( \\w+){0,2} (donation|money|cash|payment|fee|deposit|bail|\\d)"
-      - "(i|we)('ll| will)?( (just|only|still|also|really))? need( \\w+){0,3}? (money|cash|funds|payment|\\d[\\d,]* dollars|dollars|bail|gift cards?)"
+      - "(i|we)('ll| will)?( (just|only|still|also|really))? need( \\w+){0,3}? (money|cash|funds|payment|\\d[\\d,]* dollars|dollars|bail|gift cards?|(\\w+ )?(hundred|thousand|grand))"
       - "(payment|money|it|transfer|deposit|fee|fees|tax|taxes|amount|balance|bail)( \\w+){0,4}? (needs to|has to|have to|must) (go|be (sent|paid|wired|made|transferred|deposited))"
       - "(pay|payment|card)( \\w+){0,5}? over the phone"
       - \"(if|once|when|as soon as) you( \\w+)? (pay|send|buy|wire|transfer|purchase)( \\w+){0,4}? (today|now|right now|immediately|tonight|within)\"
@@ -149,7 +158,7 @@ categories:
     c_rules: {confirm: C-INTENT-REMOTE-01, solo: C-INTENT-REMOTE-SOLO}
     k_event: remote_access_mention
     b_event: remote_access_request
-    verbs: 'download|install|open|run|allow|accept|grant|click|go to|type|visit|connect|enable|turn on|start|join|share|tap|press|hit|launch|enter|trust|approve|give|let|sign in|log in|log on'
+    verbs: 'download|install|open|run|allow|accept|grant|click|go to|go on|go into|head to|navigate to|pull up|bring up|type|visit|connect|enable|turn on|start|join|share|tap|press|hit|launch|enter|trust|approve|give|let|sign in|log in|log on'
     extra:
       - "lets? (me|us|him|her|them|my \\w+|our \\w+)( \\w+){0,2}? (connect|in|into|access|see|take|control|remote|fix|log|operate|install|handle|look|do|check|scan)"
       - '(give|grant) (me|us|it|him|them)( remote| full)? (access|permission|control)'

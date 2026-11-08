@@ -66,7 +66,7 @@ def test_off_without_flag_or_key(monkeypatch):
     monkeypatch.delenv("TYPESAFE_API_KEY")
     assert not intent.enabled()
     monkeypatch.setattr(httpx, "post", lambda *a, **k: pytest.fail("no call when off"))
-    segs = call("Grandma, the lawyer says it's fifteen hundred.")
+    segs = call("Grandma, the lawyer says it's a lot.")
     assert intent.answers(segs) is None
     assert decide(segs, "C", V) == decide(segs, "B", V)
 
@@ -140,7 +140,7 @@ def test_judge(nouls, lexicon_seen, expected):
 
 def test_solo_detection_has_its_own_rule_id(jev):
     jev(lambda turn: {"payment": 0.97} if "help me out" in turn else {})
-    segs = call("Grandpa, it's me. I'm in trouble and the lawyer says it's fifteen hundred.",
+    segs = call("Grandpa, it's me. I'm in trouble and I didn't know who else to call.",
                 ("subscriber", "Oh no."), "Can you help me out, quick?")
     assert decide(segs, "B", V) == []
     (d,) = decide(segs, "C", V)
