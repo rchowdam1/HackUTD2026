@@ -25,7 +25,7 @@ DEMO_ROUTES = {
     "/events/stream": "b-api #19", "/demo/run/{scenario_id}": "b-api #19", "/demo/reset": "b-api #19",
 }
 DEMO_ALERTS = {"bank": ["ALERT-OTP-01"], "clinic": []}  # expected decisions per cached demo replay
-MODEL_DOWNLOAD = ("uv run python -c \"from faster_whisper import WhisperModel; "
+MODEL_DOWNLOAD = ("env -u PYTHONPATH -u VIRTUAL_ENV uv run python -c \"from faster_whisper import WhisperModel; "
                   "WhisperModel('small.en', device='cpu', compute_type='int8')\"  (once, online)")
 SMS_TIMEOUT_S = 30
 
@@ -98,14 +98,14 @@ def check_app() -> Result:
     """App starts (lifespan: storage.init + ASR preload) with HF offline, /health ok, demo routes mounted."""
     from fastapi.testclient import TestClient
     from app.main import create_app
-    app = create_app()
-    with TestClient(app) as client:
+    with TestClient(create_app()) as client:
         r = client.get("/health")
+        # TRACE matches no handler: a mounted path answers 405 (or 401), a missing one 404. Nothing runs.
+        absent = [p for p in DEMO_ROUTES
+                  if client.request("TRACE", p.replace("{scenario_id}", "bank")).status_code == 404]
     if r.status_code != 200 or r.json().get("status") != "ok":
         return Result("FAIL", "app-offline", f"/health returned {r.status_code} {r.text[:80]}",
                       "run `make run` and read the startup traceback")
-    paths = {getattr(route, "path", "") for route in app.routes}
-    absent = [p for p in DEMO_ROUTES if p not in paths]
     if absent:
         owners = sorted({DEMO_ROUTES[p] for p in absent})
         return Result("FAIL", "app-offline", f"app starts offline but routes are missing: {', '.join(absent)}",
