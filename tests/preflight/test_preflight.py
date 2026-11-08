@@ -17,16 +17,22 @@ _spec.loader.exec_module(pf)
 
 SID, TOKEN = "AC" + "0123456789abcdef" * 2, "tok-secret-123"
 ENV = {"TWILIO_ACCOUNT_SID": SID, "TWILIO_AUTH_TOKEN": TOKEN, "TWILIO_FROM": "+15550001111",
-       "PUBLIC_BASE_URL": "https://demo.example.com", "DEMO_PHONE": "+12145551234", "SPARE_PHONE": "+12145559876"}
+       "PUBLIC_BASE_URL": "https://demo.example.com", "DEMO_PHONE": "+12145551234", "SPARE_PHONE": "+12145559876",
+       "OPERATOR_PASSWORD": "op-secret-pw"}
 
 
 class FakeTwilio:
-    """incoming_phone_numbers.list(), messages.create() and messages(sid).fetch()."""
+    """incoming_phone_numbers.list(), messages.create(), messages.list() and messages(sid).fetch()."""
 
-    def __init__(self, numbers=(), statuses=("queued",), error_code=None):
+    def __init__(self, numbers=(), statuses=("queued",), error_code=None, inbound=()):
         self.incoming_phone_numbers = SimpleNamespace(list=lambda **kw: list(numbers))
         self.statuses, self.error_code, self.sent = list(statuses), error_code, []
+        self.inbound, self.listed = list(inbound), []
         self.messages = self
+
+    def list(self, **kw):
+        self.listed.append(kw)
+        return self.inbound
 
     def create(self, **kw):
         self.sent.append(kw)
@@ -248,4 +254,140 @@ def test_no_sms_flag_skips(monkeypatch):
         monkeypatch.setattr(pf, name, lambda n=name: pf.Result("PASS", n, "ok"))
     fake = use_twilio(monkeypatch, FakeTwilio())
     results = pf.run_checks({}, send_sms=False)
-    assert results[-1].status == "SKIP" and fake.sent == []
+    assert [(r.name, r.status) for r in results[-2:]] == [("sms", "SKIP"), ("sms-reply", "SKIP")] and fake.sent == []
+
+
+# --- sms-reply (inbound half of the round trip) --------------------------------------------------
+
+def reply_waiter(got, calls=None):
+    """Stand-in for wait_for_reply: records args, 'opens the stream' (calls on_ready), returns `got`."""
+    def wait(password, timeout_s, on_ready):
+        if calls is not None:
+            calls.append((password, timeout_s))
+        on_ready()
+        if isinstance(got, Exception):
+            raise got
+        return got
+    return wait
+
+
+def test_reply_not_tested_when_outbound_failed(monkeypatch):
+    calls = []
+    monkeypatch.setattr(pf, "wait_for_reply", reply_waiter(True, calls))
+    r = pf.check_reply(ENV, sms_ok=False)
+    assert r.status == "FAIL" and "sms check" in r.fix and calls == []
+
+
+def test_reply_needs_operator_password(monkeypatch):
+    monkeypatch.setattr(pf, "wait_for_reply", reply_waiter(True))
+    r = pf.check_reply({k: v for k, v in ENV.items() if k != "OPERATOR_PASSWORD"}, sms_ok=True)
+    assert r.status == "FAIL" and "OPERATOR_PASSWORD" in r.detail
+
+
+def test_reply_pass_on_reply_event_and_prompt_masks_phone(monkeypatch, capsys):
+    calls = []
+    monkeypatch.setattr(pf, "wait_for_reply", reply_waiter(True, calls))
+    use_twilio(monkeypatch, FakeTwilio())
+    r = pf.check_reply(ENV, sms_ok=True, timeout_s=7)
+    assert r.status == "PASS" and "/sms/inbound" in r.detail
+    assert calls == [(ENV["OPERATOR_PASSWORD"], 7)]
+    err = capsys.readouterr().err
+    assert "reply HELP" in err and "+1******1234" in err and ENV["DEMO_PHONE"] not in err
+
+
+def test_reply_timeout_twilio_received_it_points_at_webhook(monkeypatch):
+    monkeypatch.setattr(pf, "wait_for_reply", reply_waiter(False))
+    fake = use_twilio(monkeypatch, FakeTwilio(inbound=[SimpleNamespace(sid="SMin")]))
+    r = pf.check_reply(ENV, sms_ok=True, timeout_s=5)
+    assert r.status == "FAIL" and "never handled" in r.detail and "11200" in r.fix
+    assert fake.listed[0]["from_"] == ENV["DEMO_PHONE"] and fake.listed[0]["to"] == ENV["TWILIO_FROM"]
+
+
+def test_reply_timeout_nothing_reached_twilio(monkeypatch):
+    monkeypatch.setattr(pf, "wait_for_reply", reply_waiter(False))
+    use_twilio(monkeypatch, FakeTwilio(inbound=[]))
+    r = pf.check_reply(ENV, sms_ok=True, timeout_s=5)
+    assert r.status == "FAIL" and "no reply" in r.detail and "DEMO_PHONE" in r.fix
+
+
+def test_reply_app_unreachable(monkeypatch):
+    import httpx
+    monkeypatch.setattr(pf, "wait_for_reply", reply_waiter(httpx.ConnectError("refused")))
+    r = pf.check_reply(ENV, sms_ok=True)
+    assert r.status == "FAIL" and "refused" in r.detail and "make run" in r.fix
+
+
+def test_run_checks_runs_reply_after_sms_pass(monkeypatch):
+    for name in ("check_model", "check_app", "check_replay", "check_tunnel", "check_webhook", "check_consent"):
+        monkeypatch.setattr(pf, name, lambda *a, n=name: pf.Result("PASS", n, "ok"))
+    monkeypatch.setattr(pf, "check_sms", lambda env, ok: pf.Result("PASS", "sms", "ok"))
+    seen = []
+    monkeypatch.setattr(pf, "check_reply", lambda env, ok, timeout_s: seen.append((ok, timeout_s)) or
+                        pf.Result("PASS", "sms-reply", "ok"))
+    results = pf.run_checks({"PREFLIGHT_REPLY_TIMEOUT_S": "45"})
+    assert results[-1].name == "sms-reply" and seen == [(True, 45.0)]
+
+
+def _sse_app(events, logins):
+    import httpx
+
+    def handler(request):
+        if request.url.path == "/login":
+            logins.append(request.content)
+            return httpx.Response(200, json={"status": "ok"}, headers={"set-cookie": "safesignal_session=n.s; Path=/"})
+        assert request.headers.get("cookie") == "safesignal_session=n.s"
+        body = "".join(f"data: {e}\n\n" for e in events)
+        return httpx.Response(200, content=body.encode(), headers={"content-type": "text/event-stream"})
+    return httpx.Client(transport=httpx.MockTransport(handler), base_url="http://app")
+
+
+def test_wait_for_reply_sees_reply_event():
+    logins, ready = [], []
+    events = ['{"type": "sms", "payload": {}}', '{"type": "reply", "payload": {"keyword": "HELP"}}']
+    assert pf.wait_for_reply("pw", 5, lambda: ready.append(1), client=_sse_app(events, logins)) is True
+    assert ready == [1] and b'"pw"' in logins[0]
+
+
+def test_wait_for_reply_ignores_other_events():
+    events = ['{"type": "sms", "payload": {}}', '{"type": "consent", "payload": {}}']
+    assert pf.wait_for_reply("pw", 5, lambda: None, client=_sse_app(events, [])) is False
+
+
+def test_wait_for_reply_bad_password_raises():
+    import httpx
+    client = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(401)), base_url="http://app")
+    with pytest.raises(httpx.HTTPStatusError):
+        pf.wait_for_reply("wrong", 5, lambda: None, client=client)
+
+
+# --- §19.7 power, sleep, hotspot ------------------------------------------------------------------
+
+def supply(root, name, kind, online):
+    d = root / name
+    d.mkdir()
+    (d / "type").write_text(kind + "\n")
+    (d / "online").write_text(f"{online}\n")
+
+
+def test_power_pass_on_ac(tmp_path):
+    supply(tmp_path, "BAT0", "Battery", 1)
+    supply(tmp_path, "ADP0", "Mains", 1)
+    assert pf.check_power(tmp_path).status == "PASS"
+
+
+def test_power_fail_on_battery_names_fix(tmp_path):
+    supply(tmp_path, "ADP0", "Mains", 0)
+    r = pf.check_power(tmp_path)
+    assert r.status == "FAIL" and "charger" in r.fix
+
+
+def test_power_skip_when_unreadable(tmp_path):
+    assert pf.check_power(tmp_path / "missing").status == "SKIP"
+
+
+def test_report_prints_manual_sleep_and_hotspot_items():
+    out = io.StringIO()
+    pf.report([pf.Result("PASS", "a", "ok")], ENV, out)
+    text = out.getvalue()
+    assert "MANUAL" in text and "sleep" in text and "hotspot" in text
+    assert text.endswith("PREFLIGHT PASS (0 of 1 checks failed)\n")
