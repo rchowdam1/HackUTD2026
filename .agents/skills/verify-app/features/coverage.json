@@ -74,6 +74,16 @@
       ],
       "synced_commit": null
     },
+    "live-call": {
+      "doc": "live-call.md",
+      "paths": [
+        "backend/app/api/voice.py",
+        "backend/app/ingest/live.py",
+        "backend/app/sms/webhooks.py",
+        "backend/app/asr/**"
+      ],
+      "synced_commit": null
+    },
     "enrollment-invite": {
       "doc": "enrollment-invite.md",
       "paths": [
@@ -185,6 +195,10 @@
     {
       "item": "Physical demo setup (power, sleep, hotspot) from PRD 19.7",
       "reason": "not observable by software."
+    },
+    {
+      "item": "A real phone call through the Twilio number (live-call)",
+      "reason": "needs two real phones, the Twilio number's voice webhook and the tunnel; the harness drives the same /voice/stream socket with a signed synthetic Media Stream of the bank WAVs. Human check: call the Twilio number, DEMO_PHONE rings, transcript + ALERT-OTP-01 appear in the console; also confirms which party is on which track."
     }
   ]
 }
