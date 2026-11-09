@@ -2,7 +2,9 @@
 
 **A private warning the moment a phone call takes a malicious turn.** Built at HackUTD 2026.
 
-![CallSafe: the scammer asked for money, we put him on hold](docs/assets/thumbnail.png)
+**[Watch the demo and see the project on Devpost →](https://devpost.com/software/callsafe-x8tjy5)**
+
+[![CallSafe: the scammer asked for money, we put him on hold](docs/assets/thumbnail.png)](https://devpost.com/software/callsafe-x8tjy5)
 
 Spam filters judge a call before you answer. After you pick up, a good scammer is in control. CallSafe protects you **during** the call. When the caller asks for a one-time code, money or access to your device, CallSafe puts them on hold, plays a short warning that only you hear, and then reconnects you.
 
@@ -66,6 +68,7 @@ Python 3.11 · FastAPI · faster-whisper · Twilio Voice + Media Streams · Perp
 
 ## Docs
 
+- [Devpost](https://devpost.com/software/callsafe-x8tjy5): demo video and project write-up.
 - [Live Twilio setup](docs/twilio-live.md): real phone calls, the tunnel and what leaves the laptop.
 - [Verification](docs/verification.md): how we test the real app end to end.
 - [PRD.md](PRD.md): the full product spec.
