@@ -124,6 +124,8 @@ async def process(segment: Segment) -> list[Decision]:
         ai, score, category = "off", None, None
         if s.arm == "C" and segment.speaker == "caller":
             ai, score, category = await asyncio.to_thread(rules.ai_view, list(s.segments), s.policy_version)
+        log.warning("turn %s %s decided %dms after speech ended", segment.seq, segment.speaker,
+                    round((time.time() - ended_at) * 1000))
         _emit(s, "turn", TurnPayload(seq=segment.seq, speaker=segment.speaker, ai=ai, score=score, category=category,
                                      flagged_by=flagged_by, decided_ms=max(0, round((time.time() - ended_at) * 1000))))
         return new

@@ -75,5 +75,8 @@ async def alert(template_id: str) -> None:
         # ~2.6 words/s for the neural voice, plus a beat for Twilio to start playing it
         await asyncio.sleep(len(announcement(template_id).split()) / 2.6 + 1.5)
         await asyncio.to_thread(_hold, False)
+    except TwilioRestException as e:
+        if e.status != 404:  # 404: the call ended during the warning, nothing left to take off hold
+            log.exception("voice alert failed")
     except Exception:
         log.exception("voice alert failed")

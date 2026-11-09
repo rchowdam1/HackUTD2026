@@ -115,19 +115,25 @@ async def _cut(messages: AsyncIterator[dict], out: asyncio.Queue) -> None:
             media, track = m["media"], tracks[m["media"]["track"]]
             u = track.add(base64.b64decode(media["payload"]), int(media["timestamp"]))
             if u:
-                out.put_nowait((u, _draft_for(drafts.pop(track.speaker, None), u)))
+                out.put_nowait((u, _draft_for(drafts.pop(track.speaker, None), u) or _start(u)))
             elif track.silence_ms == DRAFT_MS and (pcm := track.speech()) is not None:
                 drafts[track.speaker] = (pcm, asyncio.create_task(asyncio.to_thread(_transcribe, pcm)))
         elif m.get("event") == "stop":
             break
     for track in tracks.values():
         if u := track.flush():
-            out.put_nowait((u, _draft_for(drafts.pop(track.speaker, None), u)))
+            out.put_nowait((u, _draft_for(drafts.pop(track.speaker, None), u) or _start(u)))
     out.put_nowait(None)
 
 
 def _draft_for(draft: tuple[bytes, asyncio.Task[Transcript]] | None, u: Utterance) -> asyncio.Task[Transcript] | None:
     return draft[1] if draft and draft[0] == u[3] else None
+
+
+def _start(u: Utterance) -> asyncio.Task[Transcript]:
+    # Whisper starts the moment a turn is cut, not when the pipeline is free, so a slow intent-model call
+    # on one turn doesn't hold up transcribing the next.
+    return asyncio.create_task(asyncio.to_thread(_transcribe, u[3]))
 
 
 def _transcribe(pcm: bytes) -> Transcript:
@@ -142,7 +148,8 @@ async def _transcribed(utterances: asyncio.Queue) -> Timed:
     while (item := await utterances.get()) is not None:
         (speaker, start_ms, _, pcm, ended_at), draft = item
         try:
-            segments, _ = await (draft or asyncio.to_thread(_transcribe, pcm))
+            segments, _ = await draft
+            log.warning("live %s turn ready %.1fs after its speech ended", speaker, time.time() - ended_at)
         except Exception:
             log.exception("ASR failed on a live call; ending the call")
             return
