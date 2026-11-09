@@ -52,6 +52,8 @@ The console shows the call as it happens. There's no Run button to press.
   which sends the call text to OpenRouter: leave it off for a real call, see §7).
   The OTP alert lands about 3 s after the caller finishes asking for the code (`ingest/live.py`).
 - Start the stack with `REPLAY_SOURCE=asr` so the model is preloaded; otherwise the first utterance waits for it to load.
+- The two phones meet in a Twilio conference. When an alert fires, the app puts the caller on hold, speaks the
+  warning to `DEMO_PHONE` only, then takes the caller off hold (`callcontrol.py`). This needs no SMS registration.
 - Hanging up ends the session and sends the follow-up. End call / Reset in the console also work.
 - If the stream is refused (wrong `PUBLIC_BASE_URL`), the call still connects but nothing is monitored.
 
